@@ -1,23 +1,23 @@
 {
     "sessionToken": "***",
-    "appVersion": "6.5.5",
+    "appVersion": "6.6.2",
     "multiPlayVersion": "kaito",
-    "dataVersion": "6.5.5.20",
-    "assetVersion": "6.5.5.20",
+    "dataVersion": "6.6.0.31",
+    "assetVersion": "6.6.0.30",
     "removeAssetVersion": "1.13.0.30",
-    "assetHash": "df53dc06-d8a4-4e22-bc34-abce812df84c",
+    "assetHash": "6e51c276-88ab-4e61-821a-3f677809c48e",
     "appVersionStatus": "available",
     "isStreamingVirtualLiveForceOpenUser": false,
-    "deviceId": "a360c6f6-c806-4658-a03f-87824717b2ea",
+    "deviceId": "cc1d35ca-dcbb-4c83-a0ee-9097d6337e06",
     "updatedResources": {},
     "suiteMasterSplitPath": [
-        "suitemasterfile/6.5.5.20/00_4c9023a58362ca1eea85214941d9f4dc249004bff5b3613e3c48337cca42844c",
-        "suitemasterfile/6.5.5.20/01_4c9023a58362ca1eea85214941d9f4dc249004bff5b3613e3c48337cca42844c",
-        "suitemasterfile/6.5.5.20/02_4c9023a58362ca1eea85214941d9f4dc249004bff5b3613e3c48337cca42844c",
-        "suitemasterfile/6.5.5.20/03_4c9023a58362ca1eea85214941d9f4dc249004bff5b3613e3c48337cca42844c",
-        "suitemasterfile/6.5.5.20/04_4c9023a58362ca1eea85214941d9f4dc249004bff5b3613e3c48337cca42844c",
-        "suitemasterfile/6.5.5.20/05_4c9023a58362ca1eea85214941d9f4dc249004bff5b3613e3c48337cca42844c",
-        "suitemasterfile/6.5.5.20/06_4c9023a58362ca1eea85214941d9f4dc249004bff5b3613e3c48337cca42844c"
+        "suitemasterfile/6.6.0.31/00_cda28e4b30935fa43c6af0d140eeba77e4c5c9fd634166662dca05e558f0ede6",
+        "suitemasterfile/6.6.0.31/01_cda28e4b30935fa43c6af0d140eeba77e4c5c9fd634166662dca05e558f0ede6",
+        "suitemasterfile/6.6.0.31/02_cda28e4b30935fa43c6af0d140eeba77e4c5c9fd634166662dca05e558f0ede6",
+        "suitemasterfile/6.6.0.31/03_cda28e4b30935fa43c6af0d140eeba77e4c5c9fd634166662dca05e558f0ede6",
+        "suitemasterfile/6.6.0.31/04_cda28e4b30935fa43c6af0d140eeba77e4c5c9fd634166662dca05e558f0ede6",
+        "suitemasterfile/6.6.0.31/05_cda28e4b30935fa43c6af0d140eeba77e4c5c9fd634166662dca05e558f0ede6",
+        "suitemasterfile/6.6.0.31/06_cda28e4b30935fa43c6af0d140eeba77e4c5c9fd634166662dca05e558f0ede6"
     ],
     "obtainedBondsRewardIds": []
 }
