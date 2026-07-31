@@ -6,7 +6,7 @@ using PrivateSekai.Services.Master;
 
 var builder = WebApplication.CreateBuilder(args);
 
-ServerConfig.Load(builder.Configuration);
+ServerConfig.Load(builder.Configuration, builder.Environment.ContentRootPath);
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -61,3 +61,4 @@ if (!Directory.Exists(ServerConfig.SekaiMasterDbDiffPath))
 
 Console.WriteLine($"Private Sekai is running on {ServerConfig.Port}");
 app.Run();
+

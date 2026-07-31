@@ -8,15 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="$(PrivateSekaiDevOnlyExcludes)" />
-    <Content Remove="$(PrivateSekaiDevOnlyExcludes)" />
-    <None Remove="$(PrivateSekaiDevOnlyExcludes)" />
-    <EmbeddedResource Remove="$(PrivateSekaiDevOnlyExcludes)" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="MessagePack" Version="3.1.7" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.17.0" />
   </ItemGroup>
 
 </Project>
+

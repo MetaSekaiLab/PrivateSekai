@@ -1,6 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <PrivateSekaiDevOnlyExcludes>SekaiReverse/**;mitm/**;sekai-master-db-diff/**;suitemasterfile/**;tmp/**;artifacts/**;python-legacy/**;ProjectSekaiReverse/**;docs/**</PrivateSekaiDevOnlyExcludes>
-    <DefaultItemExcludes>$(DefaultItemExcludes);$(PrivateSekaiDevOnlyExcludes)</DefaultItemExcludes>
-  </PropertyGroup>
-</Project>

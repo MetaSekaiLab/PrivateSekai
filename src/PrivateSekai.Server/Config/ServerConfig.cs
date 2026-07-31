@@ -22,7 +22,7 @@ public static class ServerConfig
     public static string SekaiMasterDbDiffPath { get; private set; } = null!;
     public static MasterCacheConfig MasterCache { get; private set; } = new();
 
-    public static void Load(IConfiguration config)
+    public static void Load(IConfiguration config, string contentRootPath)
     {
         var s = config.GetSection("PrivateSekai");
         if (!s.Exists())
@@ -41,14 +41,44 @@ public static class ServerConfig
         GameVersionDomain        = Require(s, "GameVersionDomain");
 
         var paths = s.GetSection("Paths");
-        TemplatePath          = Require(paths, "Template");
-        SuiteMasterFilePath   = Require(paths, "SuiteMasterFile");
-        SekaiMasterDbDiffPath = Require(paths, "SekaiMasterDbDiff");
+        TemplatePath          = ResolvePath(Require(paths, "Template"), contentRootPath);
+        SuiteMasterFilePath   = ResolvePath(Require(paths, "SuiteMasterFile"), contentRootPath);
+        SekaiMasterDbDiffPath = ResolvePath(Require(paths, "SekaiMasterDbDiff"), contentRootPath);
 
         MasterCache = s.GetSection("MasterCache").Get<MasterCacheConfig>() ?? new MasterCacheConfig();
+    }
+
+    private static string ResolvePath(string path, string contentRootPath)
+    {
+        if (Path.IsPathFullyQualified(path))
+            return Path.GetFullPath(path);
+
+        var contentRootPathCandidate = Path.GetFullPath(Path.Combine(contentRootPath, path));
+        if (Directory.Exists(contentRootPathCandidate) || File.Exists(contentRootPathCandidate))
+            return contentRootPathCandidate;
+
+        var repositoryRoot = FindRepositoryRoot(contentRootPath);
+        return Path.GetFullPath(Path.Combine(repositoryRoot, path));
+    }
+
+    private static string FindRepositoryRoot(string startPath)
+    {
+        var directory = new DirectoryInfo(startPath);
+        while (directory != null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, ".git")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return startPath;
     }
 
     private static string Require(IConfigurationSection section, string key) =>
         section[key] ?? throw new InvalidOperationException(
             $"Missing required config: PrivateSekai:{key}");
 }
+

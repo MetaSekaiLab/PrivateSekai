@@ -1,16 +1,34 @@
-/sekai-master-db-diff/
-/suitemasterfile/*/
 
-bin
-obj
+# Build output
+bin/
+obj/
 
-/*Reverse/
-
+# Local IDE/user files
 .github/copilot-instructions.md
-.idea
+.idea/
+*.DotSettings.user
 
+# Local application settings
+appsettings.json
+src/PrivateSekai.Server/appsettings.json
+
+# Local scripts/cache
 *.py
 __pycache__/
-mitm/
-*.DotSettings.user
-appsettings.json
+tools/__pycache__/
+
+# Reverse-engineering inputs and captures
+/*Reverse/
+/SekaiReverse/
+/ProjectSekaiReverse/
+/tools/captures/
+/mitm/
+
+# Large generated/master data
+/data/sekai-master-db-diff/
+/data/suitemasterfile/.encrypted-cache/
+/data/suitemasterfile/*/
+/sekai-master-db-diff/
+/suitemasterfile/*
+
+

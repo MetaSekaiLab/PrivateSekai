@@ -1,1 +1,2 @@
 suitemasterfile/*.zip filter=lfs diff=lfs merge=lfs -text
+data/suitemasterfile/*.zip filter=lfs diff=lfs merge=lfs -text

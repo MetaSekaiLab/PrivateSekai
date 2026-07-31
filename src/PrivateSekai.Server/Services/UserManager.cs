@@ -14,7 +14,7 @@ public class UserManager
     
     public static long Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-    /// <summary>模板数据（对应 template/api_user_auth.json）</summary>
+    /// <summary>模板数据（对应 data/template/api_user_auth.json）</summary>
     private static UserAuthResponse ApiUserAuth { get; set; } = null!;
 
     public static UserAuthResponse GetApiUserAuth(string sessionToken)
@@ -23,7 +23,7 @@ public class UserManager
         return ApiUserAuth;
     }
 
-    /// <summary>模板数据（对应 template/api_system.json）</summary>
+    /// <summary>模板数据（对应 data/template/api_system.json）</summary>
     private static SystemResponse ApiSystem { get; set; } = null!;
 
     public static SystemResponse GetApiSystem()
@@ -154,3 +154,4 @@ public class UserManager
         user.Data.userMaterials = materials.OrderBy(m => m.materialId).ToArray();
     }
 }
+
