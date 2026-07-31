@@ -4,7 +4,7 @@
 
 **不要分享！！**
 
-[MetaMikuAI/PrivateSekai](https://github.com/MetaMikuAI/PrivateSekai)
+[MetaSekaiLab/PrivateSekai](https://github.com/MetaSekaiLab/PrivateSekai) by [MetaMiku](https://github.com/MetaMikuAI)
 
 ## GET `/api/system`
 
