@@ -8,6 +8,10 @@ obj/
 .idea/
 *.DotSettings.user
 
+# Local agent/developer notes
+AGENTS.local.md
+*.local.md
+
 # Local application settings
 appsettings.json
 src/PrivateSekai.Server/appsettings.json
