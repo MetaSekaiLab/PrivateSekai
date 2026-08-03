@@ -21,12 +21,8 @@ src/PrivateSekai.Server/appsettings.json
 __pycache__/
 tools/__pycache__/
 
-# Reverse-engineering inputs and captures
-/*Reverse/
-/SekaiReverse/
-/ProjectSekaiReverse/
-/tools/captures/
-/mitm/
+# mitm captures
+/tools/mitm/dump*/
 
 # Large generated/master data
 /data/sekai-master-db-diff/
@@ -36,3 +32,4 @@ tools/__pycache__/
 /suitemasterfile/*
 
 
+.DS_Store
