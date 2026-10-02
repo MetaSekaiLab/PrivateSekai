@@ -87,7 +87,8 @@ internal static class ResourceTests
                    refresh.userMusicVocals?.Count == 2 && refresh.userMysekaiTools?.Length == 1,
             "跨模块资源变化统一写入刷新响应");
         var saved = store.Read(1)!.Data;
-        Check.That(saved.userCards![0].duplicateCount == 3 && saved.userGachaTickets![0].quantity == 3,
+        Check.That(saved.userCards![0].duplicateCount == 4 && saved.userCards[0].episodes[0].scenarioStatus == "already_read" &&
+                   saved.userCards[0].episodes[0].isNotSkipped && saved.userGachaTickets![0].quantity == 3,
             "资源结果通过用户操作持久化到独立快照");
     }
 
@@ -143,9 +144,15 @@ internal static class ResourceTests
         Check.That(card.cardId == 7 && card.level == 1 && card.skillLevel == 1 && card.duplicateCount == 3 &&
                    card.createdAt == session.Now && card.specialTrainingStatus == "not_doing" && card.defaultImage == "original",
             "批量授卡初始化一次并正确累计重复数量");
-        Check.That(card.episodes![0].cardEpisodeId == 701 && card.episodes[0].scenarioStatus == "unread_before_scenario" &&
+        Check.That(card.episodes![0].cardEpisodeId == 701 && card.episodes[0].scenarioStatus == "unreleased" &&
+                   card.episodes[0].scenarioStatusReasons.Length == 0 &&
                    card.episodes[1].cardEpisodeId == 702 && card.episodes[1].scenarioStatus == "can_not_read",
-            "新卡保留master剧情映射与原始解锁状态");
+            "新卡使用 master 剧情映射及合法的未解锁状态");
+        card.episodes[0].scenarioStatus = "already_read";
+        card.episodes[0].isNotSkipped = true;
+        resources.Grant(Reward("card", 7));
+        Check.That(card.duplicateCount == 4 && card.episodes[0].scenarioStatus == "already_read" &&
+                   card.episodes[0].isNotSkipped, "重复授卡保留已有剧情进度");
         Check.That(session.Data.userCostume3dStatuses == null || session.Data.userCostume3dStatuses.Length == 0,
             "通用授卡不隐式发放抽卡服装奖励");
         resources.Grant(Reward("costume_3d", 5, 2));

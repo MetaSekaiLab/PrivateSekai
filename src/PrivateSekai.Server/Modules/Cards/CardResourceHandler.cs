@@ -43,7 +43,7 @@ public sealed class CardResourceHandler(CardMasterQueries master) : IResourceHan
                     new UserCardEpisode
                     {
                         cardEpisodeId = episodeIds[0],
-                        scenarioStatus = "unread_before_scenario",
+                        scenarioStatus = "unreleased",
                         scenarioStatusReasons = [],
                         isNotSkipped = false
                     },
