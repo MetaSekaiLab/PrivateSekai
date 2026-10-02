@@ -82,7 +82,7 @@ public sealed class LiveService(
             var baseExp = !session.IsAuto ? scoreRank switch
             {
                 "rank_d" => 20,
-                "rank_c" when request.life > 0 => 200,
+                "rank_c" => 200,
                 _ => 0
             } : 0;
             if (baseExp > 0 && boost.expRate > 0)
@@ -167,6 +167,7 @@ public sealed class LiveService(
 
         var previousHighScore = result?.highScore ?? 0;
         var highScoreFlg = result == null || request.score > previousHighScore;
+        var isNew = result == null;
 
         if (result == null)
         {
@@ -175,19 +176,23 @@ public sealed class LiveService(
                 musicId = session.MusicId,
                 musicDifficultyType = difficultyType,
                 playType = "solo",
-                playResult = "clear"
+                playResult = "not_clear"
             };
             results.Add(result);
         }
 
+        var before = (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg);
         result.playType = "solo";
-        result.playResult = BuildPlayResult(fullCombo, fullPerfect, request.life);
+        var playResult = BuildPlayResult(fullCombo, fullPerfect, request.life);
+        if (PlayResultRank(playResult) > PlayResultRank(result.playResult))
+            result.playResult = playResult;
         result.highScore = Math.Max(result.highScore, request.score);
         result.fullComboFlg = result.fullComboFlg || fullCombo;
         result.fullPerfectFlg = result.fullPerfectFlg || fullPerfect;
 
         user.Data.userMusicResults = results.ToArray();
-        user.MarkChanged(nameof(SuiteUser.userMusicResults));
+        if (isNew || before != (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg))
+            user.MarkChanged(nameof(SuiteUser.userMusicResults));
         return highScoreFlg;
     }
 
@@ -421,6 +426,14 @@ public sealed class LiveService(
             livePointBonusRemaining = boost.costBoost,
             liveMissionPeriodId = missionMaster.GetCurrentLiveMissionPeriodId()
         };
+
+    private static int PlayResultRank(string result) => result switch
+    {
+        "full_perfect" => 3,
+        "full_combo" => 2,
+        "clear" => 1,
+        _ => 0
+    };
 
     private static string BuildPlayResult(bool fullCombo, bool fullPerfect, int life)
     {

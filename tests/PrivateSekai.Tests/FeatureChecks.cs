@@ -173,6 +173,29 @@ internal static class FeatureChecks
         Check.That(store.Read(3)!.Data.userGamedata.coin == 105 && store.Read(3)!.Data.userLiveMissions.Single().progress == 3 &&
             store.Read(3)!.Data.userGamedata.totalExp == 200 && store.Read(3)!.Data.userChargedCurrency.free == 50,
             "重复提交结束的 Live 不重复发奖或累计任务");
+        var failedStart = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
+        {
+            musicId = 7, musicDifficultyId = 71, deckId = 1, boostCount = 1
+        }));
+        var failedId = DumpSerializer.Deserialize<UserLive>(failedStart).userLiveId;
+        var failedBytes = operation.Execute(3, () =>
+        {
+            var response = live.ClearUserLive(failedId, new UserLiveClearRequest
+            {
+                score = 120, perfectCount = 8, missCount = 2, maxCombo = 8, life = 0
+            });
+            response.updatedResources = user.BuildRefresh();
+            return response;
+        });
+        var failed = DumpSerializer.Deserialize<UserLiveClearResponse>(failedBytes);
+        Check.That(failed.userExpResult.beforeTotalExp == 200 && failed.userExpResult.afterTotalExp == 400 &&
+            failed.deckCardExpResults.Single().expResult.afterTotalExp == 300,
+            "C 档失败仍发经验，满级卡保持上限");
+        Check.That(!failed.fullComboFlg && !failed.fullPerfectFlg && !failed.highScoreFlg &&
+            failed.updatedResources.userMusicResults == null &&
+            store.Read(3)!.Data.userMusicResults.Single().playResult == "full_perfect" &&
+            store.Read(3)!.Data.userMusicResults.Single().highScore == 150,
+            "失败结算保留已有最佳成绩，未变化成绩不重复刷新");
     }
 
     private static void SpecialTraining(ServiceProvider provider, IUserStore store)
