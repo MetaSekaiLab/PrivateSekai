@@ -64,10 +64,12 @@ public sealed class ScenarioRunner
             var definition = Operations.All[step.Operation];
             var capture = new JsonObject { ["step"] = i + 1, ["operation"] = step.Operation, ["status"] = "started" };
             var path = Path.Combine(directory, $"{i + 1:D3}.json");
+            var phase = "prepare";
             try
             {
                 if (step.DelayBeforeMs > 0)
                 {
+                    phase = "wait";
                     capture["delayBeforeMs"] = step.DelayBeforeMs;
                     capture["status"] = "waiting";
                     JsonFiles.Write(path, capture);
@@ -75,15 +77,21 @@ public sealed class ScenarioRunner
                     await Task.Delay(step.DelayBeforeMs);
                     capture["status"] = "started";
                 }
+                phase = "resolve-session";
                 step = ResolveLiveSession(step, liveId, challengeLiveId);
                 if (definition.IsWrite && definition.Snapshot)
+                {
+                    phase = "before-snapshot";
                     capture["before"] = client.Redactor.Clean(await client.Suite());
+                }
+                phase = "prepare-request";
                 capture["request"] = client.Redactor.Clean(step.Body);
                 capture["args"] = client.Redactor.Clean(JsonSerializer.SerializeToNode(step.Args));
                 capture["query"] = client.Redactor.Clean(JsonSerializer.SerializeToNode(step.Query));
                 capture["queryLists"] = client.Redactor.Clean(JsonSerializer.SerializeToNode(step.QueryLists));
                 if (step.ThumbnailPathPointer != null) capture["sourcePointer"] = step.ThumbnailPathPointer;
                 JsonFiles.Write(path, capture);
+                phase = "request";
                 var response = step.Operation == "thumbnail-download"
                     ? await client.DownloadThumbnail(
                         Comparison.Resolve(previousResponse, step.ThumbnailPathPointer ?? "")?.GetValue<string>()
@@ -91,6 +99,7 @@ public sealed class ScenarioRunner
                         Path.Combine(directory, $"{i + 1:D3}"))
                     : step.Operation == "suite" ? await client.Suite() : await client.Send(step);
                 previousResponse = response;
+                phase = "response";
                 capture["httpStatus"] = client.LastHttpStatus;
                 if (step.Operation == "live-start")
                     liveId = response["userLiveId"]?.GetValue<string>()
@@ -103,10 +112,12 @@ public sealed class ScenarioRunner
                 JsonFiles.Write(path, capture);
                 if (definition.IsWrite && definition.Snapshot)
                 {
+                    phase = "after-snapshot";
                     capture["after"] = client.Redactor.Clean(await client.Suite());
                     capture["stateChanges"] = JsonSerializer.SerializeToNode(Comparison.Diff(
                         Comparison.Normalize(capture["before"]), Comparison.Normalize(capture["after"])), JsonFiles.Options);
                 }
+                phase = "assertion";
                 foreach (var expectation in step.Expect)
                     if (!JsonNode.DeepEquals(Comparison.Resolve(response, expectation.Key), expectation.Value))
                         throw new InvalidOperationException("响应断言失败。");
@@ -118,6 +129,7 @@ public sealed class ScenarioRunner
             {
                 // 只存异常类型，避免 URL、会话或服务端错误正文混入报告。
                 capture["status"] = "stopped";
+                capture["failurePhase"] = phase;
                 capture["errorType"] = ex.GetType().Name;
                 if (FailureDiagnostics.Transport(ex) is { } transportError)
                     capture["transportError"] = transportError;

@@ -2003,7 +2003,7 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 - 评分使用 `playLevelScores.liveType=challenge_live`，不能复用普通 solo 阈值。
 - `ChallengeLiveUtility` 按各阶段所需点数累加和定位当前阶段，达到门槛即进入下一阶段。普通阶段样本验证了跨级和剩余点数；EX 阶段仍需独立核验。
 
-当前结算样本使用模拟输入。点数取整、经验计算、奖励抽取、跨日和自动挑战尚未核验完整，不能把单次返回值用作固定公式。
+当前结算样本使用模拟输入。两次 C 档样本中，7999 分获得 200 点，10000 分获得 201 点；玩家经验均增加 4000，未满级卡牌样本增加 12000 经验。部分评分奖励材料 ID 不同，发放规则仍待核验。完整点数公式、其他评分经验、奖励抽取、跨日和自动挑战尚未核验，不能把单次返回值用作固定公式。
 
 ## POST `/api/user/{userId}/challenge-live/receive-select-reward/{resourceId}`
 

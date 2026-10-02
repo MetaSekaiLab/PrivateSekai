@@ -106,6 +106,7 @@ builder.Services.AddControllers().AddApplicationPart(typeof(DeckController).Asse
 await using var app = builder.Build();
 var token = "";
 var requests = 0;
+int? failAtRequest = null;
 var omitNext = false;
 string? noContentPath = null;
 var validHeaders = true;
@@ -124,6 +125,11 @@ app.Use(async (context, next) =>
         return;
     }
     requests++;
+    if (requests == failAtRequest)
+    {
+        context.Response.StatusCode = 503;
+        return;
+    }
     if (context.Request.Path.Value?.Contains("/shop/", StringComparison.Ordinal) == true)
         shopRequests.Add((context.Request.Method, context.Request.ContentLength));
     validHeaders &= context.Request.Headers.Accept.ToString() == "application/octet-stream"
@@ -334,6 +340,30 @@ try
     }, 1), "拒绝抽卡查询参数注入");
     Fails(() => Operations.Path(Operations.All["system"], new() { Query = new() { ["unexpected"] = "true" } }, 1),
         "拒绝操作未声明的查询参数");
+    foreach (var (offset, phase) in new[] { (1, "before-snapshot"), (2, "request"), (3, "after-snapshot") })
+    {
+        using var interrupted = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await interrupted.Send(new() { Operation = "system" });
+        var beforeRequests = requests;
+        failAtRequest = beforeRequests + offset;
+        var output = Path.Combine(directory, "failure-" + phase);
+        var interruptedStep = new ScenarioStep { Operation = "deck-save", Body = JsonNode.Parse(
+            """{"userDeckUpdates":[{"userDeck":{"deckId":201,"name":"诊断","leader":1,"member1":1}}]}""")!.AsObject() };
+        var stopped = false;
+        try { await ScenarioRunner.Run(interrupted, new() { Steps = [interruptedStep] }, output); }
+        catch (ClientFailure) { stopped = true; }
+        failAtRequest = null;
+        var failure = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "001.json")))!;
+        Check(stopped && failure["failurePhase"]!.GetValue<string>() == phase && requests == beforeRequests + offset,
+            "失败记录标明实际请求阶段且不自动重发");
+        Check((store.Read(1)!.Data.userDecks.Any(d => d.deckId == 201)) == (phase == "after-snapshot"),
+            "写前或写入失败不改变编队，写后读取失败保留已提交结果");
+        if (phase == "after-snapshot")
+            Check(failure["httpStatus"]!.GetValue<int>() == 200 && failure["response"] != null &&
+                failure["lastHttpStatus"]!.GetValue<int>() == 503,
+                "回读失败时仍保留原写请求成功响应及两个独立状态码");
+    }
+    await client.Send(new() { Operation = "system" });
     omitNext = true;
     var failed = false;
     try { await client.Suite(); } catch (InvalidOperationException) { failed = true; }
