@@ -196,6 +196,41 @@ internal static class FeatureChecks
             store.Read(3)!.Data.userMusicResults.Single().playResult == "full_perfect" &&
             store.Read(3)!.Data.userMusicResults.Single().highScore == 150,
             "失败结算保留已有最佳成绩，未变化成绩不重复刷新");
+        Check.Throws<ArgumentException>(() => operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
+        {
+            musicId = 7, musicDifficultyId = 71, deckId = 1, isAuto = true, boostCount = 0
+        })), "普通 Auto 不接受零体力消耗");
+        var autoStart = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
+        {
+            musicId = 7, musicDifficultyId = 71, deckId = 1, isAuto = true, boostCount = 1
+        }));
+        var autoId = DumpSerializer.Deserialize<UserLive>(autoStart).userLiveId;
+        Check.That((store.Read(3)!.Data.userAutoLive?.count ?? 0) == 0 && store.Read(3)!.Data.userBoost.current == 11,
+            "Auto 开局不提前累计次数或扣体力");
+        var autoRequest = new UserLiveClearRequest { score = 200, life = 1000 };
+        Check.Throws<MessagePackSerializationException>(() => operation.Execute(3, () =>
+        {
+            live.ClearUserLive(autoId, autoRequest);
+            return new BrokenResponse();
+        }), "Auto 结算编码失败回滚");
+        Check.That((store.Read(3)!.Data.userAutoLive?.count ?? 0) == 0 &&
+            store.Read(3)!.Data.userBoost.current == 11 && store.Read(3)!.Data.userGamedata.totalExp == 400 &&
+            store.Read(3)!.Private.UserLiveSessions.ContainsKey(autoId), "Auto 失败回滚次数、经验、体力和会话");
+        var autoBytes = operation.Execute(3, () =>
+        {
+            var response = live.ClearUserLive(autoId, autoRequest);
+            response.updatedResources = user.BuildRefresh();
+            return response;
+        });
+        var auto = DumpSerializer.Deserialize<UserLiveClearResponse>(autoBytes);
+        Check.That(!auto.fullComboFlg && !auto.fullPerfectFlg && !auto.highScoreFlg &&
+            store.Read(3)!.Data.userMusicResults.Single().highScore == 150,
+            "Auto 的空判定不视为 FC/AP，也不刷新更高成绩");
+        Check.That(auto.userExpResult.afterTotalExp == 600 && auto.updatedResources.userAutoLive.count == 1 &&
+            auto.updatedResources.userBoost.current == 10, "Auto C 档经验、次数与体力在结算中提交");
+        operation.Execute(3, () => live.ClearUserLive(autoId, autoRequest));
+        Check.That(store.Read(3)!.Data.userAutoLive.count == 1 && store.Read(3)!.Data.userGamedata.totalExp == 600 &&
+            store.Read(3)!.Data.userBoost.current == 10, "重复 Auto 结算不重复计数、发经验或扣体力");
     }
 
     private static void SpecialTraining(ServiceProvider provider, IUserStore store)

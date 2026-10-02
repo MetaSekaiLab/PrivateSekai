@@ -12,7 +12,7 @@ internal static class LiveReplay
 {
     private static readonly string[] Fields = ["userGamedata", "userCards", "userDecks", "userBoost",
         "userMaterials", "userChargedCurrency", "userMusicResults", "userMusicAchievements", "userLiveMissions",
-        "userMissionStatuses", "userLiveCharacterArchiveVoice", "userEventBreakTime"];
+        "userMissionStatuses", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive"];
 
     public static void ImportMaster(string source, string destination)
     {

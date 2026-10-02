@@ -25,6 +25,8 @@ public sealed class LiveService(
 {
     public UserLive StartUserLive(UserLiveRequest request)
     {
+        if (request.isAuto && request.boostCount <= 0)
+            throw new ArgumentException("Auto Live requires boost consumption.");
         var userLiveId = Guid.NewGuid().ToString();
         user.Private.UserLiveSessions[userLiveId] = new UserLiveSessionData
         {
@@ -56,11 +58,8 @@ public sealed class LiveService(
         user.MarkChanged(nameof(SuiteUser.userEventBreakTime));
         user.Private.UserLiveSessions.Remove(userLiveId, out var session);
 
-        var fullCombo = request.goodCount == 0 && request.badCount == 0 && request.missCount == 0;
-        var fullPerfect = request.greatCount == 0 &&
-                          request.goodCount == 0 &&
-                          request.badCount == 0 &&
-                          request.missCount == 0;
+        var fullCombo = session?.IsAuto != true && request.goodCount == 0 && request.badCount == 0 && request.missCount == 0;
+        var fullPerfect = fullCombo && request.greatCount == 0;
 
         var scoreRank = session != null
             ? master.BuildScoreRank(session.MusicDifficultyId, request.score)
@@ -76,15 +75,16 @@ public sealed class LiveService(
         UserResource[] playerRankRewards = [];
         if (session != null)
         {
-            highScoreFlg = UpdateUserMusicResult(session, request, fullCombo, fullPerfect);
+            if (!session.IsAuto)
+                highScoreFlg = UpdateUserMusicResult(session, request, fullCombo, fullPerfect);
             deckCardExpResults = BuildDeckCardExpResults(session.DeckId);
-            // 普通非 Auto 的 D、C 评分已有官方经验样本，其他分支仍待核验。
-            var baseExp = !session.IsAuto ? scoreRank switch
+            // 非 Auto 的 D 档及普通/Auto 的 C 档已有官方经验样本。
+            var baseExp = scoreRank switch
             {
-                "rank_d" => 20,
+                "rank_d" when !session.IsAuto => 20,
                 "rank_c" => 200,
                 _ => 0
-            } : 0;
+            };
             if (baseExp > 0 && boost.expRate > 0)
             {
                 var addedExp = checked(baseExp * boost.expRate);
@@ -104,6 +104,12 @@ public sealed class LiveService(
             ApplyLiveRewards(musicAchievementRewards);
             missions.UpdateLiveMissionProgress(userLivePoint);
             ConsumeBoost(session.BoostCount);
+            if (session.IsAuto)
+            {
+                user.Data.userAutoLive ??= new UserAutoLive();
+                user.Data.userAutoLive.count = checked(user.Data.userAutoLive.count + 1);
+                user.MarkChanged(nameof(SuiteUser.userAutoLive));
+            }
         }
 
         MergeLiveCharacterArchiveVoiceGroups(request.ingameCutinCharacterArchiveVoiceGroupIds);
