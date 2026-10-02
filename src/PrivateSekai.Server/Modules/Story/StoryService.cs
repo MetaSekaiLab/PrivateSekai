@@ -55,6 +55,26 @@ public sealed class StoryService(
         if (storyType == "card_story")
             return CompleteCardEpisode(episodeId, isNotSkipped);
 
+        if (storyType is "unit_story" or "special_story")
+        {
+            var statuses = storyType == "unit_story" ? user.Data.userUnitEpisodeStatuses : user.Data.userSpecialEpisodeStatuses;
+            var status = statuses?.SingleOrDefault(s => s.episodeId == episodeId)
+                ?? throw new ArgumentException("Story episode is not available.");
+            if (status.status == "already_read")
+                return [];
+            if (status.status != "released" && !(storyType == "unit_story" &&
+                status.status == "unreleased" && master.IsUnconditionalUnitEpisode(episodeId)))
+                throw new ArgumentException("Story episode is locked.");
+            var rewards = master.GetEpisodeRewardBoxIds(storyType, episodeId).SelectMany(id =>
+            {
+                var resources = resourceMaster.BuildResourcesFromBox("episode_reward", id);
+                return resources.Length > 0 ? resources : throw new InvalidOperationException("Missing episode reward box.");
+            }).ToArray();
+            resourceService.Grant(rewards);
+            ReadStoryEpisode(storyType, episodeId, isNotSkipped);
+            return rewards;
+        }
+
         ReadStoryEpisode(storyType, episodeId, isNotSkipped);
         return [];
     }
@@ -186,7 +206,10 @@ public sealed class StoryService(
             string.Equals(episode.scenarioStatus, "released", StringComparison.Ordinal) ||
             string.Equals(episode.scenarioStatus, "already_read", StringComparison.Ordinal);
 
-        var consumed = wasUnlocked ? [] : BuildCardEpisodeReleaseCosts(cardEpisodeId, costType);
+        if (wasUnlocked)
+            return [];
+
+        var consumed = BuildCardEpisodeReleaseCosts(cardEpisodeId, costType);
         foreach (var resource in consumed)
         {
             resourceService.Consume(resource.resourceType, resource.resourceId, resource.quantity);

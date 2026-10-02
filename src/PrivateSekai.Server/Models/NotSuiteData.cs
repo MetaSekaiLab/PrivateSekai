@@ -5,7 +5,7 @@ using game::Sekai;
 namespace PrivateSekai.Models;
 
 /// <summary>
-/// 每用户私有数据，不随 SuiteUser 导出，字段均为推测
+/// 每用户私有存储，不随 SuiteUser 导出。
 /// </summary>
 public class NotSuiteData
 {
@@ -23,6 +23,16 @@ public class NotSuiteData
 
     /// <summary>进行中的单人 live session</summary>
     public Dictionary<string, UserLiveSessionData> UserLiveSessions { get; set; } = [];
+
+    public Dictionary<string, List<StoryBookmarkData>> StoryBookmarks { get; set; } = [];
+}
+
+public sealed class StoryBookmarkData
+{
+    public UserStoryEpisodeBookmark Bookmark { get; set; } = new();
+    public byte[] Thumbnail { get; set; } = [];
+    public string NameEditStatus { get; set; } = "";
+    public long ClickCount { get; set; }
 }
 
 public class UserLiveSessionData

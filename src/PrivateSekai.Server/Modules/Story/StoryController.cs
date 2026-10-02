@@ -129,15 +129,4 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
         });
     }
 
-    /// <summary>
-    /// 获取指定故事的 episode 书签列表。客户端用它恢复某个故事下已保存的 talk/episode 书签，后续新增、编辑、点击统计分别走其他书签相关接口。
-    /// </summary>
-    [HttpGet("api/user/{userId}/story-episode-bookmark/{storyType}/story/{storyId}")]
-    public IActionResult HandleStoryEpisodeBookmark(long userId, string storyType, int storyId)
-    {
-        return Ok(new StoryEpisodeBookmarkResponse
-        {
-            userStoryEpisodeBookmarks = []
-        });
-    }
 }

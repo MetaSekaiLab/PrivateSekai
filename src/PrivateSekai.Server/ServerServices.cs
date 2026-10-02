@@ -64,6 +64,8 @@ public static class ServerServices
         services.AddScoped<ProfileService>();
         services.AddScoped<ShopService>();
         services.AddScoped<StoryService>();
+        services.AddScoped<StoryBookmarkService>();
+        services.AddScoped<StoryFavoriteService>();
         services.AddScoped<TutorialService>();
 
         services.AddControllers(options =>
