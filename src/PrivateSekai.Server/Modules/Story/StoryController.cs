@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
+using PrivateSekai.Models;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 using GetFriendStoryFavoriteStatusesResponse = game::Sekai.StoryFavorite.GetFriendStoryFavoriteStatusesResponse;
@@ -46,11 +47,12 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
                 }).ToArray();
             }
 
-            return new UserStoryResponse
+            var response = new UserStoryResponse
             {
                 updatedResources = refresh,
                 obtainedResources = obtainedResources
             };
+            return storyType == "unit_story" ? (object)new UnitStoryResponse(response) : response;
         }));
     }
 

@@ -3,12 +3,14 @@ extern alias game;
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using game::Sekai;
 using MessagePack;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateSekai.Config;
 using PrivateSekai.Modules.Story;
+using PrivateSekai.Models;
 using PrivateSekai.Protocol;
 using PrivateSekai.Shared.Master;
 using PrivateSekai.Shared.Users;
@@ -226,6 +228,31 @@ internal static class StoryCollectionChecks
             Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 19).progress == 3 &&
                 store.Read(1)!.Data.userMissionStatuses.Count(m => m.missionType == "beginner_mission_v2" && m.missionId == 19) == 1,
                 "已达成任务继续累计首读次数且不重复创建达成状态");
+            var resourceResponse = new UserStoryResponse
+            {
+                updatedResources = new SuiteUser(),
+                obtainedResources =
+                [
+                    new() { resourceType = "jewel", quantity = 50 },
+                    new() { resourceType = "material", resourceId = 13, quantity = 2 },
+                    new() { resourceType = "card", resourceId = 49, quantity = 1 },
+                    new() { resourceType = "card", resourceId = 50, resourceLevel = 3, quantity = 1 },
+                    new() { resourceType = "coin", quantity = 7 }
+                ]
+            };
+            using var mainResponse = JsonDocument.Parse(MessagePackSerializer.ConvertToJson(
+                DumpSerializer.Serialize(new UnitStoryResponse(resourceResponse))));
+            var resources = mainResponse.RootElement.GetProperty("obtainedResources");
+            Check.That(!resources[0].TryGetProperty("resourceId", out _) &&
+                !resources[0].TryGetProperty("resourceLevel", out _) &&
+                resources[1].GetProperty("resourceId").GetInt32() == 13 && !resources[1].TryGetProperty("resourceLevel", out _) &&
+                resources[2].GetProperty("resourceId").GetInt32() == 49 && !resources[2].TryGetProperty("resourceLevel", out _),
+                "主线水晶、材料与卡牌奖励按官方结构省略默认字段");
+            using var genericResponse = JsonDocument.Parse(MessagePackSerializer.ConvertToJson(DumpSerializer.Serialize(resourceResponse)));
+            Check.That(resources[3].GetProperty("resourceLevel").GetInt32() == 3 &&
+                resources[4].GetProperty("resourceId").GetInt32() == 0 &&
+                genericResponse.RootElement.GetProperty("obtainedResources")[0].GetProperty("resourceId").GetInt32() == 0,
+                "非零等级、未核验资源和通用响应保留原有字段");
             Console.WriteLine("剧情收藏：书签、缩略图、收藏槽位和失败回滚检查通过。");
         }
         finally
