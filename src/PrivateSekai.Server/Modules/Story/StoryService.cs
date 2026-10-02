@@ -75,11 +75,43 @@ public sealed class StoryService(
             }).ToArray();
             resourceService.Grant(rewards);
             ReadStoryEpisode(storyType, episodeId, isNotSkipped);
+            if (storyType == "unit_story")
+                AdvanceUnitStory(episodeId);
             return rewards;
         }
 
         ReadStoryEpisode(storyType, episodeId, isNotSkipped);
         return [];
+    }
+
+    private void AdvanceUnitStory(int episodeId)
+    {
+        var conditions = (user.Data.userReleaseConditions ?? []).ToList();
+        foreach (var id in master.GetUnitEpisodeClearedConditionIds(episodeId))
+        {
+            if (conditions.Any(c => c.releaseConditionId == id)) continue;
+            conditions.Add(new UserReleaseCondition { releaseConditionId = id, createdAt = user.Now });
+            user.Data.userReleaseConditions = conditions.ToArray();
+            user.MarkChanged(nameof(SuiteUser.userReleaseConditions));
+        }
+
+        var statuses = user.Data.userUnitEpisodeStatuses.ToList();
+        foreach (var status in statuses.Where(s => s.status == "can_not_read"))
+        {
+            if (!master.AreUnitEpisodeConditionsMet(status.episodeId, user.Data.userReleaseConditions)) continue;
+            status.status = "unreleased";
+            user.MarkChanged(nameof(SuiteUser.userUnitEpisodeStatuses));
+        }
+
+        var next = master.GetNextUnitEpisode(episodeId);
+        if (next == null || statuses.Any(s => s.episodeId == next.id)) return;
+        statuses.Add(new UserEpisodeStatus
+        {
+            storyType = "unit_story", episodeId = next.id,
+            status = master.AreUnitEpisodeConditionsMet(next.id, user.Data.userReleaseConditions) ? "unreleased" : "can_not_read"
+        });
+        user.Data.userUnitEpisodeStatuses = statuses.ToArray();
+        user.MarkChanged(nameof(SuiteUser.userUnitEpisodeStatuses));
     }
 
     public UserResource[] ReleaseStoryEpisode(string storyType, int episodeId, string? costType)

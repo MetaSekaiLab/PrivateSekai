@@ -9,6 +9,22 @@ namespace PrivateSekai.Modules.Story;
 
 public sealed class StoryMasterQueries(MasterData master)
 {
+    public int[] GetUnitEpisodeClearedConditionIds(int episodeId) =>
+        master.GetTable<MasterReleaseCondition>("releaseConditions").Rows
+            .Where(c => c.releaseConditionType == "unit_story" && c.releaseConditionTypeId == episodeId)
+            .Select(c => c.id).ToArray();
+
+    public MasterUnitStoryEpisode? GetNextUnitEpisode(int episodeId)
+    {
+        var chapter = master.GetTable<MasterUnitStory>("unitStories").Rows
+            .SelectMany(s => s.chapters ?? [])
+            .SingleOrDefault(c => c.episodes?.Any(e => e.id == episodeId) == true);
+        var current = chapter?.episodes.Single(e => e.id == episodeId);
+        return current == null ? null : chapter!.episodes
+            .Where(e => e.unitStoryEpisodeGroupId == current.unitStoryEpisodeGroupId && e.episodeNo > current.episodeNo)
+            .OrderBy(e => e.episodeNo).FirstOrDefault();
+    }
+
     public bool AreUnitEpisodeConditionsMet(int episodeId, UserReleaseCondition[]? cleared)
     {
         var episode = master.GetTable<MasterUnitStory>("unitStories").Rows

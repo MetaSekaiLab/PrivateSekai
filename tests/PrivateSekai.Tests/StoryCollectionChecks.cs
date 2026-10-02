@@ -36,11 +36,18 @@ internal static class StoryCollectionChecks
             File.WriteAllText(Path.Combine(directory, "unitStories.json"),
                 """
                 [{"chapters":[{"episodes":[{"id":11,"rewardResourceBoxIds":[1]},
-                {"id":14,"releaseConditionId":1,"rewardResourceBoxIds":[1]},
+                {"id":14,"unitStoryEpisodeGroupId":3,"episodeNo":1,"releaseConditionId":1,"rewardResourceBoxIds":[1]},
+                {"id":80,"unitStoryEpisodeGroupId":3,"episodeNo":2,"releaseConditionId":4},
+                {"id":81,"unitStoryEpisodeGroupId":3,"episodeNo":3,"releaseConditionId":3},
+                {"id":90,"unitStoryEpisodeGroupId":4,"episodeNo":2,"releaseConditionId":4},
                 {"id":15,"releaseConditionId":1,"andReleaseConditionId":2,"rewardResourceBoxIds":[1]}]}]}]
                 """);
             File.WriteAllText(Path.Combine(directory, "releaseConditions.json"),
-                """[{"id":1,"releaseConditionType":"none"},{"id":2,"releaseConditionType":"user_rank"}]""");
+                """
+                [{"id":1,"releaseConditionType":"none"},{"id":2,"releaseConditionType":"user_rank"},
+                {"id":3,"releaseConditionType":"unit_story","releaseConditionTypeId":14},
+                {"id":4,"releaseConditionType":"unit_story","releaseConditionTypeId":99}]
+                """);
             File.WriteAllText(Path.Combine(directory, "specialStories.json"),
                 """[{"id":1,"episodes":[{"id":12,"rewardResourceBoxIds":[1]},{"id":13,"rewardResourceBoxIds":[99]}]}]""");
             File.WriteAllText(Path.Combine(directory, "resourceBoxes.json"),
@@ -154,7 +161,8 @@ internal static class StoryCollectionChecks
             operations.Execute(1, () =>
             {
                 user.Data.userUnitEpisodeStatuses = [new() { episodeId = 11, status = "released" },
-                    new() { episodeId = 14, status = "unreleased" }, new() { episodeId = 15, status = "unreleased" }];
+                    new() { episodeId = 14, status = "unreleased" }, new() { episodeId = 15, status = "unreleased" },
+                    new() { episodeId = 81, status = "can_not_read" }];
                 user.Data.userSpecialEpisodeStatuses = [new() { episodeId = 12, status = "unreleased" },
                     new() { episodeId = 13, status = "released" }];
                 return new EmptyResponse();
@@ -185,12 +193,28 @@ internal static class StoryCollectionChecks
             Check.That(reward.Single().quantity == 3 && repeat.Length == 0 &&
                 store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 10).quantity == 6,
                 "主线剧情读取嵌套 master 奖励且重复请求不再发奖");
+            Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+            {
+                stories.CompleteStoryEpisode("unit_story", 14);
+                return new BrokenResponse();
+            }), "章节展开和解锁条件随响应编码失败回滚");
+            Check.That(!store.Read(1)!.Data.userReleaseConditions.Any(c => c.releaseConditionId == 3) &&
+                !store.Read(1)!.Data.userUnitEpisodeStatuses.Any(s => s.episodeId == 80) &&
+                store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 81).status == "can_not_read",
+                "失败首读不留下解锁条件或新增章节");
             var opening = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 14)));
             var openingRepeat = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 14)));
             Check.That(opening.Single().quantity == 3 && openingRepeat.Length == 0 &&
                 store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 14).status == "already_read" &&
                 store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 10).quantity == 9,
                 "无解锁条件的 unreleased 主线可首读且奖励只发一次");
+            Check.That(store.Read(1)!.Data.userReleaseConditions.Count(c => c.releaseConditionId == 3) == 1 &&
+                store.Read(1)!.Data.userReleaseConditions.Single(c => c.releaseConditionId == 3).createdAt > 0 &&
+                store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 81).status == "unreleased",
+                "首读写入唯一达成条件并解锁已展开章节");
+            Check.That(store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 80).status == "can_not_read" &&
+                !store.Read(1)!.Data.userUnitEpisodeStatuses.Any(s => s.episodeId == 90),
+                "下一话按组内序号展开并保留锁定，不依赖连续 ID 或混入其他分组");
             Console.WriteLine("剧情收藏：书签、缩略图、收藏槽位和失败回滚检查通过。");
         }
         finally

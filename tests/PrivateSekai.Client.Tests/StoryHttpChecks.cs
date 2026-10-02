@@ -7,6 +7,7 @@ internal static class StoryHttpChecks
     public static void WriteMaster(string directory)
     {
         // 隔离测试数值，不用于官方场景。
+        File.WriteAllText(Path.Combine(directory, "releaseConditions.json"), "[]");
         File.WriteAllText(Path.Combine(directory, "cardEpisodes.json"),
             """[{"id":51,"cardId":1,"costs":[{"resourceType":"material","resourceId":1,"quantity":2}],"rewardResourceBoxIds":[51]}]""");
         File.WriteAllText(Path.Combine(directory, "unitStories.json"),
