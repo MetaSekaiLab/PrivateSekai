@@ -1,5 +1,6 @@
 extern alias game;
 
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using PrivateSekai.Shared.Users;
@@ -19,11 +20,19 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
     {
         return Encoded(operations.Execute(userId, () =>
         {
-            shop.PurchaseShopItem(shopId, shopItemId);
+            var achieved = shop.PurchaseShopItem(shopId, shopItemId);
+            var refresh = user.BuildRefresh();
+            if (refresh.userCharacterMissions != null)
+                refresh.userCharacterMissions = refresh.userCharacterMissions.Select(m => new UserCharacterMissionV2
+                {
+                    userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType,
+                    progress = m.progress, achievedMissions = achieved.Where(s => s.characterId == m.characterId &&
+                        m.characterMissionType == "area_item_level_up_character").ToArray()
+                }).ToArray();
 
             return new SuiteUserCommonResponse
             {
-                updatedResources = user.BuildRefresh()
+                updatedResources = refresh
             };
         }));
     }

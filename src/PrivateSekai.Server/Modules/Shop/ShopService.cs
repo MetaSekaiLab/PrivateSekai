@@ -4,6 +4,7 @@ using System;
 using System.Linq;
 using game::Sekai;
 using PrivateSekai.Modules.Inventory;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 
@@ -12,10 +13,11 @@ namespace PrivateSekai.Modules.Shop;
 public sealed class ShopService(
     UserSession user,
     ShopMasterQueries master,
+    MissionService missions,
     ResourceMasterQueries resourceMaster,
     ResourceService resourceService)
 {
-    public void PurchaseShopItem(int shopId, int shopItemId)
+    public UserCharacterMissionV2Status[] PurchaseShopItem(int shopId, int shopItemId)
     {
         var shopItem = master.GetMasterShopItem(shopId, shopItemId);
         if (shopItem != null)
@@ -24,7 +26,7 @@ public sealed class ShopService(
             if (areaRewards.Any(r => r.resourceType == "area_item"))
             {
                 PurchaseAreaItem(shopId, shopItem, areaRewards);
-                return;
+                return missions.RecordAreaItemUpgrade(areaRewards[0].resourceId);
             }
         }
         var wasSoldOut = IsShopItemSoldOut(shopId, shopItemId);
@@ -46,6 +48,7 @@ public sealed class ShopService(
         resourceService.Grant(rewards.Where(r => r.resourceType is
             "music" or "music_vocal" or "jewel" or "coin" or "virtual_coin" or
             "material" or "practice_ticket" or "costume_3d"));
+        return [];
     }
 
     private void PurchaseAreaItem(int shopId, MasterShopItem definition, UserResource[] rewards)

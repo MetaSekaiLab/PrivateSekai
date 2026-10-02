@@ -23,6 +23,12 @@ internal static class AreaShopChecks
         try
         {
             File.WriteAllText(Path.Combine(directory, "areaItems.json"), """[{"id":1,"areaId":5}]""");
+            File.WriteAllText(Path.Combine(directory, "characterMissionV2AreaItems.json"),
+                """[{"areaItemId":1,"characterId":1,"characterMissionType":"area_item_level_up_character"}]""");
+            File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"),
+                """[{"id":1009,"characterId":1,"characterMissionType":"area_item_level_up_character","parameterGroupId":9}]""");
+            File.WriteAllText(Path.Combine(directory, "characterMissionV2ParameterGroups.json"),
+                """[{"id":9,"seq":1,"requirement":1},{"id":9,"seq":2,"requirement":2}]""");
             File.WriteAllText(Path.Combine(directory, "resourceBoxes.json"), """
                 [{"id":10,"resourceBoxPurpose":"shop_item","details":[{"resourceType":"area_item","resourceId":1,"resourceLevel":1,"resourceQuantity":1}]},
                  {"id":20,"resourceBoxPurpose":"shop_item","details":[{"resourceType":"area_item","resourceId":1,"resourceLevel":2,"resourceQuantity":1}]},
@@ -55,6 +61,8 @@ internal static class AreaShopChecks
                 store.Read(1)!.Data.userAreas.Single().areaItems.Length == 0 &&
                 store.Read(1)!.Data.userShops.Single().userShopItems.Single().shopItemId == 100,
                 "区域道具、材料和下一等级商品共同回滚");
+            Check.That(store.Read(1)!.Data.userCharacterMissions?.Any(m => m.characterMissionType == "area_item_level_up_character") != true,
+                "失败购买不留下角色任务进度");
             operation.Execute(1, () => { shop.PurchaseShopItem(5, 100); return user.BuildRefresh(); });
             Check.Throws<ArgumentException>(() => operation.Execute(1, () =>
             {
@@ -69,6 +77,10 @@ internal static class AreaShopChecks
                 store.Read(1)!.Data.userMaterials.Single().quantity == 0 &&
                 store.Read(1)!.Data.userShops.Single().userShopItems.Single().shopItemId == 900,
                 "普通升级更新同一道具并替换商品，精确扣除材料");
+            Check.That(store.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "area_item_level_up_character").progress == 2 &&
+                store.Read(1)!.Data.userCharacterMissionStatuses.Count(s => s.missionId == 1009) == 2 &&
+                store.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "area_item_level_up_character").achievedMissions.Length == 0,
+                "购买与升级各推进一次角色任务，达成提示不保存在进度内");
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

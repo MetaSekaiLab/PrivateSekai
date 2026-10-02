@@ -18,6 +18,49 @@ public sealed class MissionService(
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
 
+    public UserCharacterMissionV2Status[] RecordAreaItemUpgrade(int areaItemId)
+    {
+        var achieved = new List<UserCharacterMissionV2Status>();
+        foreach (var definition in master.GetAreaItemCharacterMissions(areaItemId))
+        {
+            var missions = (user.Data.userCharacterMissions ?? []).ToList();
+            var progress = missions.SingleOrDefault(m => m.characterId == definition.characterId &&
+                m.characterMissionType == definition.characterMissionType);
+            if (progress == null)
+            {
+                progress = new UserCharacterMissionV2
+                {
+                    characterId = definition.characterId, characterMissionType = definition.characterMissionType,
+                    achievedMissions = []
+                };
+                missions.Add(progress);
+            }
+            progress.progress++;
+            var statuses = (user.Data.userCharacterMissionStatuses ?? []).ToList();
+            foreach (var parameter in master.GetCharacterMissionParameters(definition.parameterGroupId))
+            {
+                if (progress.progress < parameter.requirement || statuses.Any(s => s.missionId == definition.id &&
+                    s.parameterGroupId == parameter.id && s.seq == parameter.seq && s.characterId == definition.characterId)) continue;
+                var status = new UserCharacterMissionV2Status
+                {
+                    userId = user.UserId, missionId = definition.id, parameterGroupId = parameter.id,
+                    seq = parameter.seq, characterId = definition.characterId, missionStatus = "achieved"
+                };
+                statuses.Add(status);
+                achieved.Add(status);
+            }
+            user.Data.userCharacterMissions = missions.ToArray();
+            user.MarkChanged(nameof(SuiteUser.userCharacterMissions));
+            if (statuses.Count != (user.Data.userCharacterMissionStatuses?.Length ?? 0))
+            {
+                user.Data.userCharacterMissionStatuses = statuses.OrderBy(s => s.missionId)
+                    .ThenBy(s => s.parameterGroupId).ThenBy(s => s.seq).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userCharacterMissionStatuses));
+            }
+        }
+        return achieved.ToArray();
+    }
+
     public void RecordUnitStoryRead(string? unit)
     {
         foreach (var definition in master.GetUnitStoryMissions(unit))

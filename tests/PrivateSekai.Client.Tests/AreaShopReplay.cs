@@ -9,11 +9,11 @@ using PrivateSekai.Storage;
 
 internal static class AreaShopReplay
 {
-    private static readonly string[] Fields = ["userAreas", "userShops", "userMaterials", "userGamedata"];
+    private static readonly string[] Fields = ["userAreas", "userShops", "userMaterials", "userGamedata", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "shopItems", "resourceBoxes", "areaItems" })
+        foreach (var table in new[] { "shopItems", "resourceBoxes", "areaItems", "characterMissionV2AreaItems", "characterMissionV2s", "characterMissionV2ParameterGroups" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -38,6 +38,8 @@ internal static class AreaShopReplay
         var state = store.Read(1)!;
         var before = official["before"]!.DeepClone();
         before["userGamedata"]!["userId"] = 1;
+        foreach (var status in before["userCharacterMissionV2Statuses"]?.AsArray() ?? [])
+            status!["userId"] = 1;
         foreach (var member in DumpContract.For(typeof(SuiteUser)).Members.Where(m => Fields.Contains((string)m.Key)))
             if (before[(string)member.Key] is { } value)
                 member.Set(state.Data, JsonSerializer.Deserialize(value.ToJsonString(), member.Type, DumpJson.Options));

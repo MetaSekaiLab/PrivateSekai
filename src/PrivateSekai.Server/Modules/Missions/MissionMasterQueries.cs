@@ -9,6 +9,19 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public MasterCharacterMissionV2[] GetAreaItemCharacterMissions(int areaItemId)
+    {
+        var characters = master.GetTable<MasterCharacterMissionV2AreaItem>("characterMissionV2AreaItems").Rows
+            .Where(m => m.areaItemId == areaItemId && m.characterMissionType == "area_item_level_up_character")
+            .Select(m => m.characterId).ToHashSet();
+        return master.GetTable<MasterCharacterMissionV2>("characterMissionV2s").Rows
+            .Where(m => m.characterMissionType == "area_item_level_up_character" && characters.Contains(m.characterId)).ToArray();
+    }
+
+    public MasterCharacterMissionV2ParameterGroup[] GetCharacterMissionParameters(int groupId) =>
+        master.GetTable<MasterCharacterMissionV2ParameterGroup>("characterMissionV2ParameterGroups").Rows
+            .Where(p => p.id == groupId).OrderBy(p => p.seq).ToArray();
+
     public MasterBeginnerMissionV2[] GetUnitStoryMissions(string? unit)
     {
         // read_unit_story 的 conditionValue 使用独立编号，不是 UnitType 枚举值。
