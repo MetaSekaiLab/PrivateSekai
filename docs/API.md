@@ -1965,7 +1965,9 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 - 客户端 `ScreenLayerChallengeLiveFinalConfirm` 检测编队变化，通过 `PutUserChallengeLiveSoloDeckAPI` 保存；成功回调合并资源差异。`ChallengeLiveFinalConfirmDeckView` 按 master 条件与角色等级锁定支援位。
 - 首次角色解锁只新增对应释放条件与一次行为，不创建编队。官方样本中，未保存编队直接开局返回 404，补充保存后开局成功。不能把角色解锁等同于编队初始化。
 
-重复保存样本中，已完成的挑战阶段、成绩、参与和出勤状态保持不变。官方参与状态字段为 `musicVocalId`、`isAuto`；当前 dump 类型使用 `musicVoiceId` 且缺少 `isAuto`，这部分响应仍未对齐。
+重复保存样本中，已完成的挑战阶段、成绩、参与和出勤状态保持不变。官方参与状态字段为 `musicVocalId`、`isAuto`；原始 dump 使用 `musicVoiceId` 且缺少 `isAuto`。构建副本保留 CLR 字段名 `musicVoiceId`，将其网络 Key 调整为 `musicVocalId`，并补充布尔字段 `isAuto`。原始 DLL 不变；协议检查仅允许这两项已核验差异，其余成员仍与原始元数据逐项比较。
+
+首次与重复保存的官方样本经本地 HTTP 重放后，挑战相关响应及状态增量一致。`isAuto=true` 已验证序列化往返，尚不代表自动挑战结算已获官方验证。
 
 需补样本：多卡编队、支援位等级边界及无效编队的官方错误正文。本地校验不代表这些错误响应已与官方一致。
 

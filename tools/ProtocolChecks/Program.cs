@@ -42,7 +42,16 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
 {
     var type = typeof(Sekai.SuiteUser).Assembly.GetType(name.GetString()!, throwOnError: true)!;
     var source = original.MainModule.GetType(type.FullName!.Replace('+', '/'));
-    Check(Signature(source).SequenceEqual(Signature(compiledTypes[source.FullName])), $"元数据 {type.FullName}");
+    var expectedSignature = Signature(source);
+    if (type == typeof(Sekai.UserChallengeLivePlayStatus))
+    {
+        Check(expectedSignature.Contains("musicVoiceId:System.Int32:musicVoiceId") &&
+            !expectedSignature.Any(s => s.StartsWith("isAuto:", StringComparison.Ordinal)), "挑战状态原始契约前置");
+        expectedSignature = expectedSignature.Select(s => s == "musicVoiceId:System.Int32:musicVoiceId"
+                ? "musicVoiceId:System.Int32:musicVocalId" : s)
+            .Append("isAuto:System.Boolean:isAuto").Order(StringComparer.Ordinal).ToArray();
+    }
+    Check(expectedSignature.SequenceEqual(Signature(compiledTypes[source.FullName])), $"元数据及已核验修正 {type.FullName}");
     foreach (var union in DumpContract.For(type).Unions)
     {
         var value = Sample(union.Value, 0)!;
@@ -60,7 +69,23 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
     memberCount += DumpContract.For(type).Members.Count;
     modelCount++;
 }
-Console.WriteLine($"模型：{modelCount} 个具体类型、{memberCount} 个成员的非默认值往返与原始元数据检查通过。");
+Console.WriteLine($"模型：{modelCount} 个具体类型、{memberCount} 个成员的非默认值往返、原始元数据及显式协议修正检查通过。");
+
+foreach (var auto in new[] { false, true })
+{
+    var status = new Sekai.UserChallengeLivePlayStatus { musicVoiceId = 7, isAuto = auto };
+    var statusBytes = DumpSerializer.Serialize(status);
+    using var statusJson = JsonDocument.Parse(MessagePackSerializer.ConvertToJson(statusBytes));
+    Check(statusJson.RootElement.GetProperty("musicVocalId").GetInt32() == 7 &&
+        !statusJson.RootElement.TryGetProperty("musicVoiceId", out _) &&
+        statusJson.RootElement.GetProperty("isAuto").GetBoolean() == auto, "挑战参与状态使用官方字段名并保留布尔值");
+    var imported = JsonSerializer.Deserialize<Sekai.UserChallengeLivePlayStatus>(statusJson.RootElement.GetRawText(), DumpJson.Options)!;
+    Check(imported.musicVoiceId == 7 && imported.isAuto == auto &&
+        DumpSerializer.Deserialize<Sekai.UserChallengeLivePlayStatus>(statusBytes).isAuto == auto,
+        "挑战参与状态 JSON 导入与 MessagePack 往返一致");
+}
+var legacyStatus = JsonSerializer.Deserialize<Sekai.UserChallengeLivePlayStatus>("{\"musicVoiceId\":7}", DumpJson.Options)!;
+Check(legacyStatus.musicVoiceId == 7, "本地旧 JSON 的 CLR 字段别名仍可读取");
 
 var card = new Sekai.UserCard { cardId = 123, userId = 9007199254740993L, level = 7 };
 var suite = new Sekai.SuiteUser { userCards = [card], refreshableTypes = [] };

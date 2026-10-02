@@ -90,6 +90,21 @@ foreach (var type in models)
     }
 }
 
+// 官方挑战参与状态使用 musicVocalId，并包含 isAuto；仅修正构建副本。
+var challengeStatus = module.GetType("Sekai.UserChallengeLivePlayStatus");
+var vocal = challengeStatus.Fields.Single(f => f.Name == "musicVoiceId");
+var vocalKey = vocal.CustomAttributes.Single(a => a.AttributeType.FullName == "MessagePack.KeyAttribute");
+if (vocal.FieldType.FullName != "System.Int32" ||
+    vocalKey.ConstructorArguments.Single().Value is not "musicVoiceId" ||
+    challengeStatus.Fields.Any(f => f.Name == "isAuto"))
+    throw new InvalidDataException("挑战参与状态 dump 已变化，请重新核验协议修正。");
+vocalKey.ConstructorArguments[0] = new CustomAttributeArgument(module.TypeSystem.String, "musicVocalId");
+var isAuto = new FieldDefinition("isAuto", FieldAttributes.Public, module.TypeSystem.Boolean);
+var autoKey = new CustomAttribute(vocalKey.Constructor);
+autoKey.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, "isAuto"));
+isAuto.CustomAttributes.Add(autoKey);
+challengeStatus.Fields.Add(isAuto);
+
 Directory.CreateDirectory(output);
 var dll = Path.Combine(output, "Assembly-CSharp.dll");
 assembly.Write(dll + ".tmp");
@@ -97,6 +112,7 @@ File.Move(dll + ".tmp", dll, overwrite: true);
 File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(new
 {
     sourceSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(input, "Assembly-CSharp.dll")))),
+    protocolAdjustments = new[] { "Sekai.UserChallengeLivePlayStatus: musicVoiceId key -> musicVocalId; add isAuto:Boolean" },
     models = models.Select(t => t.FullName.Replace('/', '+')).Order(StringComparer.Ordinal)
 }, new JsonSerializerOptions { WriteIndented = true }));
 Console.WriteLine($"已为 {models.Length} 个 dump 模型修复 CLR 接口和属性存储；原始 DLL 未修改。");
