@@ -11,6 +11,7 @@ internal static class Program
         ResourceTests.Run();
         FeatureChecks.Run();
         SkillPracticeChecks.Run();
+        DeckMissionChecks.Run();
         TransportChecks.Run();
         Console.WriteLine($"通过 {Check.Count} 项检查。");
     }

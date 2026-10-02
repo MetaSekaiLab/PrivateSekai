@@ -8,6 +8,9 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public MasterLiveMission? GetLiveMission(int id) =>
+        master.GetTable<MasterLiveMission>("liveMissions", m => m.id).FindById(id);
+
     public MasterBeginnerMissionV2? GetBeginnerMissionV2(int missionId) =>
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id)
             .FindById(missionId);

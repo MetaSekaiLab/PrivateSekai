@@ -58,6 +58,7 @@ public static class ServerServices
         services.AddScoped<GachaService>();
         services.AddScoped<HomeService>();
         services.AddScoped<LiveService>();
+        services.AddScoped<DeckService>();
         services.AddScoped<MissionService>();
         services.AddScoped<PresentService>();
         services.AddScoped<ProfileService>();

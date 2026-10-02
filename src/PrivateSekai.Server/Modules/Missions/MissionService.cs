@@ -18,6 +18,47 @@ public sealed class MissionService(
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
 
+    public UserResource[] ReceiveLiveMissionRewards(int[]? missionIds)
+    {
+        if (missionIds == null || missionIds.Length == 0 || missionIds.Any(id => id <= 0))
+            throw new ArgumentException("Mission IDs are required.");
+        var obtained = new List<UserResource>();
+        foreach (var id in missionIds.Distinct())
+        {
+            var mission = master.GetLiveMission(id) ?? throw new ArgumentException("Unknown Live mission.");
+            var status = user.Data.userMissionStatuses?.SingleOrDefault(s => s.missionType == "live_mission" && s.missionId == id)
+                ?? throw new ArgumentException("Live mission is not achieved.");
+            if (status.missionStatus == "received")
+                continue;
+            if (status.missionStatus != "achieved")
+                throw new ArgumentException("Live mission is not achieved.");
+            var progress = user.Data.userLiveMissions?.SingleOrDefault(m => m.liveMissionPeriodId == mission.liveMissionPeriodId)
+                ?? throw new ArgumentException("Live mission progress is missing.");
+            var entitled = mission.liveMissionType switch
+            {
+                "free" => true,
+                "premium" => progress.liveMissionStatus is "premium" or "premium_and_mysekai",
+                "mysekai" => progress.liveMissionStatus is "mysekai" or "premium_and_mysekai",
+                _ => false
+            };
+            if (!entitled)
+                throw new ArgumentException("Live mission pass is not owned.");
+            if (mission.rewards == null || mission.rewards.Length == 0)
+                throw new InvalidOperationException("Missing Live mission rewards.");
+            foreach (var reward in mission.rewards)
+            {
+                var resources = resourceMaster.BuildResourcesFromBox("mission_reward", reward.resourceBoxId);
+                if (resources.Length == 0)
+                    throw new InvalidOperationException("Missing Live mission reward box.");
+                resourceService.Grant(resources);
+                obtained.AddRange(resources);
+            }
+            status.missionStatus = "received";
+            user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
+        }
+        return obtained.ToArray();
+    }
+
     public UserMissionReceiveResponse ReceiveBeginnerMissionV2Rewards(int[]? missionIds)
     {
         var obtainedRewards = new List<UserResource>();
