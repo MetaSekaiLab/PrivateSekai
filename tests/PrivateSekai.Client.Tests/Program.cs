@@ -283,6 +283,18 @@ try
     Fails(() => ScenarioRunner.Validate(new() { Steps = [new() { Operation = "live-clear", UseLiveSession = true, Body = new() }] },
         [config], new HashSet<string>()), "未开局不能引用 Live ID");
     Fails(() => ScenarioRunner.Validate(new() { Steps =
+        [new() { Operation = "live-start", Body = new() }, new() { Operation = "challenge-live-clear", UseLiveSession = true, Body = new() }]
+    }, [config], new HashSet<string>()), "普通 Live 会话不能用于挑战结算");
+    Fails(() => ScenarioRunner.Validate(new() { Steps =
+        [new() { Operation = "challenge-live-start", Body = new() }, new() { Operation = "live-clear", UseLiveSession = true, Body = new() }]
+    }, [config], new HashSet<string>()), "挑战 Live 会话不能用于普通结算");
+    ScenarioRunner.Validate(new() { Steps =
+        [new() { Operation = "challenge-live-start", Body = new() }, new() { Operation = "challenge-live-clear", UseLiveSession = true, Body = new() }]
+    }, [config], new HashSet<string>());
+    Check(Operations.Path(Operations.All["challenge-live-clear"],
+        new() { Args = new() { ["userChallengeLiveId"] = "challenge-session" } }, 1) ==
+        "/api/user/1/challenge-live/solo/challenge-session", "挑战结算支持独立字符串会话 ID");
+    Fails(() => ScenarioRunner.Validate(new() { Steps =
     [new() { Operation = "live-start", Body = new() }, new() { Operation = "live-clear", UseLiveSession = true,
         Args = new() { ["userLiveId"] = "fixed-id" }, Body = new() }] }, [config], new HashSet<string>()),
         "自动引用与固定 Live ID 不能混用");

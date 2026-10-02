@@ -15,10 +15,11 @@ public sealed class ScenarioRunner
                 new TargetConfiguration { Kind = target.Kind, BaseUrl = target.ThumbnailBaseUrl }.Validate();
         }
         string? liveId = null;
+        string? challengeLiveId = null;
         var previousOperation = "";
         foreach (var configured in scenario.Steps)
         {
-            var step = ResolveLiveSession(configured, liveId);
+            var step = ResolveLiveSession(configured, liveId, challengeLiveId);
             if (!Operations.All.TryGetValue(step.Operation, out var definition))
                 throw new InvalidOperationException("未知操作；使用 list 查看支持的操作。");
             if (step.Operation == "thumbnail-download")
@@ -43,6 +44,7 @@ public sealed class ScenarioRunner
             if (targets.Any(t => t.Kind == "official") && definition.IsWrite && !officialWrites.Contains(step.Operation))
                 throw new InvalidOperationException($"official 写操作 {step.Operation} 未在本次命令中启用。");
             if (step.Operation == "live-start") liveId = "validation-live";
+            if (step.Operation == "challenge-live-start") challengeLiveId = "validation-challenge";
             previousOperation = step.Operation;
         }
     }
@@ -52,6 +54,7 @@ public sealed class ScenarioRunner
         Directory.CreateDirectory(directory);
         await client.AcquireSignature();
         string? liveId = null;
+        string? challengeLiveId = null;
         JsonObject? previousResponse = null;
         for (var i = 0; i < scenario.Steps.Count; i++)
         {
@@ -61,7 +64,7 @@ public sealed class ScenarioRunner
             var path = Path.Combine(directory, $"{i + 1:D3}.json");
             try
             {
-                step = ResolveLiveSession(step, liveId);
+                step = ResolveLiveSession(step, liveId, challengeLiveId);
                 if (definition.IsWrite && definition.Snapshot)
                     capture["before"] = client.Redactor.Clean(await client.Suite());
                 capture["request"] = client.Redactor.Clean(step.Body);
@@ -81,6 +84,9 @@ public sealed class ScenarioRunner
                 if (step.Operation == "live-start")
                     liveId = response["userLiveId"]?.GetValue<string>()
                         ?? throw new InvalidOperationException("开局响应缺少 Live ID。");
+                if (step.Operation == "challenge-live-start")
+                    challengeLiveId = response["userChallengeLiveId"]?.GetValue<string>()
+                        ?? throw new InvalidOperationException("开局响应缺少挑战 Live ID。");
                 capture["response"] = client.Redactor.Clean(response);
                 capture["status"] = "response-received";
                 JsonFiles.Write(path, capture);
@@ -113,20 +119,23 @@ public sealed class ScenarioRunner
         }
     }
 
-    private static ScenarioStep ResolveLiveSession(ScenarioStep step, string? liveId)
+    private static ScenarioStep ResolveLiveSession(ScenarioStep step, string? liveId, string? challengeLiveId)
     {
         if (!step.UseLiveSession) return step;
-        if (step.Operation is not ("live-clear" or "live-voice") || string.IsNullOrEmpty(liveId))
+        var challenge = step.Operation == "challenge-live-clear";
+        var sessionId = challenge ? challengeLiveId : liveId;
+        var sessionKey = challenge ? "userChallengeLiveId" : "userLiveId";
+        if (step.Operation is not ("live-clear" or "live-voice" or "challenge-live-clear") || string.IsNullOrEmpty(sessionId))
             throw new InvalidOperationException("当前操作不能引用 Live 会话，或场景尚未成功开局。");
-        if (step.Args.ContainsKey("userLiveId") || step.Body?.ContainsKey("userLiveId") == true)
+        if (step.Args.ContainsKey(sessionKey) || step.Body?.ContainsKey(sessionKey) == true)
             throw new InvalidOperationException("自动引用 Live 会话时不能同时指定 userLiveId。");
         var resolved = new ScenarioStep
         {
             Operation = step.Operation, Args = new(step.Args), Query = new(step.Query), QueryLists = new(step.QueryLists),
             Body = step.Body?.DeepClone().AsObject(), Expect = step.Expect
         };
-        if (step.Operation == "live-clear") resolved.Args["userLiveId"] = liveId;
-        else if (resolved.Body != null) resolved.Body["userLiveId"] = liveId;
+        if (step.Operation is "live-clear" or "challenge-live-clear") resolved.Args[sessionKey] = sessionId;
+        else if (resolved.Body != null) resolved.Body[sessionKey] = sessionId;
         else throw new InvalidOperationException("语音操作需要请求体。");
         return resolved;
     }
