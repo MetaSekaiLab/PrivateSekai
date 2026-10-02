@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "shop-upgrade", "args": { "shopId": "5", "shopItemId": "1002" } },
+    { "operation": "suite" }
+  ]
+}

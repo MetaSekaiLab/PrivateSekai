@@ -13,7 +13,7 @@ internal static class AreaShopReplay
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "shopItems", "resourceBoxes", "areaItems", "characterMissionV2AreaItems", "characterMissionV2s", "characterMissionV2ParameterGroups", "beginnerMissionV2s" })
+        foreach (var table in new[] { "shopItems", "resourceBoxes", "areaItems", "characterMissionV2AreaItems", "characterMissionV2s", "characterMissionV2ParameterGroups", "beginnerMissionV2s", "gameCharacters" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 

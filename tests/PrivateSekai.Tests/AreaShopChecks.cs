@@ -7,6 +7,7 @@ using game::Sekai;
 using MessagePack;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateSekai.Config;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Modules.Shop;
 using PrivateSekai.Shared.Master;
 using PrivateSekai.Shared.Users;
@@ -26,9 +27,11 @@ internal static class AreaShopChecks
             File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"),
                 """[{"id":8,"beginnerMissionV2Type":"exchange_any_area_item","requirement":1}]""");
             File.WriteAllText(Path.Combine(directory, "characterMissionV2AreaItems.json"),
-                """[{"areaItemId":1,"characterId":1,"characterMissionType":"area_item_level_up_character"}]""");
+                """[{"areaItemId":1,"characterId":1,"characterMissionType":"area_item_level_up_character"},{"areaItemId":43,"unit":"piapro","characterMissionType":"area_item_level_up_unit"}]""");
+            File.WriteAllText(Path.Combine(directory, "gameCharacters.json"),
+                """[{"id":1,"unit":"light_sound"},{"id":21,"unit":"piapro"},{"id":22,"unit":"piapro"}]""");
             File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"),
-                """[{"id":1009,"characterId":1,"characterMissionType":"area_item_level_up_character","parameterGroupId":9}]""");
+                """[{"id":1009,"characterId":1,"characterMissionType":"area_item_level_up_character","parameterGroupId":9},{"id":1010,"characterId":1,"characterMissionType":"area_item_level_up_unit","parameterGroupId":11},{"id":21010,"characterId":21,"characterMissionType":"area_item_level_up_unit","parameterGroupId":11},{"id":22010,"characterId":22,"characterMissionType":"area_item_level_up_unit","parameterGroupId":11}]""");
             File.WriteAllText(Path.Combine(directory, "characterMissionV2ParameterGroups.json"),
                 """[{"id":9,"seq":1,"requirement":1},{"id":9,"seq":2,"requirement":2}]""");
             File.WriteAllText(Path.Combine(directory, "resourceBoxes.json"), """
@@ -86,6 +89,13 @@ internal static class AreaShopChecks
             Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 8).progress == 1 &&
                 !store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 8).isNewAchieved,
                 "区域道具新手任务只计首次购买，不计普通升级或失败请求");
+            var missions = scope.ServiceProvider.GetRequiredService<MissionService>();
+            operation.Execute(1, () => { missions.RecordAreaItemUpgrade(43); return user.BuildRefresh(); });
+            var unitMissions = store.Read(1)!.Data.userCharacterMissions
+                .Where(m => m.characterMissionType == "area_item_level_up_unit").ToArray();
+            Check.That(unitMissions.Select(m => m.characterId).Order().SequenceEqual(new[] { 21, 22 }) &&
+                unitMissions.All(m => m.progress == 1 && m.achievedMissions.Length == 0),
+                "组合道具只推进所属组合角色的任务，不影响其他组合");
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

@@ -15,12 +15,21 @@ public sealed class MissionMasterQueries(MasterData master)
 
     public MasterCharacterMissionV2[] GetAreaItemCharacterMissions(int areaItemId)
     {
-        var characters = master.GetTable<MasterCharacterMissionV2AreaItem>("characterMissionV2AreaItems").Rows
-            .Where(m => m.areaItemId == areaItemId && m.characterMissionType == "area_item_level_up_character")
+        var mappings = master.GetTable<MasterCharacterMissionV2AreaItem>("characterMissionV2AreaItems").Rows
+            .Where(m => m.areaItemId == areaItemId).ToArray();
+        var characters = mappings.Where(m => m.characterMissionType == "area_item_level_up_character")
             .Select(m => m.characterId).ToHashSet();
+        var units = mappings.Where(m => m.characterMissionType == "area_item_level_up_unit")
+            .Select(m => m.unit).ToHashSet();
+        var unitCharacters = units.Count == 0 ? [] : master.GetTable<MasterGameCharacter>("gameCharacters").Rows
+            .Where(c => units.Contains(c.unit)).Select(c => c.id).ToArray();
         return master.GetTable<MasterCharacterMissionV2>("characterMissionV2s").Rows
-            .Where(m => m.characterMissionType == "area_item_level_up_character" && characters.Contains(m.characterId)).ToArray();
+            .Where(m => (m.characterMissionType == "area_item_level_up_character" && characters.Contains(m.characterId)) ||
+                (m.characterMissionType == "area_item_level_up_unit" && unitCharacters.Contains(m.characterId))).ToArray();
     }
+
+    public string? GetCharacterMissionType(int missionId) =>
+        master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).FindById(missionId)?.characterMissionType;
 
     public MasterCharacterMissionV2ParameterGroup[] GetCharacterMissionParameters(int groupId) =>
         master.GetTable<MasterCharacterMissionV2ParameterGroup>("characterMissionV2ParameterGroups").Rows

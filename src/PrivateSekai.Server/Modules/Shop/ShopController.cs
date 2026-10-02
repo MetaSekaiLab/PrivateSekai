@@ -3,12 +3,13 @@ extern alias game;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 
 namespace PrivateSekai.Modules.Shop;
 
-public sealed class ShopController(UserOperation operations, UserSession user, ShopService shop) : PrskController
+public sealed class ShopController(UserOperation operations, UserSession user, ShopService shop, MissionMasterQueries missionMaster) : PrskController
 {
     /// <summary>
     /// <p>[POST] 购买商店项目。客户端把 `shopId` 和 `shopItemId` 拼入 path，不发送请求体；成功后合并返回的用户资源差异，并由对应购买弹窗继续关闭、刷新或展示购买结果。</p>
@@ -41,7 +42,7 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
                 {
                     userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType,
                     progress = m.progress, achievedMissions = achieved.Where(s => s.characterId == m.characterId &&
-                        m.characterMissionType == "area_item_level_up_character").ToArray()
+                        m.characterMissionType == missionMaster.GetCharacterMissionType(s.missionId)).ToArray()
                 }).ToArray();
 
             return new SuiteUserCommonResponse
