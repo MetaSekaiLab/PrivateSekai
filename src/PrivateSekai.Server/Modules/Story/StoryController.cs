@@ -5,6 +5,7 @@ using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using PrivateSekai.Models;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 using GetFriendStoryFavoriteStatusesResponse = game::Sekai.StoryFavorite.GetFriendStoryFavoriteStatusesResponse;
@@ -12,7 +13,7 @@ using UserStoryRecommend = game::Sekai.UserStoryRecommendResponse.UserStoryRecom
 
 namespace PrivateSekai.Modules.Story;
 
-public sealed class StoryController(UserOperation operations, UserSession user, StoryService story) : PrskController
+public sealed class StoryController(UserOperation operations, UserSession user, StoryService story, MissionMasterQueries missionMaster) : PrskController
 {
     private static readonly string[] StoryRefreshDeleteTypes = ["userBeginnerMissionBehavior"];
 
@@ -33,6 +34,8 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
             var achievedBefore = (user.Data.userMissionStatuses ?? [])
                 .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
                 .Select(s => s.missionId).ToHashSet();
+            var characterAchievedBefore = (user.Data.userCharacterMissionStatuses ?? [])
+                .Select(s => (s.missionId, s.parameterGroupId, s.seq, s.characterId)).ToHashSet();
             var obtainedResources = story.CompleteStoryEpisode(storyType, episodeId);
             var refresh = user.BuildRefresh(excludedFields: StoryRefreshDeleteTypes);
             if (storyType == "unit_story" && refresh.userBeginnerMissionV2s != null)
@@ -47,12 +50,23 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
                 }).ToArray();
             }
 
+            if (storyType == "card_story" && refresh.userCharacterMissions != null)
+            {
+                var achieved = (user.Data.userCharacterMissionStatuses ?? [])
+                    .Where(s => !characterAchievedBefore.Contains((s.missionId, s.parameterGroupId, s.seq, s.characterId))).ToArray();
+                refresh.userCharacterMissions = refresh.userCharacterMissions.Select(m => new UserCharacterMissionV2
+                {
+                    userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType,
+                    progress = m.progress, achievedMissions = achieved.Where(s => s.characterId == m.characterId &&
+                        m.characterMissionType == missionMaster.GetCharacterMissionType(s.missionId)).ToArray()
+                }).ToArray();
+            }
             var response = new UserStoryResponse
             {
                 updatedResources = refresh,
                 obtainedResources = obtainedResources
             };
-            return storyType == "unit_story" ? (object)new UnitStoryResponse(response) : response;
+            return storyType is "unit_story" or "card_story" ? (object)new StoryRewardResponse(response, storyType) : response;
         }));
     }
 

@@ -14,7 +14,7 @@ internal static class StoryReplay
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "unitStories", "specialStories", "resourceBoxes", "cardEpisodes", "cards", "releaseConditions", "beginnerMissionV2s" })
+        foreach (var table in new[] { "unitStories", "specialStories", "resourceBoxes", "cardEpisodes", "cards", "releaseConditions", "beginnerMissionV2s", "characterMissionV2s", "characterMissionV2ParameterGroups" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 

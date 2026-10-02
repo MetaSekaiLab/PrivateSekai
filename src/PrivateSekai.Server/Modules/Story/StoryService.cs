@@ -253,11 +253,7 @@ public sealed class StoryService(
         resourceService.Grant(rewards.Where(r => r.resourceType is
             "jewel" or "coin" or "virtual_coin" or "material" or "practice_ticket" or "costume_3d"));
 
-        user.MarkChanged(new[]
-        {
-            nameof(SuiteUser.userCharacterMissions),
-            nameof(SuiteUser.userCharacterMissionStatuses)
-        });
+        missions.RecordCardFirstEpisodeRead(cardEpisodeId);
 
         return rewards;
     }

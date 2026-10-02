@@ -51,6 +51,8 @@ public static class Comparison
         ["userStoryFavorites"] = ["shareNo"], ["userBookmarkedStories"] = ["storyType", "storyId"],
         ["userStoryEpisodeBookmarks"] = ["storyId", "storyEpisodeId", "talkId"],
         ["userMissionStatuses"] = ["missionType", "missionId"], ["userLiveMissions"] = ["liveMissionPeriodId"],
+        ["userCharacterMissionV2s"] = ["characterId", "characterMissionType"],
+        ["userCharacterMissionV2Statuses"] = ["characterId", "missionId", "parameterGroupId", "seq"],
         ["userUnitEpisodeStatuses"] = ["episodeId"], ["userSpecialEpisodeStatuses"] = ["episodeId"]
     };
 

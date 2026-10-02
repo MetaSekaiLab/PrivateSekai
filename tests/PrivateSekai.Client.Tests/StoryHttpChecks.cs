@@ -7,6 +7,10 @@ internal static class StoryHttpChecks
     public static void WriteMaster(string directory)
     {
         // 隔离测试数值，不用于官方场景。
+        File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"),
+            """[{"id":1006,"characterId":1,"characterMissionType":"read_card_episode_first","parameterGroupId":6}]""");
+        File.WriteAllText(Path.Combine(directory, "characterMissionV2ParameterGroups.json"),
+            """[{"id":6,"seq":1,"requirement":1}]""");
         File.WriteAllText(Path.Combine(directory, "releaseConditions.json"),
             """[{"id":700,"releaseConditionType":"card_level","releaseConditionTypeId":1,"releaseConditionTypeLevel":3}]""");
         File.WriteAllText(Path.Combine(directory, "cardEpisodes.json"),
@@ -51,6 +55,21 @@ internal static class StoryHttpChecks
         var output = Path.Combine(directory, "story");
         await ScenarioRunner.Run(client, scenario, output);
         var saved = store.Read(1)!.Data;
+        check(saved.userCharacterMissions.Single(m => m.characterMissionType == "read_card_episode_first").progress == 1 &&
+            saved.userCharacterMissionStatuses.Single(s => s.missionId == 1006).missionStatus == "achieved",
+            "首次读前篇累计角色任务，重复阅读与日志不重复累计");
+        var firstRead = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "002.json")))!;
+        check(firstRead["response"]!["updatedResources"]!["userCharacterMissionV2s"]!.AsArray()
+            .Single(m => m!["characterMissionType"]!.GetValue<string>() == "read_card_episode_first")!["achievedMissions"]!.AsArray().Count == 1 &&
+            saved.userCharacterMissions.Single(m => m.characterMissionType == "read_card_episode_first").achievedMissions.Length == 0,
+            "角色任务新达成列表只存在于当次响应");
+        var missionLeft = JsonNode.Parse("""{"userCharacterMissionV2s":[{"characterId":1,"characterMissionType":"read_card_episode_first","progress":1},{"characterId":2,"characterMissionType":"read_card_episode_first","progress":3}]}""");
+        var missionRight = JsonNode.Parse("""{"userCharacterMissionV2s":[{"characterId":2,"characterMissionType":"read_card_episode_first","progress":3},{"characterId":1,"characterMissionType":"read_card_episode_first","progress":1}]}""");
+        check(Comparison.Diff(Comparison.Normalize(missionLeft), Comparison.Normalize(missionRight)).Count == 0,
+            "角色任务对拍按角色和任务类型对齐");
+        missionRight!["userCharacterMissionV2s"]![0]!["progress"] = JsonNode.Parse("4");
+        check(Comparison.Diff(Comparison.Normalize(missionLeft), Comparison.Normalize(missionRight)).Single().Delta == 1,
+            "角色任务对齐后仍保留实际进度差异");
         check(saved.userMaterials.Single().quantity == 8 && saved.userGamedata.coin == 7,
             "剧情解锁扣除材料，阅读奖励只领取一次");
         var episode = saved.userCards.Single().episodes.Single(e => e.cardEpisodeId == 51);

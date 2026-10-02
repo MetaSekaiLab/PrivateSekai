@@ -9,12 +9,12 @@ using PrivateSekai.Protocol;
 
 namespace PrivateSekai.Models;
 
-[MessagePackFormatter(typeof(UnitStoryResponseFormatter))]
-public sealed record UnitStoryResponse(UserStoryResponse Response);
+[MessagePackFormatter(typeof(StoryRewardResponseFormatter))]
+public sealed record StoryRewardResponse(UserStoryResponse Response, string StoryType);
 
-public sealed class UnitStoryResponseFormatter : IMessagePackFormatter<UnitStoryResponse?>
+public sealed class StoryRewardResponseFormatter : IMessagePackFormatter<StoryRewardResponse?>
 {
-    public void Serialize(ref MessagePackWriter writer, UnitStoryResponse? value, MessagePackSerializerOptions options)
+    public void Serialize(ref MessagePackWriter writer, StoryRewardResponse? value, MessagePackSerializerOptions options)
     {
         if (value == null) { writer.WriteNil(); return; }
         writer.WriteMapHeader(2);
@@ -24,12 +24,12 @@ public sealed class UnitStoryResponseFormatter : IMessagePackFormatter<UnitStory
         writer.WriteArrayHeader(value.Response.obtainedResources.Length);
         foreach (var resource in value.Response.obtainedResources)
         {
-            if (resource.resourceType is not ("jewel" or "material" or "card") || resource.resourceLevel != 0)
+            if (!(resource.resourceType == "jewel" || value.StoryType == "unit_story" && resource.resourceType is "material" or "card") || resource.resourceLevel != 0)
             {
                 options.Resolver.GetFormatterWithVerify<UserResource>().Serialize(ref writer, resource, options);
                 continue;
             }
-            // 主线奖励的已确认字段省略规则，不影响其他资源响应。
+            // 仅应用已核验的剧情奖励字段省略规则。
             var members = DumpContract.For(typeof(UserResource)).Members.Where(m =>
                 (string)m.Key != "resourceLevel" &&
                 !((string)m.Key == "resourceId" && resource.resourceType == "jewel" && resource.resourceId == 0) &&
@@ -43,6 +43,6 @@ public sealed class UnitStoryResponseFormatter : IMessagePackFormatter<UnitStory
         }
     }
 
-    public UnitStoryResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
-        throw new NotSupportedException("仅用于服务端主线响应编码。");
+    public StoryRewardResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+        throw new NotSupportedException("仅用于服务端剧情响应编码。");
 }

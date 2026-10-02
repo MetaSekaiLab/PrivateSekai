@@ -9,6 +9,15 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public MasterCharacterMissionV2[] GetCardFirstEpisodeMissions(int episodeId)
+    {
+        var episode = master.GetTable<MasterCardEpisode>("cardEpisodes", e => e.id).FindById(episodeId);
+        if (episode?.cardEpisodePartType != "first_part") return [];
+        var card = master.GetTable<MasterCard>("cards", c => c.id).FindById(episode.cardId);
+        return card == null ? [] : master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
+            .Where(m => m.characterId == card.characterId && m.characterMissionType == "read_card_episode_first").ToArray();
+    }
+
     public MasterBeginnerMissionV2[] GetCardLevelMissions() =>
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "any_card_level_up").ToArray();
@@ -27,7 +36,7 @@ public sealed class MissionMasterQueries(MasterData master)
             .Select(m => m.unit).ToHashSet();
         var unitCharacters = units.Count == 0 ? [] : master.GetTable<MasterGameCharacter>("gameCharacters").Rows
             .Where(c => units.Contains(c.unit)).Select(c => c.id).ToArray();
-        return master.GetTable<MasterCharacterMissionV2>("characterMissionV2s").Rows
+        return master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
             .Where(m => (m.characterMissionType == "area_item_level_up_character" && characters.Contains(m.characterId)) ||
                 (m.characterMissionType == "area_item_level_up_unit" && unitCharacters.Contains(m.characterId))).ToArray();
     }

@@ -18,10 +18,16 @@ public sealed class MissionService(
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
 
-    public UserCharacterMissionV2Status[] RecordAreaItemUpgrade(int areaItemId)
+    public UserCharacterMissionV2Status[] RecordAreaItemUpgrade(int areaItemId) =>
+        RecordCharacterMissionProgress(master.GetAreaItemCharacterMissions(areaItemId));
+
+    public void RecordCardFirstEpisodeRead(int episodeId) =>
+        RecordCharacterMissionProgress(master.GetCardFirstEpisodeMissions(episodeId));
+
+    private UserCharacterMissionV2Status[] RecordCharacterMissionProgress(IEnumerable<MasterCharacterMissionV2> definitions)
     {
         var achieved = new List<UserCharacterMissionV2Status>();
-        foreach (var definition in master.GetAreaItemCharacterMissions(areaItemId))
+        foreach (var definition in definitions)
         {
             var missions = (user.Data.userCharacterMissions ?? []).ToList();
             var progress = missions.SingleOrDefault(m => m.characterId == definition.characterId &&

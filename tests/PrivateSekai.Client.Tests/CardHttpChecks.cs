@@ -9,7 +9,7 @@ internal static class CardHttpChecks
         // 仅用于隔离测试，不代表官方数值。
         var tables = new Dictionary<string, string>
         {
-            ["cards"] = """[{"id":1,"cardRarityType":"rarity_1"}]""",
+            ["cards"] = """[{"id":1,"characterId":1,"cardRarityType":"rarity_1"}]""",
             ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":3,"trainingMaxLevel":3}]""",
             ["practiceTickets"] = """[{"id":1,"exp":100}]""",
             ["levels"] = """[{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300}]""",

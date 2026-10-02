@@ -241,7 +241,7 @@ internal static class StoryCollectionChecks
                 ]
             };
             using var mainResponse = JsonDocument.Parse(MessagePackSerializer.ConvertToJson(
-                DumpSerializer.Serialize(new UnitStoryResponse(resourceResponse))));
+                DumpSerializer.Serialize(new StoryRewardResponse(resourceResponse, "unit_story"))));
             var resources = mainResponse.RootElement.GetProperty("obtainedResources");
             Check.That(!resources[0].TryGetProperty("resourceId", out _) &&
                 !resources[0].TryGetProperty("resourceLevel", out _) &&
