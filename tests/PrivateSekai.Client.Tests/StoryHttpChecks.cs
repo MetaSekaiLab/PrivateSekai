@@ -82,6 +82,15 @@ internal static class StoryHttpChecks
         ] };
         ScenarioRunner.Validate(rewards, [new() { BaseUrl = "http://localhost" }], new HashSet<string>());
         await ScenarioRunner.Run(client, rewards, Path.Combine(output, "rewards"));
+        var repeatedUnit = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "rewards/003.json")))!;
+        check(repeatedUnit["httpStatus"]!.GetValue<int>() == 204 && repeatedUnit["response"]!.AsObject().Count == 0,
+            "已读主线返回 204 空响应并继续完成后续请求");
+        state = store.Read(1)!;
+        state.Data.refreshableTypes = ["userCards"];
+        store.Save(1, state);
+        await client.Send(Read("unit_story", "61", null));
+        check(store.Read(1)!.Data.refreshableTypes.SequenceEqual(["userCards"]),
+            "重复阅读的只读检查不消耗待刷新字段");
         saved = store.Read(1)!.Data;
         check(saved.userGamedata.coin == 14 && saved.userMaterials.Single().quantity == 11,
             "主线与特殊剧情按各自 master 奖励盒发奖且重复请求不重复发放");
@@ -95,7 +104,7 @@ internal static class StoryHttpChecks
         Operation = "story-read", Args = new() { ["storyType"] = type, ["episodeId"] = id },
         Expect = quantity is { } value
             ? new() { ["/obtainedResources/0/quantity"] = JsonValue.Create(value) }
-            : new() { ["/obtainedResources"] = new JsonArray() }
+            : type == "unit_story" ? new() : new() { ["/obtainedResources"] = new JsonArray() }
     };
 
     private static ScenarioStep Step(string operation, string? body = null) => new()

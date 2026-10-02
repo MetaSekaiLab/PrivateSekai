@@ -45,6 +45,12 @@ public sealed class PrskCryptoMiddleware(RequestDelegate next)
         var plaintext = buffer.ToArray();
         ctx.Response.Headers.ContentLength = null;
 
+        if (ctx.Response.StatusCode == StatusCodes.Status204NoContent)
+        {
+            ctx.Response.ContentType = null;
+            return;
+        }
+
         var encrypted = PrskCrypto.EncryptAesCbc(plaintext);
         ctx.Response.ContentType = "application/octet-stream";
         ctx.Response.ContentLength = encrypted.Length;

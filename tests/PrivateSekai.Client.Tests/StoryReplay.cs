@@ -18,7 +18,11 @@ internal static class StoryReplay
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
-    public static TimeProvider Clock(string path) => new StoryClock(Read(path)["response"]!["updatedResources"]!["now"]!.GetValue<long>());
+    public static TimeProvider Clock(string path)
+    {
+        var record = Read(path);
+        return new StoryClock((record["response"]?["updatedResources"]?["now"] ?? record["before"]!["now"])!.GetValue<long>());
+    }
 
     private sealed class StoryClock(long now) : TimeProvider
     {
@@ -39,7 +43,7 @@ internal static class StoryReplay
         var before = official["before"]!.DeepClone();
         BindUser(before);
         var state = store.Read(1)!;
-        var fields = StoryFields.Concat(official["response"]!["updatedResources"]!.AsObject().Select(p => p.Key))
+        var fields = StoryFields.Concat(official["response"]?["updatedResources"]?.AsObject().Select(p => p.Key) ?? [])
             .Concat(["userGamedata", "userMaterials", "userPracticeTickets", "userVirtualCoin", "userJewel"])
             .ToHashSet(StringComparer.Ordinal);
         // 只导入剧情资源及本次刷新字段，不读取脱敏后的引继等账号凭证字段。
@@ -66,7 +70,7 @@ internal static class StoryReplay
                 foreach (var record in new[] { official, local })
                 {
                     foreach (var side in new[] { "before", "after" }) record[side] = Select(record[side]);
-                    if (record["response"] is JsonObject response)
+                    if (record["response"] is JsonObject response && response.ContainsKey("updatedResources"))
                         response["updatedResources"] = Select(response["updatedResources"]);
                 }
                 JsonFiles.Write(Path.Combine(output, "story-compare.json"), ScenarioRunner.Compare(official, local));

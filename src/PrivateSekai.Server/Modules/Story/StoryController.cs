@@ -20,6 +20,12 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
     [HttpPost("api/user/{userId}/story/{storyType}/episode/{episodeId}")]
     public IActionResult HandleStoryEpisode(long userId, string storyType, int episodeId)
     {
+        if (storyType == "unit_story")
+        {
+            var alreadyRead = false;
+            operations.Query(userId, () => alreadyRead = story.IsUnitEpisodeRead(episodeId));
+            if (alreadyRead) return NoContent();
+        }
         return Encoded(operations.Execute(userId, () =>
         {
             var obtainedResources = story.CompleteStoryEpisode(storyType, episodeId);

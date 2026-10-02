@@ -20,6 +20,9 @@ public sealed class StoryService(
     private const string CardEpisodeReleaseTicketMaterialIdConfig = "card_episode_release_ticket_material_id";
     private const string CardEpisodeReleaseCostQuantityConfig = "card_episode_release_cost_quantity";
 
+    public bool IsUnitEpisodeRead(int episodeId) =>
+        user.Data.userUnitEpisodeStatuses?.Any(s => s.episodeId == episodeId && s.status == "already_read") == true;
+
     public void ReadStoryEpisode(string storyType, int episodeId, bool isNotSkipped = false)
     {
         switch (storyType)
