@@ -62,6 +62,7 @@ public static class Operations
         ["live-start"] = new("POST", "/api/user/{userId}/live", typeof(UserLiveRequest), "userLiveId"),
         ["live-clear"] = new("PUT", "/api/user/{userId}/live/{userLiveId}", typeof(UserLiveClearRequest), "score"),
         ["challenge-character-unlock"] = new("POST", "/api/user/{userId}/challenge-live-character/{characterId}", null, "updatedResources"),
+        ["challenge-deck-save"] = new("PUT", "/api/user/{userId}/challenge-live-solo-deck/{characterId}", typeof(UserChallengeLiveSoloDeck), "updatedResources"),
         ["challenge-live-start"] = new("POST", "/api/user/{userId}/challenge-live/solo", typeof(UserChallengeLiveStartRequest), "userChallengeLiveId"),
         ["challenge-live-clear"] = new("PUT", "/api/user/{userId}/challenge-live/solo/{userChallengeLiveId}", typeof(UserChallengeLiveClearRequest), "userChallengeLiveStageResult"),
         ["challenge-reward-receive"] = new("POST", "/api/user/{userId}/challenge-live/receive-select-reward/{resourceId}", null, "obtainRewards"),

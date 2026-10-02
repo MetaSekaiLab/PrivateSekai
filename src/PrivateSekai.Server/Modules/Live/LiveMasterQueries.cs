@@ -10,6 +10,31 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class LiveMasterQueries(MasterData master)
 {
+    public MasterChallengeLiveCharacter GetChallengeCharacter(int characterId) =>
+        master.GetTable<MasterChallengeLiveCharacter>("challengeLiveCharacters").Rows
+            .SingleOrDefault(c => c.characterId == characterId)
+        ?? throw new ArgumentException("Unknown challenge character.");
+
+    public int GetCardCharacter(int cardId) => master.GetTable<MasterCard>("cards", c => c.id)
+        .FindById(cardId)?.characterId ?? throw new ArgumentException("Unknown card.");
+
+    public int GetChallengeCardLimit(int characterId, int characterRank)
+    {
+        var limit = 1;
+        foreach (var deck in master.GetTable<MasterChallengeLiveDeck>("challengeLiveDecks").Rows
+                     .Where(d => d.characterId == characterId))
+        {
+            var condition = master.GetTable<MasterReleaseCondition>("releaseConditions", c => c.id)
+                .FindById(deck.releaseConditionId)
+                ?? throw new InvalidOperationException("Missing challenge deck condition.");
+            if (condition.releaseConditionType != "character_rank" || condition.releaseConditionTypeId != characterId)
+                throw new NotSupportedException("Unsupported challenge deck condition.");
+            if (characterRank >= condition.releaseConditionTypeLevel)
+                limit = Math.Max(limit, deck.cardLimit);
+        }
+        return limit;
+    }
+
     public MasterLevel[] GetUserLevels() => master.GetTable<MasterLevel>("levels").Rows
         .Where(l => l.levelType == "user").OrderBy(l => l.level).ToArray();
 

@@ -1954,3 +1954,41 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 4. 完整流程完成后客户端记录 `LastSNCAt`，约 24 小时内不再重复执行。
 
 因此服务端实现时不能只按路径判断业务；同一路径下 POST 和 PUT 是同一校验流程的前后两步，request/response 模型也完全不同。
+
+## PUT `/api/user/{userId}/challenge-live-solo-deck/{characterId}`
+
+保存指定角色的挑战编队。客户端与官方首次保存样本已核验。
+
+- Path：`userId`、`characterId`；无 query。
+- Body：`UserChallengeLiveSoloDeck`，包括 `characterId` 和可空的卡牌 ID `leader`、`support1`～`support4`。
+- Response：`userChallengeLiveSoloDeck` 返回保存结果；`updatedResources` 包含挑战参与状态、编队、成绩、阶段、高分奖励五组数组，以及已存在的出勤状态 `userChallengeLivePlayDay`。单卡样本省略空支援位；保存不会创建阶段或成绩。
+- 客户端 `ScreenLayerChallengeLiveFinalConfirm` 检测编队变化，通过 `PutUserChallengeLiveSoloDeckAPI` 保存；成功回调合并资源差异。`ChallengeLiveFinalConfirmDeckView` 按 master 条件与角色等级锁定支援位。
+- 首次角色解锁只新增对应释放条件与一次行为，不创建编队。官方样本中，未保存编队直接开局返回 404，补充保存后开局成功。不能把角色解锁等同于编队初始化。
+
+重复保存样本中，已完成的挑战阶段、成绩、参与和出勤状态保持不变。官方参与状态字段为 `musicVocalId`、`isAuto`；当前 dump 类型使用 `musicVoiceId` 且缺少 `isAuto`，这部分响应仍未对齐。
+
+需补样本：多卡编队、支援位等级边界及无效编队的官方错误正文。本地校验不代表这些错误响应已与官方一致。
+
+## POST `/api/user/{userId}/challenge-live/receive-select-reward/{resourceId}`
+
+领取挑战 Live 的可选出勤奖励。以下来自客户端静态审计，尚无官方成功领奖样本。
+
+### 请求参数
+
+- Path `userId`：当前用户 ID。
+- Path `resourceId`：选中的 `MasterChallengeLivePlayDayReward.id`。虽然 API 参数名为 resourceId，实际不是 `resourceBoxId`，也不是盒内道具 ID。
+- 无 query 和 body。
+
+### 返回字段与处理
+
+- `updatedResources`：API 成功回调合并到用户状态。
+- `obtainRewards`：`UserResource[]`，上层用于显示领取结果。
+
+### 客户端请求时机与证据
+
+1. `DialogUtility.ShowChallengeLivePlayDayRewardDialogIfNeeded` 检查挑战出勤状态，按 `lastPlayStartAt` 查适用奖励期并打开选择弹窗。
+2. `ChallengeLivePlayDayRewardSelectDialog.OnSelectItem` 用资源盒展示奖励，确认后回传选中的完整奖励条目。
+3. 上层调用 `ChallengeLiveDataService.SelectReward(result.id)`；该服务将 ID 原样交给 `PostUserChallengeLiveReceiveSelectRewardAPI`，由其发送 POST。
+4. 成功后合并资源差异并展示 `obtainRewards`。
+
+待补材料：一次具备选择资格的成功请求、响应及前后用户状态，用于核验领取状态变化、资源增量和重复领取行为。不能仅凭 master 的奖励配置推断这些状态变化。

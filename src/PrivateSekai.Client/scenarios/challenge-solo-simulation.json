@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "challenge-deck-save", "args": { "characterId": "1" }, "body": {
+      "characterId": 1, "leader": 1,
+      "support1": null, "support2": null, "support3": null, "support4": null
+    } },
+    { "operation": "challenge-live-start", "body": {
+      "characterId": 1, "musicId": 1, "musicDifficultyId": 1, "musicVocalId": 1,
+      "leader": 1, "support1": null, "support2": null, "support3": null, "support4": null,
+      "musicCategoryName": "mv", "isAuto": false
+    } },
+    { "operation": "challenge-live-clear", "useLiveSession": true, "delayBeforeMs": 120000, "body": {
+      "score": 10000, "perfectCount": 210, "greatCount": 0, "goodCount": 10,
+      "badCount": 0, "missCount": 0, "maxCombo": 210, "life": 1000, "tapCount": 220,
+      "continueCount": 0, "musicCategoryName": "mv", "isMirrored": false
+    } },
+    { "operation": "suite" }
+  ]
+}

@@ -60,6 +60,7 @@ public static class ServerServices
         services.AddScoped<HomeService>();
         services.AddScoped<LiveService>();
         services.AddScoped<DeckService>();
+        services.AddScoped<ChallengeLiveService>();
         services.AddScoped<MissionService>();
         services.AddScoped<PresentService>();
         services.AddScoped<ProfileService>();

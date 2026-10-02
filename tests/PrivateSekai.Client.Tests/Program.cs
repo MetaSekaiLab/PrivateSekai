@@ -55,6 +55,7 @@ MissionHttpChecks.WriteMaster(directory);
 StoryHttpChecks.WriteMaster(directory);
 BookmarkHttpChecks.WriteMaster(directory);
 FavoriteHttpChecks.WriteMaster(directory);
+ChallengeDeckHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
@@ -66,6 +67,8 @@ if (args is ["--replay-card-practice", _, var practiceMaster, _])
     CardPracticeReplay.ImportMaster(practiceMaster, directory);
 if (args is ["--replay-live", _, _, var liveMaster, _])
     LiveReplay.ImportMaster(liveMaster, directory);
+if (args is ["--replay-challenge-deck", _, var challengeMaster, _])
+    ChallengeDeckReplay.ImportMaster(challengeMaster, directory);
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Loopback, 0));
@@ -196,6 +199,11 @@ try
         await DeckReplay.Run(client, store, deckCaptures, deckOutput);
         return;
     }
+    if (args is ["--replay-challenge-deck", var challengeCapture, _, var challengeOutput])
+    {
+        await ChallengeDeckReplay.Run(client, store, challengeCapture, challengeOutput);
+        return;
+    }
     var scenario = new Scenario { Steps =
     [
         new() { Operation = "system" },
@@ -294,6 +302,7 @@ try
     Fails(() => ThumbnailDownload.ValidatePath("image/custom-profile-card/thumbnail/../b"), "图片拒绝路径穿越");
     await AccountReadHttpChecks.Run(client, store, directory, Check);
     await InheritHttpChecks.Run(client, config, store, directory, Check);
+    await ChallengeDeckHttpChecks.Run(client, config, store, directory, Check);
     Fails(() => Operations.Path(Operations.All["custom-profile-card-delete"], new() { Args = new() { ["customProfileId"] = "1" } }, 1),
         "名片删除必须提供卡片 ID 列表");
     Fails(() => ScenarioRunner.Validate(new() { Steps = [new() { Operation = "live-clear", UseLiveSession = true, Body = new() }] },
@@ -358,7 +367,7 @@ sealed class TestedControllers : Microsoft.AspNetCore.Mvc.ApplicationParts.IAppl
     public void PopulateFeature(IEnumerable<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPart> parts,
         Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)
     {
-        Type[] tested = [typeof(DeckController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
+        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
         foreach (var controller in feature.Controllers.Where(c => !tested.Contains(c.AsType())).ToArray())
             feature.Controllers.Remove(controller);
     }

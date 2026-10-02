@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "challenge-deck-save", "args": { "characterId": "1" }, "body": {
+      "characterId": 1, "leader": 1,
+      "support1": null, "support2": null, "support3": null, "support4": null
+    } },
+    { "operation": "suite" }
+  ]
+}
