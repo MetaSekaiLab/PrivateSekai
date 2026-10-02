@@ -4,6 +4,7 @@ using System;
 using System.Linq;
 using game::Sekai;
 using PrivateSekai.Modules.Inventory;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 
@@ -12,6 +13,7 @@ namespace PrivateSekai.Modules.Story;
 public sealed class StoryService(
     UserSession user,
     StoryMasterQueries master,
+    MissionService missions,
     ResourceMasterQueries resourceMaster,
     ResourceService resourceService)
 {
@@ -76,7 +78,10 @@ public sealed class StoryService(
             resourceService.Grant(rewards);
             ReadStoryEpisode(storyType, episodeId, isNotSkipped);
             if (storyType == "unit_story")
+            {
                 AdvanceUnitStory(episodeId);
+                missions.RecordUnitStoryRead(master.GetUnitEpisodeUnit(episodeId));
+            }
             return rewards;
         }
 

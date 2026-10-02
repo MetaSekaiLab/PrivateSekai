@@ -35,7 +35,7 @@ internal static class StoryCollectionChecks
             File.WriteAllText(Path.Combine(directory, "eventStories.json"), """[{"id":1},{"id":2}]""");
             File.WriteAllText(Path.Combine(directory, "unitStories.json"),
                 """
-                [{"chapters":[{"episodes":[{"id":11,"rewardResourceBoxIds":[1]},
+                [{"chapters":[{"unit":"theme_park","episodes":[{"id":11,"rewardResourceBoxIds":[1]},
                 {"id":14,"unitStoryEpisodeGroupId":3,"episodeNo":1,"releaseConditionId":1,"rewardResourceBoxIds":[1]},
                 {"id":80,"unitStoryEpisodeGroupId":3,"episodeNo":2,"releaseConditionId":4},
                 {"id":81,"unitStoryEpisodeGroupId":3,"episodeNo":3,"releaseConditionId":3},
@@ -48,6 +48,8 @@ internal static class StoryCollectionChecks
                 {"id":3,"releaseConditionType":"unit_story","releaseConditionTypeId":14},
                 {"id":4,"releaseConditionType":"unit_story","releaseConditionTypeId":99}]
                 """);
+            File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"),
+                """[{"id":19,"beginnerMissionV2Type":"read_unit_story","conditionValue":4,"requirement":1}]""");
             File.WriteAllText(Path.Combine(directory, "specialStories.json"),
                 """[{"id":1,"episodes":[{"id":12,"rewardResourceBoxIds":[1]},{"id":13,"rewardResourceBoxIds":[99]}]}]""");
             File.WriteAllText(Path.Combine(directory, "resourceBoxes.json"),
@@ -180,6 +182,10 @@ internal static class StoryCollectionChecks
             Check.That(conditional.Single().quantity == 3 &&
                 store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 15).status == "already_read",
                 "已有附加条件达成记录时允许主线首读");
+            Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 19).progress == 1 &&
+                !store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 19).isNewAchieved &&
+                store.Read(1)!.Data.userMissionStatuses.Single(m => m.missionType == "beginner_mission_v2" && m.missionId == 19).missionStatus == "achieved",
+                "主线首读按所属组合推进任务并达成，保持官方新达成标记");
             Check.Throws<InvalidOperationException>(() => operations.Execute(1, () => stories.CompleteStoryEpisode("special_story", 13)),
                 "剧情缺少奖励盒时不猜测奖励");
             Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
@@ -202,6 +208,8 @@ internal static class StoryCollectionChecks
                 !store.Read(1)!.Data.userUnitEpisodeStatuses.Any(s => s.episodeId == 80) &&
                 store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 81).status == "can_not_read",
                 "失败首读不留下解锁条件或新增章节");
+            Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 19).progress == 2,
+                "重复阅读和失败首读不增加任务计数");
             var opening = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 14)));
             var openingRepeat = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 14)));
             Check.That(opening.Single().quantity == 3 && openingRepeat.Length == 0 &&
@@ -215,6 +223,9 @@ internal static class StoryCollectionChecks
             Check.That(store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 80).status == "can_not_read" &&
                 !store.Read(1)!.Data.userUnitEpisodeStatuses.Any(s => s.episodeId == 90),
                 "下一话按组内序号展开并保留锁定，不依赖连续 ID 或混入其他分组");
+            Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 19).progress == 3 &&
+                store.Read(1)!.Data.userMissionStatuses.Count(m => m.missionType == "beginner_mission_v2" && m.missionId == 19) == 1,
+                "已达成任务继续累计首读次数且不重复创建达成状态");
             Console.WriteLine("剧情收藏：书签、缩略图、收藏槽位和失败回滚检查通过。");
         }
         finally

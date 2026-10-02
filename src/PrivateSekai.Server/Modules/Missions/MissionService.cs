@@ -18,6 +18,28 @@ public sealed class MissionService(
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
 
+    public void RecordUnitStoryRead(string? unit)
+    {
+        foreach (var definition in master.GetUnitStoryMissions(unit))
+        {
+            var missions = (user.Data.userBeginnerMissionV2s ?? []).ToList();
+            var progress = missions.SingleOrDefault(m => m.beginnerMissionV2Id == definition.id);
+            if (progress == null)
+            {
+                progress = new UserBeginnerMissionV2 { beginnerMissionV2Id = definition.id };
+                missions.Add(progress);
+            }
+            progress.progress++;
+            user.Data.userBeginnerMissionV2s = missions.OrderBy(m => m.beginnerMissionV2Id).ToArray();
+            user.MarkChanged(nameof(SuiteUser.userBeginnerMissionV2s));
+            if (progress.progress < definition.requirement ||
+                user.Data.userMissionStatuses?.Any(s => s.missionType == BeginnerMissionV2Type &&
+                    s.missionId == definition.id && s.missionStatus is "achieved" or "received") == true) continue;
+            MarkMissionAchieved(BeginnerMissionV2Type, definition.id);
+            user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
+        }
+    }
+
     public UserResource[] ReceiveLiveMissionRewards(int[]? missionIds)
     {
         if (missionIds == null || missionIds.Length == 0 || missionIds.Any(id => id <= 0))

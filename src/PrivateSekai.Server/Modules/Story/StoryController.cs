@@ -1,6 +1,7 @@
 extern alias game;
 
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using PrivateSekai.Shared.Users;
@@ -28,11 +29,26 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
         }
         return Encoded(operations.Execute(userId, () =>
         {
+            var achievedBefore = (user.Data.userMissionStatuses ?? [])
+                .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
+                .Select(s => s.missionId).ToHashSet();
             var obtainedResources = story.CompleteStoryEpisode(storyType, episodeId);
+            var refresh = user.BuildRefresh(excludedFields: StoryRefreshDeleteTypes);
+            if (storyType == "unit_story" && refresh.userBeginnerMissionV2s != null)
+            {
+                var newlyAchieved = (user.Data.userMissionStatuses ?? [])
+                    .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus == "achieved" && !achievedBefore.Contains(s.missionId))
+                    .Select(s => s.missionId).ToHashSet();
+                refresh.userBeginnerMissionV2s = refresh.userBeginnerMissionV2s.Select(m => new UserBeginnerMissionV2
+                {
+                    beginnerMissionV2Id = m.beginnerMissionV2Id, progress = m.progress,
+                    isNewAchieved = newlyAchieved.Contains(m.beginnerMissionV2Id)
+                }).ToArray();
+            }
 
             return new UserStoryResponse
             {
-                updatedResources = user.BuildRefresh(excludedFields: StoryRefreshDeleteTypes),
+                updatedResources = refresh,
                 obtainedResources = obtainedResources
             };
         }));
