@@ -34,6 +34,13 @@ public sealed class PresentService(UserSession user, ResourceService resourceSer
         resourceService.Grant(BuildResourceFromPresent(present));
         user.MarkChanged(nameof(SuiteUser.userPresents));
 
+        // 两次官方练习券领取均返回重新计算的排序值及 30 天领取记录期限。
+        if (present.resourceType == "practice_ticket" && present.resourceLevel == 0)
+        {
+            present.seq = long.MaxValue - user.Now;
+            present.expiredAt = user.Now + 30L * 24 * 60 * 60 * 1000;
+        }
+
         user.Private.PresentHistories.Add(new UserPresentHistoryData
         {
             presentId = present.presentId,

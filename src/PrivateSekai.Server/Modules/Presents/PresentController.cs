@@ -2,6 +2,7 @@ extern alias game;
 
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
+using PrivateSekai.Models;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 
@@ -34,11 +35,11 @@ public sealed class PresentController(UserOperation operations, UserSession user
         {
             var received = presents.ReceivePresent(request.presentIds ?? []);
 
-            return new UserPresentReceiveResponse
+            return new PresentReceiptResponse(new UserPresentReceiveResponse
             {
                 updatedResources = user.BuildRefresh(),
                 receivedUserPresents = received
-            };
+            }, user.Now);
         }));
     }
 }
