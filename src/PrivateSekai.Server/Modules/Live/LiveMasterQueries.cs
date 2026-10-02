@@ -10,6 +10,18 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class LiveMasterQueries(MasterData master)
 {
+    public int GetFirstChallengeUnlockRank()
+    {
+        var behavior = master.GetTable<MasterOneTimeBehavior>("oneTimeBehaviors").Rows
+            .Single(b => b.oneTimeBehaviorType == "challenge_live_character_force_release");
+        var condition = master.GetTable<MasterReleaseCondition>("releaseConditions", c => c.id)
+            .FindById(behavior.releaseConditionId)
+            ?? throw new InvalidOperationException("Missing first challenge unlock condition.");
+        if (behavior.releaseConditionId2 != 0 || condition.releaseConditionType != "user_rank")
+            throw new NotSupportedException("Unsupported first challenge unlock condition.");
+        return condition.releaseConditionTypeLevel;
+    }
+
     public MasterChallengeLiveCharacter GetChallengeCharacter(int characterId) =>
         master.GetTable<MasterChallengeLiveCharacter>("challengeLiveCharacters").Rows
             .SingleOrDefault(c => c.characterId == characterId)

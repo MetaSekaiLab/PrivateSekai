@@ -17,6 +17,7 @@ internal static class UserResponseSerializer
             new IMessagePackFormatter[]
             {
                 new WithoutUserIdFormatter<UserCharacterMissionV2>(_ => true),
+                new WithoutUserIdFormatter<UserReleaseCondition>(_ => true),
                 new WithoutUserIdFormatter<UserMissionStatus>(s => s.missionType == "beginner_mission_v2")
             },
             new[] { DumpSerializer.Options.Resolver }));

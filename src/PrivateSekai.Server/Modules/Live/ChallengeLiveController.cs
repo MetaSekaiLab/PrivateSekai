@@ -11,6 +11,18 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class ChallengeLiveController(UserOperation operations, UserSession user, ChallengeLiveService challenges) : PrskController
 {
+    [HttpPost("api/user/{userId}/challenge-live-character/{characterId}")]
+    public IActionResult UnlockCharacter(long userId, int characterId)
+    {
+        var unlocked = false;
+        var response = operations.Execute(userId, () =>
+        {
+            unlocked = challenges.TryUnlockFirstCharacter(characterId);
+            return unlocked ? new UserChallengeLiveCharacterResponse { updatedResources = user.BuildRefresh() } : null;
+        });
+        return unlocked ? Encoded(response) : StatusCode(409);
+    }
+
     [HttpPut("api/user/{userId}/challenge-live-solo-deck/{characterId}")]
     public IActionResult SaveDeck(long userId, int characterId, [FromBody] UserChallengeLiveSoloDeck request) =>
         Encoded(operations.Execute(userId, () =>

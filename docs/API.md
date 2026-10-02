@@ -1955,6 +1955,18 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 
 因此服务端实现时不能只按路径判断业务；同一路径下 POST 和 PUT 是同一校验流程的前后两步，request/response 模型也完全不同。
 
+## POST `/api/user/{userId}/challenge-live-character/{characterId}`
+
+首次选择可参与挑战 Live 的角色。
+
+- Path：`userId`、`characterId`；无 query、无 body。
+- Response：`UserChallengeLiveCharacterResponse.updatedResources`，新增对应的 `userReleaseConditions` 和 `userOneTimeBehaviors`。释放条件只返回 `releaseConditionId`、`createdAt`；一次行为保留 `userId`、`oneTimeBehaviorType`。
+- `ScreenLayerChallengeLiveFinalConfirm.ConnectAPI` 在首次行为不存在且 `IsOrReleaseCondition` 成立时发送请求，成功后合并资源。首次资格由 `oneTimeBehaviors` 的 `challenge_live_character_force_release` 关联释放条件决定；当前 master 为玩家等级 5。
+- 成功样本新增所选角色 `challengeLiveCharacters.orReleaseConditionId`，记录当前创建时间和首次行为；不创建编队、成绩或挑战阶段。普通的队长使用次数条件是另一条解锁路径。
+- 官方重复请求同一角色返回 409，重新认证回读后条件和挑战数据不变。本地按相同状态码拒绝；错误正文尚未核验。
+
+首次成功样本的相关响应及状态差异已通过本地 HTTP 重放。其他角色、普通次数解锁与异常账号状态还需补充官方样本。
+
 ## PUT `/api/user/{userId}/challenge-live-solo-deck/{characterId}`
 
 保存指定角色的挑战编队。客户端与官方首次保存样本已核验。

@@ -9,6 +9,25 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class ChallengeLiveService(UserSession user, LiveMasterQueries master)
 {
+    public bool TryUnlockFirstCharacter(int characterId)
+    {
+        const string behaviorType = "challenge_live_character_force_release";
+        var character = master.GetChallengeCharacter(characterId);
+        var behaviors = (user.Data.userOneTimeBehaviors ?? []).ToList();
+        if (behaviors.Any(b => b.oneTimeBehaviorType == behaviorType) ||
+            (user.Data.userGamedata?.rank ?? 0) < master.GetFirstChallengeUnlockRank())
+            return false;
+        var conditions = (user.Data.userReleaseConditions ?? []).ToList();
+        if (conditions.Any(c => c.releaseConditionId == character.orReleaseConditionId))
+            return false;
+        conditions.Add(new UserReleaseCondition { userId = user.UserId, releaseConditionId = character.orReleaseConditionId, createdAt = user.Now });
+        behaviors.Add(new UserOneTimeBehavior { userId = user.UserId, oneTimeBehaviorType = behaviorType });
+        user.Data.userReleaseConditions = conditions.OrderBy(c => c.releaseConditionId).ToArray();
+        user.Data.userOneTimeBehaviors = behaviors.ToArray();
+        user.MarkChanged([nameof(SuiteUser.userReleaseConditions), nameof(SuiteUser.userOneTimeBehaviors)]);
+        return true;
+    }
+
     public UserChallengeLiveSoloDeck SaveDeck(int characterId, UserChallengeLiveSoloDeck request)
     {
         if (request.characterId != characterId)

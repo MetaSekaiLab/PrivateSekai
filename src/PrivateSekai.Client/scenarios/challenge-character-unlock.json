@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "challenge-character-unlock", "args": { "characterId": "1" } },
+    { "operation": "suite" }
+  ]
+}

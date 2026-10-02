@@ -11,6 +11,12 @@ internal static class ChallengeDeckHttpChecks
         File.WriteAllText(Path.Combine(directory, "challengeLiveCharacters.json"),
             """[{"id":1,"characterId":1,"releaseConditionId":90001,"orReleaseConditionId":90002}]""");
         File.WriteAllText(Path.Combine(directory, "challengeLiveDecks.json"), "[]");
+        File.WriteAllText(Path.Combine(directory, "oneTimeBehaviors.json"),
+            """[{"id":1,"oneTimeBehaviorType":"challenge_live_character_force_release","releaseConditionId":880005}]""");
+        var conditionsPath = Path.Combine(directory, "releaseConditions.json");
+        var conditions = JsonNode.Parse(File.ReadAllText(conditionsPath))!.AsArray();
+        conditions.Add(JsonNode.Parse("""{"id":880005,"releaseConditionType":"user_rank","releaseConditionTypeLevel":5}"""));
+        File.WriteAllText(conditionsPath, conditions.ToJsonString());
     }
 
     public static async Task Run(ProtocolClient client, TargetConfiguration config, MemoryUserStore store,
@@ -55,6 +61,42 @@ internal static class ChallengeDeckHttpChecks
         catch (ClientFailure) { lockedFailed = true; }
         check(lockedFailed && store.Read(1)!.Data.userChallengeLiveSoloDecks.Length == 2,
             "未解锁角色不能保存挑战编队");
+        state = store.Read(1)!;
+        state.Data.userOneTimeBehaviors = [];
+        state.Data.userGamedata.rank = 4;
+        store.Save(1, state);
+        using var unlock = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await unlock.Send(new() { Operation = "system" });
+        var unlockStep = new ScenarioStep { Operation = "challenge-character-unlock", Args = new() { ["characterId"] = "1" } };
+        var lowRankFailed = false;
+        try { await unlock.Send(unlockStep); }
+        catch (ClientFailure) { lowRankFailed = true; }
+        check(lowRankFailed && unlock.LastHttpStatus == 409 && store.Read(1)!.Data.userOneTimeBehaviors.Length == 0,
+            "首次挑战解锁要求 master 玩家等级，失败不产生一次行为");
+        state = store.Read(1)!;
+        state.Data.userGamedata.rank = 5;
+        store.Save(1, state);
+        using var eligible = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await eligible.Send(new() { Operation = "system" });
+        await ScenarioRunner.Run(eligible, new() { Steps = [unlockStep] }, Path.Combine(directory, "challenge-unlock"));
+        saved = store.Read(1)!.Data;
+        var createdAt = saved.userReleaseConditions.Single(c => c.releaseConditionId == 90002).createdAt;
+        check(createdAt > 0 && saved.userOneTimeBehaviors.Single().userId == 1 &&
+            saved.userOneTimeBehaviors.Single().oneTimeBehaviorType == "challenge_live_character_force_release",
+            "达到首次门槛后记录释放条件、时间和当前账号的一次行为");
+        response = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "challenge-unlock/001.json")))!["response"]!;
+        check(response["updatedResources"]!["userChallengeLiveSoloDecks"] == null &&
+            saved.userChallengeLiveSoloStages.Single().point == 20,
+            "首次解锁仅刷新条件和一次行为，不重建编队或阶段");
+        check(response["updatedResources"]!["userReleaseConditions"]![0]!["userId"] == null &&
+            saved.userReleaseConditions.Single(c => c.releaseConditionId == 90002).userId == 1,
+            "释放条件响应按官方省略用户字段，存储仍保留归属");
+        var repeatedFailed = false;
+        try { await eligible.Send(unlockStep); }
+        catch (ClientFailure) { repeatedFailed = true; }
+        check(repeatedFailed && eligible.LastHttpStatus == 409 &&
+            store.Read(1)!.Data.userReleaseConditions.Single(c => c.releaseConditionId == 90002).createdAt == createdAt,
+            "重复首次解锁返回 409，保留原创建时间");
         await client.Send(new() { Operation = "system" });
     }
 
