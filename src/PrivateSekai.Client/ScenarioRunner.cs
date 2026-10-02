@@ -19,6 +19,8 @@ public sealed class ScenarioRunner
         var previousOperation = "";
         foreach (var configured in scenario.Steps)
         {
+            if (configured.DelayBeforeMs is < 0 or > 600_000)
+                throw new InvalidOperationException("步骤等待时间须为 0 至 600000 毫秒。");
             var step = ResolveLiveSession(configured, liveId, challengeLiveId);
             if (!Operations.All.TryGetValue(step.Operation, out var definition))
                 throw new InvalidOperationException("未知操作；使用 list 查看支持的操作。");
@@ -64,6 +66,15 @@ public sealed class ScenarioRunner
             var path = Path.Combine(directory, $"{i + 1:D3}.json");
             try
             {
+                if (step.DelayBeforeMs > 0)
+                {
+                    capture["delayBeforeMs"] = step.DelayBeforeMs;
+                    capture["status"] = "waiting";
+                    JsonFiles.Write(path, capture);
+                    Console.WriteLine($"步骤 {i + 1}: 等待 {step.DelayBeforeMs} 毫秒。");
+                    await Task.Delay(step.DelayBeforeMs);
+                    capture["status"] = "started";
+                }
                 step = ResolveLiveSession(step, liveId, challengeLiveId);
                 if (definition.IsWrite && definition.Snapshot)
                     capture["before"] = client.Redactor.Clean(await client.Suite());
@@ -132,7 +143,7 @@ public sealed class ScenarioRunner
         var resolved = new ScenarioStep
         {
             Operation = step.Operation, Args = new(step.Args), Query = new(step.Query), QueryLists = new(step.QueryLists),
-            Body = step.Body?.DeepClone().AsObject(), Expect = step.Expect
+            Body = step.Body?.DeepClone().AsObject(), Expect = step.Expect, DelayBeforeMs = step.DelayBeforeMs
         };
         if (step.Operation is "live-clear" or "challenge-live-clear") resolved.Args[sessionKey] = sessionId;
         else if (resolved.Body != null) resolved.Body[sessionKey] = sessionId;

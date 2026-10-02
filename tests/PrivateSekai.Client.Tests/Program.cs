@@ -291,6 +291,8 @@ try
         "名片删除必须提供卡片 ID 列表");
     Fails(() => ScenarioRunner.Validate(new() { Steps = [new() { Operation = "live-clear", UseLiveSession = true, Body = new() }] },
         [config], new HashSet<string>()), "未开局不能引用 Live ID");
+    Fails(() => ScenarioRunner.Validate(new() { Steps = [new() { Operation = "suite", DelayBeforeMs = -1 }] },
+        [config], new HashSet<string>()), "拒绝负数等待，避免无限等待");
     Fails(() => ScenarioRunner.Validate(new() { Steps =
         [new() { Operation = "live-start", Body = new() }, new() { Operation = "challenge-live-clear", UseLiveSession = true, Body = new() }]
     }, [config], new HashSet<string>()), "普通 Live 会话不能用于挑战结算");

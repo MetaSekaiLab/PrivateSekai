@@ -26,7 +26,7 @@ internal static class LiveHttpChecks
         [
             new() { Operation = "system" },
             new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
-            new() { Operation = "live-clear", UseLiveSession = true,
+            new() { Operation = "live-clear", UseLiveSession = true, DelayBeforeMs = 1,
                 Body = JsonNode.Parse("""{"score":150,"perfectCount":10,"maxCombo":10,"life":1000,"ingameCutinCharacterArchiveVoiceGroupIds":[4]}""")!.AsObject(),
                 Expect = new() { ["/fullPerfectFlg"] = JsonValue.Create(true), ["/score"] = JsonValue.Create(150) } },
             new() { Operation = "live-voice", UseLiveSession = true,
@@ -68,6 +68,8 @@ internal static class LiveHttpChecks
             var voice = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, name, "004.json")))!;
             check(clear["response"]!["scoreRank"]!.GetValue<string>() == "rank_c",
                 "结算响应包含 master 阈值计算的评分");
+            check(clear["delayBeforeMs"]!.GetValue<int>() == 1 && clear["status"]!.GetValue<string>() == "completed",
+                "等待后的步骤保留会话引用并记录完成状态");
             check(clear["args"]!["userLiveId"]!.GetValue<string>() == id && voice["request"]!["userLiveId"]!.GetValue<string>() == id,
                 "路径及 body 均引用当前客户端开局响应");
         }
