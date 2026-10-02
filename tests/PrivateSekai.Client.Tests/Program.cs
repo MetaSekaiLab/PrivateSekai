@@ -62,6 +62,8 @@ if (args is ["--replay-story", _, var storyMaster, _])
     StoryReplay.ImportMaster(storyMaster, directory);
 if (args is ["--replay-area-shop", _, var areaMaster, _])
     AreaShopReplay.ImportMaster(areaMaster, directory);
+if (args is ["--replay-live", _, _, var liveMaster, _])
+    LiveReplay.ImportMaster(liveMaster, directory);
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Loopback, 0));
@@ -90,6 +92,8 @@ if (args is ["--replay-story", var storyCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(StoryReplay.Clock(storyCapture));
 if (args is ["--replay-area-shop", var areaCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(AreaShopReplay.Clock(areaCapture));
+if (args is ["--replay-live", _, var liveCapture, _, _])
+    builder.Services.AddSingleton<TimeProvider>(LiveReplay.Clock(liveCapture));
 builder.Services.AddControllers().AddApplicationPart(typeof(DeckController).Assembly)
     .ConfigureApplicationPartManager(manager => manager.FeatureProviders.Add(new TestedControllers()));
 await using var app = builder.Build();
@@ -168,6 +172,11 @@ try
     if (args is ["--replay-area-shop", var areaPath, _, var areaOutput])
     {
         await AreaShopReplay.Run(client, store, areaPath, areaOutput);
+        return;
+    }
+    if (args is ["--replay-live", var liveStartPath, var liveClearPath, _, var liveOutput])
+    {
+        await LiveReplay.Run(client, store, liveStartPath, liveClearPath, liveOutput);
         return;
     }
     if (args is ["--replay-story", var storyPath, _, var storyOutput])
