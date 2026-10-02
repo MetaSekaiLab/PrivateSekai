@@ -56,7 +56,7 @@ public sealed class LiveService(
         user.MarkChanged(nameof(SuiteUser.userEventBreakTime));
         user.Private.UserLiveSessions.Remove(userLiveId, out var session);
 
-        var fullCombo = request.badCount == 0 && request.missCount == 0;
+        var fullCombo = request.goodCount == 0 && request.badCount == 0 && request.missCount == 0;
         var fullPerfect = request.greatCount == 0 &&
                           request.goodCount == 0 &&
                           request.badCount == 0 &&

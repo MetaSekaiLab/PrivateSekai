@@ -1,0 +1,25 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    {
+      "operation": "live-start",
+      "body": {
+        "musicId": 1, "musicDifficultyId": 1, "musicVocalId": 1,
+        "deckId": 1, "boostCount": 0, "isAuto": false,
+        "musicCategoryName": "mv", "customMusicScoreId": null
+      }
+    },
+    {
+      "operation": "live-clear", "useLiveSession": true, "delayBeforeMs": 120000,
+      "body": {
+        "score": 100000, "perfectCount": 210, "greatCount": 0,
+        "goodCount": 10, "badCount": 0, "missCount": 0,
+        "maxCombo": 210, "life": 1000, "tapCount": 220,
+        "musicCategoryName": "mv", "isMirrored": false,
+        "ingameCutinCharacterArchiveVoiceGroupIds": []
+      },
+      "expect": { "/fullComboFlg": false, "/fullPerfectFlg": false }
+    },
+    { "operation": "suite" }
+  ]
+}

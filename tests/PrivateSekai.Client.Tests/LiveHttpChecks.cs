@@ -77,5 +77,25 @@ internal static class LiveHttpChecks
             "重复运行不把第一端会话 ID 写回场景");
         // 测试 HTTP 服务使用单条 token 链，恢复第一客户端的链后继续其他检查。
         await client.Send(new() { Operation = "system" });
+        var judgments = new Scenario { Steps =
+        [
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-clear", UseLiveSession = true,
+                Body = JsonNode.Parse("""{"score":150,"perfectCount":8,"goodCount":2,"maxCombo":8,"life":1000}""")!.AsObject() },
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-clear", UseLiveSession = true,
+                Body = JsonNode.Parse("""{"score":150,"perfectCount":8,"greatCount":2,"maxCombo":10,"life":1000}""")!.AsObject() }
+        ] };
+        var judgmentDirectory = Path.Combine(directory, "live-judgments");
+        await ScenarioRunner.Run(client, judgments, judgmentDirectory);
+        var good = JsonNode.Parse(File.ReadAllText(Path.Combine(judgmentDirectory, "002.json")))!["response"]!;
+        var great = JsonNode.Parse(File.ReadAllText(Path.Combine(judgmentDirectory, "004.json")))!["response"]!;
+        check(!good["fullComboFlg"]!.GetValue<bool>() && !good["fullPerfectFlg"]!.GetValue<bool>(),
+            "含 GOOD 且没有 BAD/MISS 的结算不算全连");
+        check(great["fullComboFlg"]!.GetValue<bool>() && !great["fullPerfectFlg"]!.GetValue<bool>(),
+            "GREAT 保留全连但不算 AP");
+        check(store.Read(1)!.Data.userMusicResults.Single().playResult == "full_perfect" &&
+            good["updatedResources"]?["userMusicResults"] == null && great["updatedResources"]?["userMusicResults"] == null,
+            "当前局判定不会降低历史 AP，也不重复刷新未变成绩");
     }
 }
