@@ -9,6 +9,10 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public MasterBeginnerMissionV2[] GetCardStoryMissions() =>
+        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
+            .Where(m => m.beginnerMissionV2Type == "read_both_of_card_story").ToArray();
+
     public MasterCharacterMissionV2[] GetCardEpisodeMissions(int episodeId)
     {
         var episode = master.GetTable<MasterCardEpisode>("cardEpisodes", e => e.id).FindById(episodeId);

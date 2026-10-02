@@ -69,6 +69,8 @@ public sealed class MissionService(
 
     public void RecordAreaItemPurchase() => RecordBeginnerMissionProgress(master.GetAreaItemPurchaseMissions());
 
+    public void RecordCardStoryRead() => RecordBeginnerMissionProgress(master.GetCardStoryMissions());
+
     public void RecordUnitStoryRead(string? unit) => RecordBeginnerMissionProgress(master.GetUnitStoryMissions(unit));
 
     public void RecordCardPracticeLevelUp(int levels) => RecordBeginnerMissionProgress(master.GetCardLevelMissions(), levels);

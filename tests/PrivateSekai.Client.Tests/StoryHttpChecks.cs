@@ -54,6 +54,8 @@ internal static class StoryHttpChecks
         var output = Path.Combine(directory, "story");
         await ScenarioRunner.Run(client, scenario, output);
         var saved = store.Read(1)!.Data;
+        check(saved.userBeginnerMissionV2s.All(m => m.beginnerMissionV2Id != 7),
+            "只读前篇不推进前后篇新手任务");
         var repeatedCard = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "003.json")))!;
         check(repeatedCard["httpStatus"]!.GetValue<int>() == 204 && repeatedCard["response"]!.AsObject().Count == 0,
             "重复阅读卡牌剧情返回 204 并继续使用下一枚会话凭证");
@@ -124,6 +126,13 @@ internal static class StoryHttpChecks
             saved.userCharacterMissionStatuses.Single(s => s.missionId == 1007).missionStatus == "achieved",
             "后篇角色任务独立累计且重复阅读不重复推进");
         var secondRepeat = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "second-part/002.json")))!;
+        check(saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 7).progress == 1 &&
+            !saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 7).isNewAchieved,
+            "前后篇全部已读时推进任务，重复阅读不增加进度且不持久化首次达成标志");
+        var secondFirst = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "second-part/001.json")))!;
+        check(secondFirst["response"]!["updatedResources"]!["userBeginnerMissionV2s"]!.AsArray()
+            .Single(m => m!["beginnerMissionV2Id"]!.GetValue<int>() == 7)!["isNewAchieved"]!.GetValue<bool>(),
+            "前后篇任务首次达成仅在当次响应标记");
         check(secondRepeat["httpStatus"]!.GetValue<int>() == 204 && secondRepeat["response"]!.AsObject().Count == 0,
             "已读后篇返回 204 空响应");
         state = store.Read(1)!;

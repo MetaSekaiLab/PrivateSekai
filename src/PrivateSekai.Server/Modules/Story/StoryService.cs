@@ -256,6 +256,8 @@ public sealed class StoryService(
             "jewel" or "coin" or "virtual_coin" or "material" or "practice_ticket" or "costume_3d"));
 
         missions.RecordCardEpisodeRead(cardEpisodeId);
+        var pair = master.GetCardEpisodePairIds(cardEpisodeId);
+        if (pair.Length == 2 && pair.All(IsCardEpisodeRead)) missions.RecordCardStoryRead();
 
         return rewards;
     }

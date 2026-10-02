@@ -39,7 +39,7 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
                 .Select(s => (s.missionId, s.parameterGroupId, s.seq, s.characterId)).ToHashSet();
             var obtainedResources = story.CompleteStoryEpisode(storyType, episodeId);
             var refresh = user.BuildRefresh(excludedFields: StoryRefreshDeleteTypes);
-            if (storyType == "unit_story" && refresh.userBeginnerMissionV2s != null)
+            if (storyType is "unit_story" or "card_story" && refresh.userBeginnerMissionV2s != null)
             {
                 var newlyAchieved = (user.Data.userMissionStatuses ?? [])
                     .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus == "achieved" && !achievedBefore.Contains(s.missionId))

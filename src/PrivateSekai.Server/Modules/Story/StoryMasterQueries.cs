@@ -9,6 +9,17 @@ namespace PrivateSekai.Modules.Story;
 
 public sealed class StoryMasterQueries(MasterData master)
 {
+    public int[] GetCardEpisodePairIds(int episodeId)
+    {
+        var episode = GetMasterCardEpisode(episodeId);
+        if (episode == null) return [];
+        var parts = master.GetTable<MasterCardEpisode>("cardEpisodes", e => e.id).Rows
+            .Where(e => e.cardId == episode.cardId).ToArray();
+        var first = parts.SingleOrDefault(e => e.cardEpisodePartType == "first_part");
+        var second = parts.SingleOrDefault(e => e.cardEpisodePartType == "second_part");
+        return first == null || second == null ? [] : [first.id, second.id];
+    }
+
     public int[] GetFollowingCardEpisodeIds(int episodeId)
     {
         var episode = GetMasterCardEpisode(episodeId);
