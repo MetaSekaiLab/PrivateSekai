@@ -9,6 +9,15 @@ namespace PrivateSekai.Modules.Story;
 
 public sealed class StoryMasterQueries(MasterData master)
 {
+    public int[] GetFollowingCardEpisodeIds(int episodeId)
+    {
+        var episode = GetMasterCardEpisode(episodeId);
+        return episode?.cardEpisodePartType != "first_part" ? [] :
+            master.GetTable<MasterCardEpisode>("cardEpisodes", e => e.id).Rows
+                .Where(e => e.cardId == episode.cardId && e.cardEpisodePartType == "second_part")
+                .Select(e => e.id).ToArray();
+    }
+
     public bool IsCardEpisodeLevelMet(int episodeId, int cardId, int level)
     {
         var episode = GetMasterCardEpisode(episodeId);

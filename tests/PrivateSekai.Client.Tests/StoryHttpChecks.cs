@@ -10,7 +10,7 @@ internal static class StoryHttpChecks
         File.WriteAllText(Path.Combine(directory, "releaseConditions.json"),
             """[{"id":700,"releaseConditionType":"card_level","releaseConditionTypeId":1,"releaseConditionTypeLevel":3}]""");
         File.WriteAllText(Path.Combine(directory, "cardEpisodes.json"),
-            """[{"id":51,"cardId":1,"costs":[{"resourceType":"material","resourceId":1,"quantity":2}],"rewardResourceBoxIds":[51]},{"id":52,"cardId":1,"releaseConditionId":700}]""");
+            """[{"id":51,"cardId":1,"cardEpisodePartType":"first_part","costs":[{"resourceType":"material","resourceId":1,"quantity":2}],"rewardResourceBoxIds":[51]},{"id":52,"cardId":1,"cardEpisodePartType":"second_part","releaseConditionId":700}]""");
         File.WriteAllText(Path.Combine(directory, "unitStories.json"),
             """[{"chapters":[{"episodes":[{"id":61,"rewardResourceBoxIds":[51]}]}]}]""");
         File.WriteAllText(Path.Combine(directory, "specialStories.json"),
@@ -28,6 +28,11 @@ internal static class StoryHttpChecks
         state.Data.userGamedata.coin = 0;
         state.Data.userMaterials = [new() { materialId = 1, quantity = 10 }];
         state.Data.userCards = [new() { cardId = 1, episodes = [new() { cardEpisodeId = 51, scenarioStatus = "unreleased" }] }];
+        state.Data.userCards[0].episodes = [.. state.Data.userCards[0].episodes, new()
+        {
+            cardEpisodeId = 52, scenarioStatus = "can_not_read",
+            scenarioStatusReasons = ["unread_before_scenario", "not_enough_release_condition"]
+        }];
         store.Save(1, state);
         var release = Step("story-release", """{"cardEpisodeReleaseCostType":"common_material"}""");
         release.Expect["/consumedResources/0/quantity"] = JsonValue.Create(2);
@@ -48,7 +53,11 @@ internal static class StoryHttpChecks
         var saved = store.Read(1)!.Data;
         check(saved.userMaterials.Single().quantity == 8 && saved.userGamedata.coin == 7,
             "剧情解锁扣除材料，阅读奖励只领取一次");
-        var episode = saved.userCards.Single().episodes.Single();
+        var episode = saved.userCards.Single().episodes.Single(e => e.cardEpisodeId == 51);
+        var following = saved.userCards.Single().episodes.Single(e => e.cardEpisodeId == 52);
+        check(following.scenarioStatus == "can_not_read" &&
+            following.scenarioStatusReasons.SequenceEqual(["not_enough_release_condition"]),
+            "阅读前篇后移除前篇限制，保留未达标的等级条件");
         check(episode.scenarioStatus == "already_read" && episode.isNotSkipped,
             "剧情日志通过真实 HTTP 保存未跳过状态");
         var cost = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "001.json")))!;
@@ -74,6 +83,15 @@ internal static class StoryHttpChecks
         check(store.Read(1)!.Data.userGamedata.coin == 7 && store.Read(1)!.Data.userMaterials.Single().quantity == 8,
             "已读剧情重复解锁再阅读不重复扣材或发奖");
         state = store.Read(1)!;
+        state.Data.userCards[0].episodes[0].scenarioStatus = "released";
+        state.Data.userCards[0].episodes[1].scenarioStatusReasons = ["unread_before_scenario"];
+        store.Save(1, state);
+        await ScenarioRunner.Run(client, new() { Steps = [read] }, Path.Combine(output, "read-after-level"));
+        following = store.Read(1)!.Data.userCards.Single().episodes.Single(e => e.cardEpisodeId == 52);
+        check(following.scenarioStatus == "unreleased" && following.scenarioStatusReasons.Length == 0,
+            "已满足等级条件时阅读前篇使后篇可解锁");
+        state = store.Read(1)!;
+        state.Data.userGamedata.coin = 7;
         state.Data.userUnitEpisodeStatuses = [new() { episodeId = 61, status = "released" }];
         state.Data.userSpecialEpisodeStatuses = [new() { episodeId = 62, status = "released" }];
         store.Save(1, state);

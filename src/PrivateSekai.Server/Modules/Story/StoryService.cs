@@ -221,7 +221,18 @@ public sealed class StoryService(
         episode.scenarioStatusReasons = [];
         episode.isNotSkipped = isNotSkipped;
         if (changed)
+        {
+            foreach (var followingId in master.GetFollowingCardEpisodeIds(cardEpisodeId))
+            {
+                var following = FindCardEpisode(followingId);
+                if (following?.scenarioStatus != "can_not_read" ||
+                    following.scenarioStatusReasons?.Contains("unread_before_scenario") != true) continue;
+                following.scenarioStatusReasons = following.scenarioStatusReasons
+                    .Where(r => r != "unread_before_scenario").ToArray();
+                if (following.scenarioStatusReasons.Length == 0) following.scenarioStatus = "unreleased";
+            }
             user.MarkChanged(nameof(SuiteUser.userCards));
+        }
     }
 
     private UserResource[] CompleteCardEpisode(int cardEpisodeId, bool isNotSkipped)
