@@ -1983,6 +1983,28 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 
 需补样本：多卡编队、支援位等级边界及无效编队的官方错误正文。本地校验不代表这些错误响应已与官方一致。
 
+## POST `/api/user/{userId}/challenge-live/solo`
+
+挑战 Live 开局。`PostUserChallengeLiveAPI.Execute` 发送请求，成功回调合并资源，确认页使用返回会话和技能数据进入演出。
+
+- Path：`userId`；无 query。
+- Body：`UserChallengeLiveStartRequest`，包含 `characterId`、`musicId`、`musicDifficultyId`、`musicVocalId`、可空卡牌 ID `leader`／`support1`～`support4`、`musicCategoryName`、`isAuto`。
+- Response：`userChallengeLiveId` 为后续结算会话；`skills` 为技能顺序；`updatedResources` 更新挑战状态。
+- 首次单卡样本新增参与状态：`liveStatus=start`、`playCount=0`、`isAuto=false`、`playStartAt`，省略 `playEndAt`；未新增成绩或阶段。返回两项技能，均为该领队卡，seq 为 1、2。多卡技能顺序仍待核验。
+- `ChallengeLiveUtility.GetRemainingCount` 从 master 的参与额度减去所有角色状态的 `playCount` 合计，最小为零。额度不能按每个角色独立计算；日界线和未结算重开行为仍待官方样本。
+
+## PUT `/api/user/{userId}/challenge-live/solo/{userChallengeLiveId}`
+
+挑战 Live 结算。`PutUserChallengeLiveAPI` 提交结果并合并 `updatedResources`，结果页展示评分、经验、挑战阶段、高分及出勤奖励。
+
+- Path：`userId`、开局返回的 `userChallengeLiveId`；无 query。
+- Body：`score`、各判定计数、`maxCombo`、`life`、`tapCount`、`continueCount`、`musicCategoryName`、`isMirrored`。模型中的 fast／late／flick 计数标记为 IgnoreMember，不发送。
+- 主要响应：`scoreRank`、成绩标志、玩家／卡牌经验、`userChallengeLiveStageResult`、`userChallengeLiveHighScoreResult`、各类奖励和出勤状态。成功样本的参与状态更新为 `cleared`、`playCount=1`，新增 `playEndAt`。
+- 评分使用 `playLevelScores.liveType=challenge_live`，不能复用普通 solo 阈值。
+- `ChallengeLiveUtility` 按各阶段所需点数累加和定位当前阶段，达到门槛即进入下一阶段。普通阶段样本验证了跨级和剩余点数；EX 阶段仍需独立核验。
+
+当前结算样本使用模拟输入。点数取整、经验计算、奖励抽取、跨日和自动挑战尚未核验完整，不能把单次返回值用作固定公式。
+
 ## POST `/api/user/{userId}/challenge-live/receive-select-reward/{resourceId}`
 
 领取挑战 Live 的可选出勤奖励。以下来自客户端静态审计，尚无官方成功领奖样本。
