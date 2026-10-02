@@ -9,13 +9,19 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
-    public MasterCharacterMissionV2[] GetCardFirstEpisodeMissions(int episodeId)
+    public MasterCharacterMissionV2[] GetCardEpisodeMissions(int episodeId)
     {
         var episode = master.GetTable<MasterCardEpisode>("cardEpisodes", e => e.id).FindById(episodeId);
-        if (episode?.cardEpisodePartType != "first_part") return [];
-        var card = master.GetTable<MasterCard>("cards", c => c.id).FindById(episode.cardId);
+        var type = episode?.cardEpisodePartType switch
+        {
+            "first_part" => "read_card_episode_first",
+            "second_part" => "read_card_episode_second",
+            _ => null
+        };
+        if (type == null) return [];
+        var card = master.GetTable<MasterCard>("cards", c => c.id).FindById(episode!.cardId);
         return card == null ? [] : master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
-            .Where(m => m.characterId == card.characterId && m.characterMissionType == "read_card_episode_first").ToArray();
+            .Where(m => m.characterId == card.characterId && m.characterMissionType == type).ToArray();
     }
 
     public MasterBeginnerMissionV2[] GetCardLevelMissions() =>

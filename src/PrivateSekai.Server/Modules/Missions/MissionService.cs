@@ -21,8 +21,8 @@ public sealed class MissionService(
     public UserCharacterMissionV2Status[] RecordAreaItemUpgrade(int areaItemId) =>
         RecordCharacterMissionProgress(master.GetAreaItemCharacterMissions(areaItemId));
 
-    public void RecordCardFirstEpisodeRead(int episodeId) =>
-        RecordCharacterMissionProgress(master.GetCardFirstEpisodeMissions(episodeId));
+    public void RecordCardEpisodeRead(int episodeId) =>
+        RecordCharacterMissionProgress(master.GetCardEpisodeMissions(episodeId));
 
     private UserCharacterMissionV2Status[] RecordCharacterMissionProgress(IEnumerable<MasterCharacterMissionV2> definitions)
     {

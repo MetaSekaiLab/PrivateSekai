@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "story-release", "args": { "storyType": "card_story", "episodeId": "2" }, "body": { "cardEpisodeReleaseCostType": "common_material" } },
+    { "operation": "story-read", "args": { "storyType": "card_story", "episodeId": "2" } },
+    { "operation": "story-read", "args": { "storyType": "card_story", "episodeId": "2" } },
+    { "operation": "suite" }
+  ]
+}

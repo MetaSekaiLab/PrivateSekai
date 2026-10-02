@@ -8,9 +8,9 @@ internal static class StoryHttpChecks
     {
         // 隔离测试数值，不用于官方场景。
         File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"),
-            """[{"id":1006,"characterId":1,"characterMissionType":"read_card_episode_first","parameterGroupId":6}]""");
+            """[{"id":1006,"characterId":1,"characterMissionType":"read_card_episode_first","parameterGroupId":6},{"id":1007,"characterId":1,"characterMissionType":"read_card_episode_second","parameterGroupId":7}]""");
         File.WriteAllText(Path.Combine(directory, "characterMissionV2ParameterGroups.json"),
-            """[{"id":6,"seq":1,"requirement":1}]""");
+            """[{"id":6,"seq":1,"requirement":1},{"id":7,"seq":1,"requirement":1}]""");
         File.WriteAllText(Path.Combine(directory, "releaseConditions.json"),
             """[{"id":700,"releaseConditionType":"card_level","releaseConditionTypeId":1,"releaseConditionTypeLevel":3}]""");
         File.WriteAllText(Path.Combine(directory, "cardEpisodes.json"),
@@ -43,7 +43,6 @@ internal static class StoryHttpChecks
         var read = Step("story-read");
         read.Expect["/obtainedResources/0/quantity"] = JsonValue.Create(7);
         var repeat = Step("story-read");
-        repeat.Expect["/obtainedResources"] = new JsonArray();
         var scenario = new Scenario { Steps =
         [
             release, read, repeat,
@@ -55,6 +54,9 @@ internal static class StoryHttpChecks
         var output = Path.Combine(directory, "story");
         await ScenarioRunner.Run(client, scenario, output);
         var saved = store.Read(1)!.Data;
+        var repeatedCard = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "003.json")))!;
+        check(repeatedCard["httpStatus"]!.GetValue<int>() == 204 && repeatedCard["response"]!.AsObject().Count == 0,
+            "重复阅读卡牌剧情返回 204 并继续使用下一枚会话凭证");
         check(saved.userCharacterMissions.Single(m => m.characterMissionType == "read_card_episode_first").progress == 1 &&
             saved.userCharacterMissionStatuses.Single(s => s.missionId == 1006).missionStatus == "achieved",
             "首次读前篇累计角色任务，重复阅读与日志不重复累计");
@@ -109,6 +111,21 @@ internal static class StoryHttpChecks
         following = store.Read(1)!.Data.userCards.Single().episodes.Single(e => e.cardEpisodeId == 52);
         check(following.scenarioStatus == "unreleased" && following.scenarioStatusReasons.Length == 0,
             "已满足等级条件时阅读前篇使后篇可解锁");
+        state = store.Read(1)!;
+        state.Data.userCards[0].episodes[1].scenarioStatus = "released";
+        store.Save(1, state);
+        var secondRead = new ScenarioStep
+        {
+            Operation = "story-read", Args = new() { ["storyType"] = "card_story", ["episodeId"] = "52" }
+        };
+        await ScenarioRunner.Run(client, new() { Steps = [secondRead, secondRead] }, Path.Combine(output, "second-part"));
+        saved = store.Read(1)!.Data;
+        check(saved.userCharacterMissions.Single(m => m.characterMissionType == "read_card_episode_second").progress == 1 &&
+            saved.userCharacterMissionStatuses.Single(s => s.missionId == 1007).missionStatus == "achieved",
+            "后篇角色任务独立累计且重复阅读不重复推进");
+        var secondRepeat = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "second-part/002.json")))!;
+        check(secondRepeat["httpStatus"]!.GetValue<int>() == 204 && secondRepeat["response"]!.AsObject().Count == 0,
+            "已读后篇返回 204 空响应");
         state = store.Read(1)!;
         state.Data.userGamedata.coin = 7;
         state.Data.userUnitEpisodeStatuses = [new() { episodeId = 61, status = "released" }];

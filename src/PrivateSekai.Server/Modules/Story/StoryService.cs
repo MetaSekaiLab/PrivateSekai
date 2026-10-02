@@ -25,6 +25,8 @@ public sealed class StoryService(
     public bool IsUnitEpisodeRead(int episodeId) =>
         user.Data.userUnitEpisodeStatuses?.Any(s => s.episodeId == episodeId && s.status == "already_read") == true;
 
+    public bool IsCardEpisodeRead(int episodeId) => FindCardEpisode(episodeId)?.scenarioStatus == "already_read";
+
     public void RefreshCardLevelConditions(int cardId)
     {
         var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId);
@@ -253,7 +255,7 @@ public sealed class StoryService(
         resourceService.Grant(rewards.Where(r => r.resourceType is
             "jewel" or "coin" or "virtual_coin" or "material" or "practice_ticket" or "costume_3d"));
 
-        missions.RecordCardFirstEpisodeRead(cardEpisodeId);
+        missions.RecordCardEpisodeRead(cardEpisodeId);
 
         return rewards;
     }
