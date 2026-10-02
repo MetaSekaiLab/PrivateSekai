@@ -66,6 +66,8 @@ internal static class LiveHttpChecks
         {
             var clear = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, name, "003.json")))!;
             var voice = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, name, "004.json")))!;
+            check(clear["response"]!["scoreRank"]!.GetValue<string>() == "rank_c",
+                "结算响应包含 master 阈值计算的评分");
             check(clear["args"]!["userLiveId"]!.GetValue<string>() == id && voice["request"]!["userLiveId"]!.GetValue<string>() == id,
                 "路径及 body 均引用当前客户端开局响应");
         }

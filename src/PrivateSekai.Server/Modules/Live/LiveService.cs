@@ -49,7 +49,7 @@ public sealed class LiveService(
         };
     }
 
-    public UserLiveClearResponse ClearUserLive(string userLiveId, UserLiveClearRequest request)
+    public LiveClearResponse ClearUserLive(string userLiveId, UserLiveClearRequest request)
     {
         user.MarkChanged(nameof(SuiteUser.userEventBreakTime));
         user.Private.UserLiveSessions.Remove(userLiveId, out var session);
@@ -85,8 +85,9 @@ public sealed class LiveService(
 
         MergeLiveCharacterArchiveVoiceGroups(request.ingameCutinCharacterArchiveVoiceGroupIds);
 
-        return new UserLiveClearResponse
+        return new LiveClearResponse
         {
+            ScoreRank = scoreRank,
             score = request.score,
             perfectCount = request.perfectCount,
             greatCount = request.greatCount,
@@ -142,7 +143,7 @@ public sealed class LiveService(
             string.Equals(r.musicDifficultyType, difficultyType, StringComparison.Ordinal));
 
         var previousHighScore = result?.highScore ?? 0;
-        var highScoreFlg = request.score > previousHighScore;
+        var highScoreFlg = result == null || request.score > previousHighScore;
 
         if (result == null)
         {
