@@ -32,7 +32,9 @@ public sealed class LiveMasterQueries(MasterData master)
 
     public int GetChallengeCardLimit(int characterId, int characterRank)
     {
-        var limit = 1;
+        var limit = int.Parse(master.GetTable<MasterConfig>("configs").Rows
+            .Single(c => c.configKey == "default_challenge_live_deck_limit").value,
+            System.Globalization.CultureInfo.InvariantCulture);
         foreach (var deck in master.GetTable<MasterChallengeLiveDeck>("challengeLiveDecks").Rows
                      .Where(d => d.characterId == characterId))
         {

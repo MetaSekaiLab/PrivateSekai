@@ -11,6 +11,10 @@ internal static class ChallengeDeckHttpChecks
         File.WriteAllText(Path.Combine(directory, "challengeLiveCharacters.json"),
             """[{"id":1,"characterId":1,"releaseConditionId":90001,"orReleaseConditionId":90002}]""");
         File.WriteAllText(Path.Combine(directory, "challengeLiveDecks.json"), "[]");
+        var configsPath = Path.Combine(directory, "configs.json");
+        var configs = JsonNode.Parse(File.ReadAllText(configsPath))!.AsArray();
+        configs.Add(JsonNode.Parse("""{"configKey":"default_challenge_live_deck_limit","value":"1"}"""));
+        JsonFiles.Write(configsPath, configs);
         File.WriteAllText(Path.Combine(directory, "oneTimeBehaviors.json"),
             """[{"id":1,"oneTimeBehaviorType":"challenge_live_character_force_release","releaseConditionId":880005}]""");
         var conditionsPath = Path.Combine(directory, "releaseConditions.json");

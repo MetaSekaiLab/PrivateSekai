@@ -14,7 +14,7 @@ internal static class ChallengeDeckReplay
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "cards", "challengeLiveCharacters", "challengeLiveDecks", "releaseConditions", "oneTimeBehaviors" })
+        foreach (var table in new[] { "cards", "challengeLiveCharacters", "challengeLiveDecks", "releaseConditions", "oneTimeBehaviors", "configs" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
