@@ -6,6 +6,7 @@ using System.Linq;
 using game::Sekai;
 using game::Sekai.ApiData;
 using PrivateSekai.Models;
+using PrivateSekai.Modules.Cards;
 using PrivateSekai.Modules.Inventory;
 using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Resources;
@@ -18,6 +19,7 @@ public sealed class LiveService(
     LiveMasterQueries master,
     MissionMasterQueries missionMaster,
     MissionService missions,
+    CardService cards,
     ResourceMasterQueries resourceMaster,
     ResourceService resources)
 {
@@ -70,10 +72,31 @@ public sealed class LiveService(
         UserMusicAchievement[] grantedMusicAchievements = [];
         UserResource[] scoreRankRewards = [];
         UserResource[] musicAchievementRewards = [];
+        var userExpResult = BuildNoopExpResult();
+        UserResource[] playerRankRewards = [];
         if (session != null)
         {
             highScoreFlg = UpdateUserMusicResult(session, request, fullCombo, fullPerfect);
             deckCardExpResults = BuildDeckCardExpResults(session.DeckId);
+            // 普通非 Auto 的 D、C 评分已有官方经验样本，其他分支仍待核验。
+            var baseExp = !session.IsAuto ? scoreRank switch
+            {
+                "rank_d" => 20,
+                "rank_c" when request.life > 0 => 200,
+                _ => 0
+            } : 0;
+            if (baseExp > 0 && boost.expRate > 0)
+            {
+                var addedExp = checked(baseExp * boost.expRate);
+                (userExpResult, playerRankRewards) = GainPlayerExperience(addedExp);
+                var deck = GetUserDeck(session.DeckId) ?? throw new ArgumentException("Live deck is missing.");
+                var members = new[] { deck.member1, deck.member2, deck.member3, deck.member4, deck.member5 };
+                deckCardExpResults = members.Select((id, index) => (id, index)).Where(slot => slot.id > 0)
+                    .Select(slot => new DeckCardUpdateExpResult
+                    {
+                        index = slot.index + 1, expResult = cards.GainExperience(slot.id, checked(addedExp * 3))
+                    }).ToArray();
+            }
             grantedMusicAchievements = GrantUserMusicAchievements(session, request, scoreRank);
             scoreRankRewards = BuildScoreRankRewards(session.MusicDifficultyId, scoreRank, boost);
             musicAchievementRewards = BuildMusicAchievementRewards(grantedMusicAchievements);
@@ -98,12 +121,12 @@ public sealed class LiveService(
             highScoreFlg = highScoreFlg,
             fullComboFlg = fullCombo,
             fullPerfectFlg = fullPerfect,
-            userExpResult = BuildNoopExpResult(),
+            userExpResult = userExpResult,
             deckCardExpResults = deckCardExpResults,
             unitExpResults = [],
             userDeck = GetUserDeck(session?.DeckId),
             scoreRankRewards = scoreRankRewards,
-            playerRankRewards = [],
+            playerRankRewards = playerRankRewards,
             limitedTermScoreRankRewards = [],
             boost = boost,
             beforeEventPoint = 0,
@@ -338,6 +361,42 @@ public sealed class LiveService(
                 };
             })
             .ToArray();
+    }
+
+    private (UpdateExpResult Result, UserResource[] Rewards) GainPlayerExperience(int addedExp)
+    {
+        var result = BuildNoopExpResult();
+        var data = user.Data.userGamedata ?? throw new InvalidOperationException("Player data is missing.");
+        var levels = master.GetUserLevels();
+        if (levels.Length == 0) throw new InvalidOperationException("Player levels are missing.");
+        var total = checked(data.totalExp + addedExp);
+        if (total >= levels[^1].totalExp)
+            throw new NotSupportedException("Maximum player rank experience is not verified.");
+        var level = levels.Last(l => l.totalExp <= total);
+        data.totalExp = total;
+        data.rank = level.level;
+        data.exp = total - level.totalExp;
+        result.afterTotalExp = total;
+        result.afterLevel = data.rank;
+        result.afterExp = data.exp;
+        user.MarkChanged(nameof(SuiteUser.userGamedata));
+        var rewards = new List<UserResource>();
+        if (data.rank > result.beforeLevel)
+        {
+            foreach (var reward in master.GetPlayerRankRewards(result.beforeLevel, data.rank))
+            {
+                var granted = resourceMaster.BuildResourcesFromBox("player_rank_reward", reward.resourceBoxId);
+                resources.Grant(granted);
+                rewards.AddRange(granted);
+            }
+            if (user.Data.userBoost is { } boost)
+            {
+                boost.current = checked(boost.current + (data.rank - result.beforeLevel) * master.GetRankUpBoostCount());
+                boost.recoveryAt = (ulong)user.Now;
+                user.MarkChanged(nameof(SuiteUser.userBoost));
+            }
+        }
+        return (result, rewards.ToArray());
     }
 
     private UpdateExpResult BuildNoopExpResult()

@@ -10,6 +10,18 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class LiveMasterQueries(MasterData master)
 {
+    public MasterLevel[] GetUserLevels() => master.GetTable<MasterLevel>("levels").Rows
+        .Where(l => l.levelType == "user").OrderBy(l => l.level).ToArray();
+
+    public MasterPlayerRankReward[] GetPlayerRankRewards(int before, int after) =>
+        master.GetTable<MasterPlayerRankReward>("playerRankRewards").Rows
+            .Where(r => r.playerRank > before && r.playerRank <= after)
+            .OrderBy(r => r.playerRank).ThenBy(r => r.seq).ToArray();
+
+    public int GetRankUpBoostCount() => int.Parse(master.GetTable<MasterConfig>("configs").Rows
+        .Single(c => c.configKey == "rank_up_recover_boost_count").value,
+        System.Globalization.CultureInfo.InvariantCulture);
+
     public MasterBoost BuildMasterBoost(int boostCount)
     {
         foreach (var boost in master.GetTable<MasterBoost>("boosts", b => b.id).Rows)

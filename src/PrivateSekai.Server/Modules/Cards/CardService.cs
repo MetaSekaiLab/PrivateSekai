@@ -107,10 +107,6 @@ public sealed class CardService(
     public UserCardPracticeTicketResponse PracticeCardWithTickets(int cardId, UserResource[]? costs)
     {
         var card = FindOrCreateUserCard(cardId);
-        var beforeTotalExp = card.totalExp;
-        var beforeLevel = card.level;
-        var beforeExp = Math.Max(0, beforeTotalExp - master.GetCardLevelTotalExp(beforeLevel));
-
         var addExp = 0;
         if (costs != null)
         {
@@ -126,7 +122,26 @@ public sealed class CardService(
             }
         }
 
-        var maxLevel = master.GetCardMaxLevel(cardId, string.Equals(card.specialTrainingStatus, "done", StringComparison.Ordinal));
+        var result = AddCardExperience(card, addExp);
+        if (result.afterLevel > result.beforeLevel)
+            missions.TouchBeginnerMissionProgress(6);
+        return new UserCardPracticeTicketResponse { updateExpResult = result };
+    }
+
+    public UpdateExpResult GainExperience(int cardId, int addExp)
+    {
+        if (addExp < 0) throw new ArgumentOutOfRangeException(nameof(addExp));
+        var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId)
+            ?? throw new ArgumentException("Card is not owned.");
+        return AddCardExperience(card, addExp);
+    }
+
+    private UpdateExpResult AddCardExperience(UserCard card, int addExp)
+    {
+        var beforeTotalExp = card.totalExp;
+        var beforeLevel = card.level;
+        var beforeExp = Math.Max(0, beforeTotalExp - master.GetCardLevelTotalExp(beforeLevel));
+        var maxLevel = master.GetCardMaxLevel(card.cardId, string.Equals(card.specialTrainingStatus, "done", StringComparison.Ordinal));
         var maxTotalExp = master.GetCardLevelMaxTotalExp(maxLevel);
         var afterTotalExp = maxTotalExp > 0
             ? Math.Min(maxTotalExp, beforeTotalExp + addExp)
@@ -138,20 +153,11 @@ public sealed class CardService(
         card.level = afterLevel;
         card.exp = afterExp;
         user.MarkChanged(nameof(SuiteUser.userCards));
-        if (afterLevel > beforeLevel)
-            missions.TouchBeginnerMissionProgress(6);
-
-        return new UserCardPracticeTicketResponse
+        return new UpdateExpResult
         {
-            updateExpResult = new UpdateExpResult
-            {
-                beforeTotalExp = beforeTotalExp,
-                afterTotalExp = afterTotalExp,
-                beforeExp = beforeExp,
-                afterExp = afterExp,
-                beforeLevel = beforeLevel,
-                afterLevel = afterLevel
-            }
+            beforeTotalExp = beforeTotalExp, afterTotalExp = afterTotalExp,
+            beforeExp = beforeExp, afterExp = afterExp,
+            beforeLevel = beforeLevel, afterLevel = afterLevel
         };
     }
 

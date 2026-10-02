@@ -16,7 +16,7 @@ internal static class LiveReplay
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "cards", "musicDifficulties", "playLevelScores",
+        foreach (var table in new[] { "cards", "cardRarities", "musicDifficulties", "playLevelScores",
             "boosts", "musicAchievements", "resourceBoxes", "liveMissionPasses", "levels", "playerRankRewards", "configs" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }

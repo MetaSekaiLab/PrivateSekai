@@ -117,6 +117,9 @@ internal static class FeatureChecks
     private static void LiveSettlement(ServiceProvider provider, IUserStore store)
     {
         var state = TestUsers.Create(3);
+        state.Data.userGamedata.rank = 1;
+        state.Data.userCards = [new() { cardId = 1, level = 1 }];
+        state.Data.userDecks = [new() { deckId = 1, member1 = 1, leader = 1 }];
         state.Data.userBoost = new() { current = 3 };
         state.Data.userEventBreakTime = new() { lastDecreaseAt = 0 };
         store.Save(3, state);
@@ -142,7 +145,8 @@ internal static class FeatureChecks
         }), "Live 结算序列化失败");
         var rolledBack = store.Read(3)!;
         Check.That(rolledBack.Private.UserLiveSessions.ContainsKey(liveId) && rolledBack.Data.userBoost.current == 3 &&
-            rolledBack.Data.userMaterials.Length == 0 && rolledBack.Data.userGamedata.coin == 100,
+            rolledBack.Data.userMaterials.Length == 0 && rolledBack.Data.userGamedata.coin == 100 &&
+            rolledBack.Data.userGamedata.totalExp == 0 && rolledBack.Data.userCards.Single().totalExp == 0,
             "Live 失败恢复会话、体力及奖励");
 
         var cleared = operation.Execute(3, () =>
@@ -156,11 +160,18 @@ internal static class FeatureChecks
             "Live 结算保存成绩与判定结果");
         Check.That(result.updatedResources.userMaterials.Single().quantity == 2 && result.updatedResources.userGamedata.coin == 105,
             "Live 发放倍率奖励与首次成就奖励");
-        Check.That(result.updatedResources.userBoost.current == 2 && result.updatedResources.userLiveMissions.Single().progress == 3,
+        Check.That(result.updatedResources.userBoost.current == 12 && result.updatedResources.userLiveMissions.Single().progress == 3,
             "Live 体力消耗与任务进度合并刷新");
+        Check.That(result.userExpResult.afterTotalExp == 200 && result.userExpResult.afterLevel == 2 &&
+            result.playerRankRewards.Single().quantity == 50 && result.updatedResources.userChargedCurrency.free == 50,
+            "演出玩家经验跨级并通过 master 发放等级奖励");
+        Check.That(result.deckCardExpResults.Single().expResult.afterTotalExp == 300 &&
+            result.updatedResources.userCards.Single().level == 3,
+            "演出卡牌经验使用卡牌等级上限");
         Check.That(!store.Read(3)!.Private.UserLiveSessions.ContainsKey(liveId), "Live 成功后移除会话");
         operation.Execute(3, () => live.ClearUserLive(liveId, clearRequest));
-        Check.That(store.Read(3)!.Data.userGamedata.coin == 105 && store.Read(3)!.Data.userLiveMissions.Single().progress == 3,
+        Check.That(store.Read(3)!.Data.userGamedata.coin == 105 && store.Read(3)!.Data.userLiveMissions.Single().progress == 3 &&
+            store.Read(3)!.Data.userGamedata.totalExp == 200 && store.Read(3)!.Data.userChargedCurrency.free == 50,
             "重复提交结束的 Live 不重复发奖或累计任务");
     }
 
@@ -283,6 +294,7 @@ internal static class FeatureChecks
                   {"id":20,"resourceBoxPurpose":"mission_reward","details":[{"resourceType":"coin","resourceId":0,"resourceQuantity":15}]},
                   {"id":62,"resourceBoxPurpose":"score_rank_reward_detail","details":[{"resourceType":"material","resourceId":2,"resourceQuantity":1}]},
                   {"id":80,"resourceBoxPurpose":"music_achievement","details":[{"resourceType":"coin","resourceId":0,"resourceQuantity":5}]},
+                  {"id":1,"resourceBoxPurpose":"player_rank_reward","details":[{"resourceType":"jewel","resourceQuantity":50}]},
                   {"id":90,"resourceBoxPurpose":"special_training_reward","details":[{"resourceType":"costume_3d","resourceId":721001,"resourceQuantity":1}]}
                 ]
                 """,
@@ -301,11 +313,13 @@ internal static class FeatureChecks
                 """,
             ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":3,"trainingMaxLevel":3},{"cardRarityType":"rarity_3","maxLevel":40,"trainingMaxLevel":50}]""",
             ["practiceTickets"] = """[{"id":1,"exp":100}]""",
-            ["levels"] = """[{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300}]""",
+            ["levels"] = """[{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300},{"levelType":"user","level":1,"totalExp":0},{"levelType":"user","level":2,"totalExp":100},{"levelType":"user","level":3,"totalExp":1000}]""",
+            ["playerRankRewards"] = """[{"playerRank":2,"seq":1,"resourceBoxId":1}]""",
+            ["configs"] = """[{"configKey":"rank_up_recover_boost_count","value":"10"}]""",
             ["beginnerMissionV2s"] = """[{"id":6,"requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
             ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
-            ["boosts"] = """[{"id":1,"costBoost":1,"rewardRate":2,"livePointRate":3}]""",
+            ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPasses"] = """[{"id":1,"liveMissionPeriodId":1}]""",
             ["musicAchievements"] = """[{"id":1,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_c","resourceBoxId":80}]"""
         };
