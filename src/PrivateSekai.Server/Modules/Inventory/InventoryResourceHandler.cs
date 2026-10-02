@@ -11,7 +11,7 @@ namespace PrivateSekai.Modules.Inventory;
 
 public sealed class InventoryResourceHandler : IResourceHandler
 {
-    public IReadOnlyCollection<string> ResourceTypes { get; } = ["material", "practice_ticket", "boost_item"];
+    public IReadOnlyCollection<string> ResourceTypes { get; } = ["material", "practice_ticket", "skill_practice_ticket", "boost_item"];
 
     public void Grant(UserSession user, UserResource resource)
     {
@@ -25,6 +25,9 @@ public sealed class InventoryResourceHandler : IResourceHandler
                 break;
             case "practice_ticket":
                 ChangePracticeTicket(user, resource.resourceId, resource.quantity);
+                break;
+            case "skill_practice_ticket":
+                ChangeSkillPracticeTicket(user, resource.resourceId, resource.quantity);
                 break;
             case "boost_item":
                 var items = (user.Data.userBoostItems ?? []).ToList();
@@ -48,8 +51,27 @@ public sealed class InventoryResourceHandler : IResourceHandler
         {
             "material" => id > 0 ? ChangeMaterial(user, id, -quantity) : 0,
             "practice_ticket" => id > 0 ? ChangePracticeTicket(user, id, -quantity) : 0,
+            "skill_practice_ticket" => id > 0 ? ChangeSkillPracticeTicket(user, id, -quantity) : 0,
             _ => throw new NotSupportedException($"Resource '{type}' cannot be consumed.")
         };
+
+    private static int ChangeSkillPracticeTicket(UserSession user, int id, int quantity)
+    {
+        var tickets = (user.Data.userSkillPracticeTickets ?? []).ToList();
+        var ticket = tickets.SingleOrDefault(t => t.skillPracticeTicketId == id);
+        var remaining = checked((ticket?.quantity ?? 0) + quantity);
+        if (remaining < 0)
+            throw new ArgumentException("Insufficient skill practice tickets.");
+        if (ticket == null)
+        {
+            ticket = new UserSkillPracticeTicket { userId = user.UserId, skillPracticeTicketId = id };
+            tickets.Add(ticket);
+        }
+        ticket.quantity = remaining;
+        user.Data.userSkillPracticeTickets = tickets.OrderBy(t => t.skillPracticeTicketId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userSkillPracticeTickets));
+        return remaining;
+    }
 
     private static int ChangeMaterial(UserSession user, int id, int quantity)
     {

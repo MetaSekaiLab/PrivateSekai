@@ -19,6 +19,59 @@ public sealed class CardService(
     ResourceService resourceService,
     MissionService missions)
 {
+    public UpdateExpResult PracticeCardSkill(int cardId, UserResource[]? costs, string resourceType)
+    {
+        if (resourceType is not ("material" or "skill_practice_ticket") || costs == null || costs.Length == 0)
+            throw new ArgumentException("Missing skill practice costs.");
+        var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId)
+            ?? throw new ArgumentException("Card is not owned.");
+        var masterCard = master.GetMasterCard(cardId)
+            ?? throw new InvalidOperationException("Missing card master data.");
+        var levels = master.GetSkillLevels(masterCard);
+        var beforeTotal = card.totalSkillExp;
+        if (beforeTotal < 0 || beforeTotal >= levels[^1].totalExp)
+            throw new ArgumentException("Card skill experience is invalid or already at maximum.");
+
+        var quantities = new Dictionary<int, int>();
+        foreach (var cost in costs)
+        {
+            if (cost == null || cost.resourceType != resourceType || cost.resourceId <= 0 || cost.quantity <= 0)
+                throw new ArgumentException("Invalid skill practice cost.");
+            quantities[cost.resourceId] = checked(quantities.GetValueOrDefault(cost.resourceId) + cost.quantity);
+        }
+
+        long addedExp = 0;
+        foreach (var (id, quantity) in quantities)
+        {
+            var exp = master.GetSkillPracticeExp(masterCard, resourceType, id);
+            if (exp <= 0)
+                throw new InvalidOperationException("Invalid skill practice experience in master data.");
+            var owned = resourceType == "material"
+                ? user.Data.userMaterials?.SingleOrDefault(m => m.materialId == id)?.quantity ?? 0
+                : user.Data.userSkillPracticeTickets?.SingleOrDefault(t => t.skillPracticeTicketId == id)?.quantity ?? 0;
+            if (owned < quantity)
+                throw new ArgumentException("Insufficient skill practice resources.");
+            addedExp = checked(addedExp + (long)exp * quantity);
+        }
+
+        var afterTotal = (int)Math.Min(levels[^1].totalExp, checked(beforeTotal + addedExp));
+        var before = levels.Last(l => l.totalExp <= beforeTotal);
+        var after = levels.Last(l => l.totalExp <= afterTotal);
+        foreach (var (id, quantity) in quantities)
+            resourceService.Consume(resourceType, id, quantity);
+        card.totalSkillExp = afterTotal;
+        card.skillLevel = after.level;
+        card.skillExp = afterTotal - after.totalExp;
+        user.MarkChanged(nameof(SuiteUser.userCards));
+
+        return new UpdateExpResult
+        {
+            beforeTotalExp = beforeTotal, afterTotalExp = afterTotal,
+            beforeLevel = before.level, afterLevel = after.level,
+            beforeExp = beforeTotal - before.totalExp, afterExp = card.skillExp
+        };
+    }
+
     public void ExchangeCards(UserCard[]? userCards)
     {
         if (userCards == null || userCards.Length == 0)
@@ -136,17 +189,45 @@ public sealed class CardService(
 
     public void SetCardSpecialTrainingStatus(int cardId, string? specialTrainingStatus)
     {
-        var card = FindOrCreateUserCard(cardId);
-        card.specialTrainingStatus = string.IsNullOrWhiteSpace(specialTrainingStatus)
-            ? card.specialTrainingStatus
-            : specialTrainingStatus;
-
-        if (string.Equals(card.specialTrainingStatus, "done", StringComparison.Ordinal))
+        if (specialTrainingStatus != "done")
+            throw new ArgumentException("Invalid special training status.");
+        var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId)
+            ?? throw new ArgumentException("Card is not owned.");
+        if (card.specialTrainingStatus == "done")
+            return;
+        var masterCard = master.GetMasterCard(cardId)
+            ?? throw new InvalidOperationException("Missing card master data.");
+        var rarity = master.GetCardRarity(masterCard);
+        if (masterCard.specialTrainingPower1BonusFixed == 0 &&
+            masterCard.specialTrainingPower2BonusFixed == 0 && masterCard.specialTrainingPower3BonusFixed == 0)
+            throw new ArgumentException("Card does not support special training.");
+        if (rarity.maxLevel <= 0 || rarity.trainingMaxLevel <= rarity.maxLevel)
+            throw new InvalidOperationException("Invalid special training level limits.");
+        if (card.level < rarity.maxLevel)
+            throw new ArgumentException("Card has not reached the required level.");
+        var costs = masterCard.specialTrainingCosts;
+        if (costs == null || costs.Length == 0)
+            throw new InvalidOperationException("Missing special training costs.");
+        var quantities = new Dictionary<int, int>();
+        foreach (var entry in costs)
         {
-            var maxLevel = master.GetCardMaxLevel(cardId, true);
-            card.level = Math.Min(card.level, maxLevel);
+            var cost = entry.cost;
+            if (entry.cardId != cardId || cost == null || cost.resourceType != "material" ||
+                cost.resourceId <= 0 || cost.quantity <= 0)
+                throw new InvalidOperationException("Unsupported or invalid special training cost.");
+            quantities[cost.resourceId] = checked(quantities.GetValueOrDefault(cost.resourceId) + cost.quantity);
         }
+        foreach (var (id, quantity) in quantities)
+            if ((user.Data.userMaterials?.SingleOrDefault(m => m.materialId == id)?.quantity ?? 0) < quantity)
+                throw new ArgumentException("Insufficient special training materials.");
 
+        var rewards = resourceMaster.BuildResourcesFromBox("special_training_reward", masterCard.specialTrainingRewardResourceBoxId);
+        if (masterCard.specialTrainingRewardResourceBoxId > 0 && rewards.Length == 0)
+            throw new InvalidOperationException("Missing special training reward box.");
+        foreach (var (id, quantity) in quantities)
+            resourceService.Consume("material", id, quantity);
+        resourceService.Grant(rewards);
+        card.specialTrainingStatus = "done";
         user.MarkChanged(nameof(SuiteUser.userCards));
     }
 

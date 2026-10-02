@@ -11,6 +11,58 @@ namespace PrivateSekai.Modules.Cards;
 
 public sealed class CardMasterQueries(MasterData master, ResourceMasterQueries resources)
 {
+    public MasterLevel[] GetSkillLevels(MasterCard card)
+    {
+        var type = card.cardRarityType switch
+        {
+            "rarity_1" => "card_skill_1",
+            "rarity_2" => "card_skill_2",
+            "rarity_3" => "card_skill_3",
+            "rarity_4" => "card_skill_4",
+            "rarity_birthday" => "card_skill_birthday",
+            _ => throw new InvalidOperationException("Unknown card rarity.")
+        };
+        var rarity = master.GetTable<MasterCardRarity>("cardRarities").Rows
+            .Single(r => r.cardRarityType == card.cardRarityType);
+        var levels = master.GetTable<MasterLevel>("levels").Rows
+            .Where(l => l.levelType == type && l.level <= rarity.maxSkillLevel)
+            .OrderBy(l => l.level).ToArray();
+        if (rarity.maxSkillLevel < 1 || levels.Length != rarity.maxSkillLevel ||
+            levels[0].level != 1 || levels[0].totalExp != 0)
+            throw new InvalidOperationException("Incomplete skill level master data.");
+        for (var i = 1; i < levels.Length; i++)
+            if (levels[i].level != i + 1 || levels[i].totalExp <= levels[i - 1].totalExp)
+                throw new InvalidOperationException("Invalid skill level master data.");
+        return levels;
+    }
+
+    public int GetSkillPracticeExp(MasterCard card, string type, int id)
+    {
+        if (type == "skill_practice_ticket")
+        {
+            var ticket = master.GetTable<MasterSkillPracticeTicket>("skillPracticeTickets", t => t.id)
+                .FindById(id) ?? throw new ArgumentException("Unknown skill practice ticket.");
+            if (ticket.characterId != 0 && ticket.characterId != card.characterId)
+                throw new ArgumentException("Skill practice ticket does not match the character.");
+            return ticket.exp;
+        }
+
+        var cost = master.GetTable<MasterCardSkillCost>("cardSkillCosts").Rows
+            .SingleOrDefault(c => c.materialId == id)
+            ?? throw new ArgumentException("Unknown skill practice material.");
+        if (cost.characterId != 0 && cost.characterId != card.characterId)
+            throw new ArgumentException("Skill practice material does not match the character.");
+        if (!string.IsNullOrEmpty(cost.unit) && cost.unit != "none")
+        {
+            var character = master.GetTable<MasterGameCharacter>("gameCharacters", c => c.id)
+                .FindById(card.characterId)
+                ?? throw new InvalidOperationException("Missing character master data.");
+            if (cost.unit != character.unit)
+                throw new ArgumentException("Skill practice material does not match the character unit.");
+        }
+        return cost.exp;
+    }
+
     public List<int> GetCardEpisodeIds(int cardId)
     {
         var episodes = master.GetTable<MasterCardEpisode>("cardEpisodes", e => e.id).Rows;
@@ -22,6 +74,10 @@ public sealed class CardMasterQueries(MasterData master, ResourceMasterQueries r
 
     public MasterCard? GetMasterCard(int cardId) =>
         master.GetTable<MasterCard>("cards", c => c.id).FindById(cardId);
+
+    public MasterCardRarity GetCardRarity(MasterCard card) =>
+        master.GetTable<MasterCardRarity>("cardRarities").Rows
+            .Single(r => r.cardRarityType == card.cardRarityType);
 
     public IReadOnlyList<MasterCard> GetMasterCards() =>
         master.GetTable<MasterCard>("cards", c => c.id).Rows;

@@ -13,6 +13,24 @@ namespace PrivateSekai.Modules.Cards;
 
 public sealed class CardController(UserOperation operations, UserSession user, CardService cards) : PrskController
 {
+    [HttpPost("api/user/{userId}/card/{cardId}/skill-practice-ticket")]
+    public IActionResult HandleSkillPracticeTicket(long userId, int cardId,
+        [FromBody] UserCardSkillPracticeTicketRequest request) =>
+        Encoded(operations.Execute(userId, () => new UserCardSkillPracticeTicketResponse
+        {
+            updateExpResult = cards.PracticeCardSkill(cardId, request.costs, "skill_practice_ticket"),
+            updatedResources = user.BuildRefresh()
+        }));
+
+    [HttpPost("api/user/{userId}/card/{cardId}/material")]
+    public IActionResult HandleSkillPracticeMaterial(long userId, int cardId,
+        [FromBody] UserCardSkillPracticeMaterialRequest request) =>
+        Encoded(operations.Execute(userId, () => new UserCardSkillPracticeMaterialResponse
+        {
+            updateExpResult = cards.PracticeCardSkill(cardId, request.costs, "material"),
+            updatedResources = user.BuildRefresh()
+        }));
+
     /// <summary>
     /// 执行等待室卡牌转换。客户端把确认转换的卡牌汇总成 `userCards` 发给服务端，请求成功后合并返回的用户资源差异，并刷新等待室显示。
     /// </summary>

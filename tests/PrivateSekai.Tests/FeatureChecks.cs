@@ -45,6 +45,7 @@ internal static class FeatureChecks
                 .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
             ShopPurchase(provider, store);
             CardAndMission(provider, store);
+            SpecialTraining(provider, store);
             LiveSettlement(provider, store);
             GachaDraw(provider, store);
             Console.WriteLine("业务：正式 DI 注册、商店、卡牌与任务联动、Live 结算、确定性抽卡检查通过。");
@@ -163,6 +164,62 @@ internal static class FeatureChecks
             "重复提交结束的 Live 不重复发奖或累计任务");
     }
 
+    private static void SpecialTraining(ServiceProvider provider, IUserStore store)
+    {
+        var state = TestUsers.Create(5);
+        state.Data.userCards = [new UserCard { cardId = 2, level = 40, totalExp = 300, defaultImage = "original" }];
+        state.Data.userMaterials = [new UserMaterial { materialId = 10, quantity = 100 },
+            new UserMaterial { materialId = 14, quantity = 49 }];
+        store.Save(5, state);
+        using var scope = provider.CreateScope();
+        var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+        var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
+        var cards = scope.ServiceProvider.GetRequiredService<CardService>();
+        Check.Throws<ArgumentException>(() => operation.Execute(5, () =>
+        {
+            cards.SetCardSpecialTrainingStatus(2, "done");
+            return user.BuildRefresh();
+        }), "特训材料不足拒绝执行");
+        Check.That(store.Read(5)!.Data.userMaterials[0].quantity == 100 &&
+            store.Read(5)!.Data.userCards.Single().specialTrainingStatus != "done", "特训失败不扣其他材料");
+        state.Data.userMaterials[1].quantity = 50;
+        state.Data.userCards[0].level = 39;
+        store.Save(5, state);
+        Check.Throws<ArgumentException>(() => operation.Execute(5, () =>
+        {
+            cards.SetCardSpecialTrainingStatus(2, "done");
+            return user.BuildRefresh();
+        }), "特训要求达到未特训等级上限");
+        state.Data.userCards[0].level = 40;
+        store.Save(5, state);
+        Check.Throws<MessagePackSerializationException>(() => operation.Execute(5, () =>
+        {
+            cards.SetCardSpecialTrainingStatus(2, "done");
+            return new BrokenResponse();
+        }), "特训编码失败回滚");
+        Check.That(store.Read(5)!.Data.userCards.Single().specialTrainingStatus != "done" &&
+            store.Read(5)!.Data.userCostume3dStatuses == null, "回滚特训状态及特殊服装奖励");
+        var bytes = operation.Execute(5, () =>
+        {
+            cards.SetCardSpecialTrainingStatus(2, "done");
+            return user.BuildRefresh();
+        });
+        var result = DumpSerializer.Deserialize<SuiteUser>(bytes);
+        Check.That(result.userCards.Single().specialTrainingStatus == "done" &&
+            result.userCards.Single().level == 40 && result.userCards.Single().totalExp == 300 &&
+            result.userMaterials.All(m => m.quantity == 0) && result.userCostume3dStatuses.Single().costume3dId == 721001,
+            "特训扣除 master 材料并发放配置奖励，保留等级经验");
+        Check.That(scope.ServiceProvider.GetRequiredService<CardMasterQueries>().GetCardMaxLevel(2, true) == 50,
+            "特训后练习使用新的等级上限");
+        operation.Execute(5, () =>
+        {
+            cards.SetCardSpecialTrainingStatus(2, "done");
+            return user.BuildRefresh();
+        });
+        Check.That(store.Read(5)!.Data.userCostume3dStatuses.Length == 1 &&
+            store.Read(5)!.Data.userMaterials.All(m => m.quantity == 0), "重复特训不重复扣材及发奖");
+    }
+
     private static void GachaDraw(ServiceProvider provider, IUserStore store)
     {
         var state = TestUsers.Create(4);
@@ -225,17 +282,24 @@ internal static class FeatureChecks
                   {"id":10,"resourceBoxPurpose":"shop_item","details":[{"resourceType":"material","resourceId":1,"resourceQuantity":4}]},
                   {"id":20,"resourceBoxPurpose":"mission_reward","details":[{"resourceType":"coin","resourceId":0,"resourceQuantity":15}]},
                   {"id":62,"resourceBoxPurpose":"score_rank_reward_detail","details":[{"resourceType":"material","resourceId":2,"resourceQuantity":1}]},
-                  {"id":80,"resourceBoxPurpose":"music_achievement","details":[{"resourceType":"coin","resourceId":0,"resourceQuantity":5}]}
+                  {"id":80,"resourceBoxPurpose":"music_achievement","details":[{"resourceType":"coin","resourceId":0,"resourceQuantity":5}]},
+                  {"id":90,"resourceBoxPurpose":"special_training_reward","details":[{"resourceType":"costume_3d","resourceId":721001,"resourceQuantity":1}]}
                 ]
                 """,
-            ["cards"] = """[{"id":1,"cardRarityType":"rarity_1"}]""",
+            ["cards"] = """
+                [{"id":1,"cardRarityType":"rarity_1"},
+                 {"id":2,"cardRarityType":"rarity_3","specialTrainingPower1BonusFixed":100,
+                  "specialTrainingRewardResourceBoxId":90,
+                  "specialTrainingCosts":[{"cardId":2,"cost":{"resourceType":"material","resourceId":10,"quantity":100}},
+                                          {"cardId":2,"cost":{"resourceType":"material","resourceId":14,"quantity":50}}]}]
+                """,
             ["cardEpisodes"] = "[]",
             ["cardCostume3ds"] = """[{"cardId":10,"costume3dId":20}]""",
             ["gachas"] = """
                 [{"id":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":10,"weight":1}],
                   "gachaBehaviors":[{"id":1,"gachaBehaviorType":"normal","spinCount":2,"costResourceType":"jewel","costResourceQuantity":300}]}]
                 """,
-            ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":3,"trainingMaxLevel":3}]""",
+            ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":3,"trainingMaxLevel":3},{"cardRarityType":"rarity_3","maxLevel":40,"trainingMaxLevel":50}]""",
             ["practiceTickets"] = """[{"id":1,"exp":100}]""",
             ["levels"] = """[{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300}]""",
             ["beginnerMissionV2s"] = """[{"id":6,"requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
