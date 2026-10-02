@@ -9,13 +9,23 @@ namespace PrivateSekai.Modules.Story;
 
 public sealed class StoryMasterQueries(MasterData master)
 {
+    public bool IsCardEpisodeLevelMet(int episodeId, int cardId, int level)
+    {
+        var episode = GetMasterCardEpisode(episodeId);
+        if (episode == null || episode.cardId != cardId) return false;
+        var condition = master.GetTable<MasterReleaseCondition>("releaseConditions", c => c.id)
+            .FindById(episode.releaseConditionId);
+        return condition?.releaseConditionType == "card_level" && condition.releaseConditionTypeId == cardId &&
+            level >= condition.releaseConditionTypeLevel;
+    }
+
     public string? GetUnitEpisodeUnit(int episodeId) =>
         master.GetTable<MasterUnitStory>("unitStories").Rows
             .SelectMany(s => s.chapters ?? [])
             .SingleOrDefault(c => c.episodes?.Any(e => e.id == episodeId) == true)?.unit;
 
     public int[] GetUnitEpisodeClearedConditionIds(int episodeId) =>
-        master.GetTable<MasterReleaseCondition>("releaseConditions").Rows
+        master.GetTable<MasterReleaseCondition>("releaseConditions", c => c.id).Rows
             .Where(c => c.releaseConditionType == "unit_story" && c.releaseConditionTypeId == episodeId)
             .Select(c => c.id).ToArray();
 

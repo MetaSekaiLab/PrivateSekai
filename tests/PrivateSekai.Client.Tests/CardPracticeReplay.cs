@@ -13,7 +13,7 @@ internal static class CardPracticeReplay
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "cards", "cardRarities", "levels", "practiceTickets", "beginnerMissionV2s" })
+        foreach (var table in new[] { "cards", "cardRarities", "levels", "practiceTickets", "beginnerMissionV2s", "cardEpisodes", "releaseConditions" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 

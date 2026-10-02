@@ -6,6 +6,7 @@ using System.Linq;
 using game::Sekai;
 using PrivateSekai.Modules.Inventory;
 using PrivateSekai.Modules.Missions;
+using PrivateSekai.Modules.Story;
 using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 using UserMasterLessonReward = game::Sekai.UserCardMasterLessonResponse.UserMasterLessonReward;
@@ -17,7 +18,8 @@ public sealed class CardService(
     CardMasterQueries master,
     ResourceMasterQueries resourceMaster,
     ResourceService resourceService,
-    MissionService missions)
+    MissionService missions,
+    StoryService story)
 {
     public UpdateExpResult PracticeCardSkill(int cardId, UserResource[]? costs, string resourceType)
     {
@@ -124,7 +126,10 @@ public sealed class CardService(
 
         var result = AddCardExperience(card, addExp);
         if (result.afterLevel > result.beforeLevel)
+        {
             missions.RecordCardPracticeLevelUp(result.afterLevel - result.beforeLevel);
+            story.RefreshCardLevelConditions(cardId);
+        }
         return new UserCardPracticeTicketResponse { updateExpResult = result };
     }
 

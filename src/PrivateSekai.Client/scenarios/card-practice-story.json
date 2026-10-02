@@ -1,0 +1,17 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    {
+      "operation": "story-release",
+      "args": { "storyType": "card_story", "episodeId": "9" },
+      "body": { "cardEpisodeReleaseCostType": "common_material" }
+    },
+    { "operation": "story-read", "args": { "storyType": "card_story", "episodeId": "9" } },
+    {
+      "operation": "card-practice",
+      "args": { "cardId": "5" },
+      "body": { "costs": [{ "resourceType": "practice_ticket", "resourceId": 2, "quantity": 15 }] }
+    },
+    { "operation": "suite" }
+  ]
+}

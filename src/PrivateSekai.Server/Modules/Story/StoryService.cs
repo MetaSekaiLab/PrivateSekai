@@ -25,6 +25,21 @@ public sealed class StoryService(
     public bool IsUnitEpisodeRead(int episodeId) =>
         user.Data.userUnitEpisodeStatuses?.Any(s => s.episodeId == episodeId && s.status == "already_read") == true;
 
+    public void RefreshCardLevelConditions(int cardId)
+    {
+        var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId);
+        foreach (var episode in card?.episodes ?? [])
+        {
+            if (episode.scenarioStatus != "can_not_read" ||
+                episode.scenarioStatusReasons?.Contains("not_enough_release_condition") != true ||
+                !master.IsCardEpisodeLevelMet(episode.cardEpisodeId, cardId, card!.level)) continue;
+            episode.scenarioStatusReasons = episode.scenarioStatusReasons
+                .Where(r => r != "not_enough_release_condition").ToArray();
+            if (episode.scenarioStatusReasons.Length == 0) episode.scenarioStatus = "unreleased";
+            user.MarkChanged(nameof(SuiteUser.userCards));
+        }
+    }
+
     public void ReadStoryEpisode(string storyType, int episodeId, bool isNotSkipped = false)
     {
         switch (storyType)

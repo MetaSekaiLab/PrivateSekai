@@ -26,6 +26,11 @@ internal static class CardHttpChecks
     {
         var state = store.Read(1)!;
         state.Data.userCards = [new() { cardId = 1, level = 1, duplicateCount = 2, defaultImage = "special_training" }];
+        state.Data.userCards[0].episodes = [new()
+        {
+            cardEpisodeId = 52, scenarioStatus = "can_not_read",
+            scenarioStatusReasons = ["unread_before_scenario", "not_enough_release_condition"]
+        }];
         state.Data.userPracticeTickets = [new() { practiceTicketId = 1, quantity = 2 }];
         state.Data.userMaterials = [new() { materialId = 1, quantity = 10 }];
         store.Save(1, state);
@@ -46,6 +51,8 @@ internal static class CardHttpChecks
         check(card.masterRank == 1 && saved.userMaterials.Single().quantity == 11,
             "突破消耗与等待室转换奖励共同生效，readonly 请求字段正确编码");
         check(card.defaultImage == "original" && card.duplicateCount == 1, "卡面切换与重复卡转换路由正确");
+        check(card.episodes.Single().scenarioStatusReasons.Length == 2,
+            "未达到等级门槛时保留剧情阻挡原因");
         var record = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "cards/001.json")))!;
         check(record["response"]!["updateExpResult"]!["afterLevel"]!.GetValue<int>() == 2 &&
             record["stateChanges"]!.AsArray().Count > 0, "练习响应与状态差异记录完整");
@@ -69,10 +76,25 @@ internal static class CardHttpChecks
             "练习溢出截断到满级并消耗全部提交练习券");
         check(saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 6).progress == 3,
             "已达成练习任务继续累计本次提升的两级");
+        check(saved.userCards.Single().episodes.Single().scenarioStatus == "can_not_read" &&
+            saved.userCards.Single().episodes.Single().scenarioStatusReasons.SequenceEqual(["unread_before_scenario"]),
+            "达到等级后仍保留前篇未读阻挡");
         var repeated = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "card-practice-cap/001.json")))!;
         check(!repeated["response"]!["updatedResources"]!["userBeginnerMissionV2s"]!.AsArray()
             .Single(m => m!["beginnerMissionV2Id"]!.GetValue<int>() == 6)!["isNewAchieved"]!.GetValue<bool>(),
             "后续练习不重复报告首次达成");
+        state = store.Read(1)!;
+        state.Data.userCards.Single().level = 2;
+        state.Data.userCards.Single().totalExp = 100;
+        state.Data.userCards.Single().episodes.Single().scenarioStatusReasons = ["not_enough_release_condition"];
+        state.Data.userPracticeTickets.Single().quantity = 2;
+        store.Save(1, state);
+        await ScenarioRunner.Run(client, new() { Steps = [Step("card-practice",
+            """{"costs":[{"resourceType":"practice_ticket","resourceId":1,"quantity":2}]}""")] },
+            Path.Combine(directory, "card-practice-story"));
+        var episode = store.Read(1)!.Data.userCards.Single().episodes.Single();
+        check(episode.scenarioStatus == "unreleased" && episode.scenarioStatusReasons.Length == 0,
+            "前篇已读且等级达标后，剧情变为可解锁");
     }
 
     private static ScenarioStep Step(string operation, string body) => new()
