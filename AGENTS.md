@@ -25,8 +25,10 @@
 - `src/PrivateSekai.Server/Transport/`: 加解密、MessagePack 输入输出和请求作用域。
 - `src/PrivateSekai.Server/Storage/`: 用户和图片存储实现。
 - `src/PrivateSekai.Protocol/`: dump 模型的序列化契约，不复制手写镜像模型。
+- `src/PrivateSekai.Client/`: 可独立运行的协议客户端、场景执行和双端对比。
 - `tests/PrivateSekai.Tests/`: 使用独立小型 master 数据的业务与架构检查。
-- `docs/`: 可提交的项目文档，只写脱敏后的协议、设计和实现说明。
+- `tests/PrivateSekai.Client.Tests/`: 客户端的隔离 HTTP、会话轮换和差异检查。
+- `docs/`: 仅 `API.md` 可提交；其余开发说明使用被忽略的 `*.local.md`，只留本地。
 - `data/template/`: 模板用户和初始化 JSON。
 - `data/suitemasterfile/`: suite master 数据包。已跟踪的 zip 和说明文件可以保留，展开目录和缓存不提交。
 - `data/sekai-master-db-diff/`: 本地 master diff 或生成数据，不提交。

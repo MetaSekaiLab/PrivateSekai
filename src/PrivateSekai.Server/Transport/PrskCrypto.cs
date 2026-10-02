@@ -14,11 +14,13 @@ public static class PrskCrypto
 {
     private const int StreamBufferSize = 64 * 1024;
 
-    public static byte[] EncryptAesCbc(byte[] data)
+    public static byte[] EncryptAesCbc(byte[] data) => EncryptAesCbc(data, ServerConfig.AesKey, ServerConfig.AesIv);
+
+    public static byte[] EncryptAesCbc(byte[] data, byte[] key, byte[] iv)
     {
         using var aes = Aes.Create();
-        aes.Key = ServerConfig.AesKey;
-        aes.IV  = ServerConfig.AesIv;
+        aes.Key = key;
+        aes.IV  = iv;
         aes.Mode    = CipherMode.CBC;
         aes.Padding = PaddingMode.PKCS7;
 
@@ -26,11 +28,13 @@ public static class PrskCrypto
         return encryptor.TransformFinalBlock(data, 0, data.Length);
     }
 
-    public static byte[] DecryptAesCbc(byte[] data)
+    public static byte[] DecryptAesCbc(byte[] data) => DecryptAesCbc(data, ServerConfig.AesKey, ServerConfig.AesIv);
+
+    public static byte[] DecryptAesCbc(byte[] data, byte[] key, byte[] iv)
     {
         using var aes = Aes.Create();
-        aes.Key = ServerConfig.AesKey;
-        aes.IV  = ServerConfig.AesIv;
+        aes.Key = key;
+        aes.IV  = iv;
         aes.Mode    = CipherMode.CBC;
         aes.Padding = PaddingMode.PKCS7;
 

@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "suite" },
+    { "operation": "present-history" }
+  ]
+}

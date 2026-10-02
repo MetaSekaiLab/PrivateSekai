@@ -9,20 +9,26 @@ obj/
 *.DotSettings.user
 
 # Local agent/developer notes
-AGENTS.local.md
 *.local.md
+
+# Local documentation; only API audit is published
+/docs/*
+!/docs/API.md
 
 # Local application settings
 appsettings.json
-src/PrivateSekai.Server/appsettings.json
 
 # Local scripts/cache
 *.py
 __pycache__/
-tools/__pycache__/
 
 # mitm captures
 /tools/mitm/dump*/
+/tools/captures/
+/src/PrivateSekai.Client/*.local.json
+/src/PrivateSekai.Client/*.local.json.*
+/src/PrivateSekai.Client/scenarios/*.local.json
+/src/PrivateSekai.Client/scenarios/*.local.json.*
 
 # Large generated/master data
 /.re/

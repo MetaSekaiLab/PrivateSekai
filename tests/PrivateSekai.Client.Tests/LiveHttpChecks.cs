@@ -1,0 +1,77 @@
+using System.Text.Json.Nodes;
+using PrivateSekai.Config;
+using PrivateSekai.Client;
+using PrivateSekai.Storage;
+
+internal static class LiveHttpChecks
+{
+    public static void WriteMaster(string directory)
+    {
+        // 仅用于测试结算链路的虚构小型 master。
+        var tables = new Dictionary<string, string>
+        {
+            ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
+            ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
+            ["boosts"] = """[{"id":1,"costBoost":1,"rewardRate":2,"livePointRate":3}]""",
+            ["liveMissionPasses"] = """[{"id":1,"liveMissionPeriodId":1}]""",
+            ["musicAchievements"] = "[]"
+        };
+        foreach (var (table, json) in tables) File.WriteAllText(Path.Combine(directory, table + ".json"), json);
+    }
+
+    public static async Task Run(ProtocolClient client, TargetConfiguration config, MemoryUserStore store,
+        string directory, Action<bool, string> check)
+    {
+        var scenario = new Scenario { Steps =
+        [
+            new() { Operation = "system" },
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-clear", UseLiveSession = true,
+                Body = JsonNode.Parse("""{"score":150,"perfectCount":10,"maxCombo":10,"life":1000,"ingameCutinCharacterArchiveVoiceGroupIds":[4]}""")!.AsObject(),
+                Expect = new() { ["/fullPerfectFlg"] = JsonValue.Create(true), ["/score"] = JsonValue.Create(150) } },
+            new() { Operation = "live-voice", UseLiveSession = true,
+                Body = JsonNode.Parse("""{"liveResultCharacterArchiveVoiceGroupId":5,"liveType":"solo"}""")!.AsObject() }
+        ] };
+        ScenarioRunner.Validate(scenario, [config], new HashSet<string>());
+        var firstState = store.Read(1)!;
+        firstState.Data.userBoost = new() { current = 3 };
+        firstState.Data.userMusicResults = [];
+        firstState.Data.userLiveMissions = [];
+        firstState.Data.userLiveCharacterArchiveVoice = new() { characterArchiveVoiceGroupIds = [] };
+        store.Save(1, firstState);
+        var secondState = store.Read(1)!;
+        secondState.Data.userRegistration.userId = 2;
+        secondState.Data.userGamedata.userId = 2;
+        store.Save(2, secondState);
+        await ScenarioRunner.Run(client, scenario, Path.Combine(directory, "live-first"));
+        using var second = new ProtocolClient(new() { BaseUrl = config.BaseUrl, UserId = 2, RequireRotatingToken = true },
+            directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await ScenarioRunner.Run(second, scenario, Path.Combine(directory, "live-second"));
+        foreach (var id in new long[] { 1, 2 })
+        {
+            var saved = store.Read(id)!;
+            check(saved.Private.UserLiveSessions.Count == 0 && saved.Data.userMusicResults.Single().highScore == 150,
+                "Live 真实 HTTP 结算保存成绩并移除各自会话");
+            check(saved.Data.userBoost.current == 2 && saved.Data.userLiveMissions.Single().progress == 3,
+                "Live 结算保存体力消耗和任务进度");
+            check(saved.Data.userLiveCharacterArchiveVoice.characterArchiveVoiceGroupIds.Order().SequenceEqual(new[] { 4, 5 }),
+                "结算与结果页语音接口共同更新语音状态");
+        }
+        var first = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "live-first/002.json")))!;
+        var other = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "live-second/002.json")))!;
+        var firstId = first["response"]!["userLiveId"]!.GetValue<string>();
+        var secondId = other["response"]!["userLiveId"]!.GetValue<string>();
+        check(firstId != secondId, "两份客户端获得不同 Live ID");
+        foreach (var (name, id) in new[] { ("live-first", firstId), ("live-second", secondId) })
+        {
+            var clear = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, name, "003.json")))!;
+            var voice = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, name, "004.json")))!;
+            check(clear["args"]!["userLiveId"]!.GetValue<string>() == id && voice["request"]!["userLiveId"]!.GetValue<string>() == id,
+                "路径及 body 均引用当前客户端开局响应");
+        }
+        check(!scenario.Steps[2].Args.ContainsKey("userLiveId") && !scenario.Steps[3].Body!.ContainsKey("userLiveId"),
+            "重复运行不把第一端会话 ID 写回场景");
+        // 测试 HTTP 服务使用单条 token 链，恢复第一客户端的链后继续其他检查。
+        await client.Send(new() { Operation = "system" });
+    }
+}
