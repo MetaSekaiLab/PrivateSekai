@@ -6,11 +6,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using PrivateSekai;
 using PrivateSekai.Config;
-using PrivateSekai.Crypto;
-using PrivateSekai.Middleware;
-using PrivateSekai.Services;
-using PrivateSekai.Services.Master;
+using PrivateSekai.Models;
+using PrivateSekai.Modules.Accounts;
+using PrivateSekai.Modules.Home;
+using PrivateSekai.Shared.Resources;
+using PrivateSekai.Shared.Users;
+using PrivateSekai.Transport;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,10 +24,7 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(ServerConfig.Port);
 });
 
-builder.Services.AddSingleton<UserManager>();
-builder.Services.AddSingleton(_ => new MasterDataManager(ServerConfig.MasterCache));
-builder.Services.AddControllers(options =>
-    options.InputFormatters.Insert(0, new PrskMessagePackInputFormatter()));
+builder.Services.AddPrivateSekai();
 
 var app = builder.Build();
 var appLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PrivateSekai");
@@ -34,8 +34,8 @@ app.Use(async (ctx, next) =>
     var sw = System.Diagnostics.Stopwatch.StartNew();
     await next();
     sw.Stop();
-    appLogger.LogInformation("{Method} {Path}{QueryString} → {StatusCode} ({Elapsed}ms)",
-        ctx.Request.Method, ctx.Request.Path, ctx.Request.QueryString, ctx.Response.StatusCode, sw.ElapsedMilliseconds);
+    appLogger.LogInformation("{Method} {Path} → {StatusCode} ({Elapsed}ms)",
+        ctx.Request.Method, ctx.Request.Path, ctx.Response.StatusCode, sw.ElapsedMilliseconds);
 });
 
 app.UseExceptionHandler(handler => handler.Run(async ctx =>
@@ -57,8 +57,20 @@ app.UseMiddleware<MasterRequestScopeMiddleware>();
 app.UseMiddleware<PrskCryptoMiddleware>();
 app.MapControllers();
 
-MasterDataManager.Bind(app.Services.GetRequiredService<MasterDataManager>());
-app.Services.GetRequiredService<UserManager>();
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var clock = services.GetRequiredService<TimeProvider>();
+    var template = services.GetRequiredService<AccountTemplates>().CreateUser(0, clock.GetUtcNow().ToUnixTimeMilliseconds());
+    services.GetRequiredService<IUserStore>().Save(0, template);
+    services.GetRequiredService<ResourceService>();
+    services.GetRequiredService<UserOperation>().Execute(0, () =>
+    {
+        services.GetRequiredService<HomeService>().EnsureShopAreaActionSets();
+        services.GetRequiredService<UserSession>().NormalizeEventBreakTime();
+        return new EmptyResponse();
+    });
+}
 
 if (!Directory.Exists(ServerConfig.TemplatePath))
     Console.Error.WriteLine($"WARNING: template directory not found: {ServerConfig.TemplatePath}");

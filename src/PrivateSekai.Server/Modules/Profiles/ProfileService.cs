@@ -1,0 +1,180 @@
+extern alias game;
+
+using System.Collections.Generic;
+using System.Linq;
+using game::Sekai;
+using game::Sekai.CustomProfile;
+using PrivateSekai.Shared.Users;
+using PrivateSekai.Storage;
+
+namespace PrivateSekai.Modules.Profiles;
+
+public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore thumbnails)
+{
+    public void UpdateProfile(UserProfile newProfile)
+    {
+        if (user.Data.userProfile == null) return;
+        user.Data.userProfile = newProfile;
+        user.MarkChanged(nameof(SuiteUser.userProfile));
+    }
+
+    public void SaveCustomProfile(
+        int customProfileId,
+        string? name,
+        List<UserCustomProfileCardOrder>? customProfileCardOrders)
+    {
+        var profiles = user.Data.userCustomProfiles!.ToList();
+        var profile = profiles.FirstOrDefault(p => p.customProfileId == customProfileId);
+        if (profile == null)
+        {
+            profiles.Add(new UserCustomProfile
+            {
+                customProfileId = customProfileId,
+                name = name ?? ""
+            });
+        }
+        else if (name != null)
+        {
+            profile.name = name;
+        }
+
+        var cards = user.Data.userCustomProfileCards!.ToList();
+        if (customProfileCardOrders != null)
+        {
+            foreach (var order in customProfileCardOrders.Where(o => o.customProfileId == customProfileId))
+            {
+                var card = cards.FirstOrDefault(c =>
+                    c.customProfileId == customProfileId &&
+                    c.customProfileCardId == order.customProfileCardId);
+                if (card != null)
+                    card.seq = order.seq;
+            }
+        }
+
+        user.Data.userCustomProfiles = profiles.ToArray();
+        user.Data.userCustomProfileCards = cards.ToArray();
+        UpdateCustomProfileResourceUsages(customProfileId);
+
+        user.MarkChanged(nameof(SuiteUser.userCustomProfiles));
+        user.MarkChanged(nameof(SuiteUser.userCustomProfileCards));
+    }
+
+    public void SaveCustomProfileCard(
+        int customProfileId,
+        int customProfileCardId,
+        UserSaveCustomProfileCardRequest request)
+    {
+        EnsureCustomProfileExists(customProfileId);
+
+        var cards = user.Data.userCustomProfileCards!.ToList();
+        var card = cards.FirstOrDefault(c =>
+            c.customProfileId == customProfileId &&
+            c.customProfileCardId == customProfileCardId);
+
+        if (card == null)
+        {
+            var nextSeq = cards
+                .Where(c => c.customProfileId == customProfileId)
+                .Select(c => c.seq)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+
+            var thumbnailPath = thumbnails.SaveThumbnail(request.thumbnail);
+            cards.Add(new UserCustomProfileCard
+            {
+                customProfileId = customProfileId,
+                customProfileCardId = customProfileCardId,
+                thumbnailPath = thumbnailPath,
+                customProfileCard = request.customProfileCard,
+                seq = nextSeq
+            });
+        }
+        else
+        {
+            card.thumbnailPath = thumbnails.SaveThumbnail(request.thumbnail, card.thumbnailPath);
+            card.customProfileCard = request.customProfileCard;
+        }
+
+        user.Data.userCustomProfileCards = cards.ToArray();
+        UpdateCustomProfileResourceUsages(customProfileId);
+        user.MarkChanged(nameof(SuiteUser.userCustomProfileCards));
+    }
+
+    public void DeleteCustomProfileCards(int customProfileId, int[] customProfileCardIds)
+    {
+        var deleteIds = customProfileCardIds.ToHashSet();
+        var cards = user.Data.userCustomProfileCards!
+            .Where(c => c.customProfileId != customProfileId || !deleteIds.Contains(c.customProfileCardId))
+            .ToList();
+
+        var seq = 1;
+        foreach (var card in cards
+            .Where(c => c.customProfileId == customProfileId)
+            .OrderBy(c => c.seq)
+            .ThenBy(c => c.customProfileCardId))
+        {
+            card.seq = seq++;
+        }
+
+        user.Data.userCustomProfileCards = cards.ToArray();
+        UpdateCustomProfileResourceUsages(customProfileId);
+        user.MarkChanged(nameof(SuiteUser.userCustomProfileCards));
+    }
+
+    public void UpdateCustomProfileResourceUsages(int customProfileId)
+    {
+        var usageCounts = new Dictionary<int, int>();
+        foreach (var card in user.Data.userCustomProfileCards!.Where(c => c.customProfileId == customProfileId))
+        {
+            var collections = card.customProfileCard?.collections;
+            if (collections == null) continue;
+
+            foreach (var collection in collections)
+            {
+                if (collection.id <= 0) continue;
+                usageCounts.TryGetValue(collection.id, out var current);
+                usageCounts[collection.id] = current + 1;
+            }
+        }
+
+        var usages = user.Data.userCustomProfileResourceUsages!
+            .Where(u => u.customProfileId != customProfileId)
+            .ToList();
+
+        usages.AddRange(usageCounts
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new UserCustomProfileResourceUsages
+            {
+                customProfileId = customProfileId,
+                customProfileResourceId = kv.Key,
+                quantity = kv.Value
+            }));
+
+        user.Data.userCustomProfileResourceUsages = usages.ToArray();
+        user.MarkChanged(nameof(SuiteUser.userCustomProfileResourceUsages));
+    }
+
+    private void EnsureCustomProfileExists(int customProfileId)
+    {
+        var profiles = user.Data.userCustomProfiles!.ToList();
+        if (profiles.Any(p => p.customProfileId == customProfileId))
+            return;
+
+        profiles.Add(new UserCustomProfile
+        {
+            customProfileId = customProfileId,
+            name = ""
+        });
+        user.Data.userCustomProfiles = profiles.ToArray();
+        user.MarkChanged(nameof(SuiteUser.userCustomProfiles));
+    }
+
+    public void UpdateUserName(string newName)
+    {
+        if (user.Data.userGamedata == null)
+            return;
+
+        user.Data.userGamedata.name = newName;
+        user.MarkChanged(nameof(SuiteUser.userGamedata));
+    }
+}

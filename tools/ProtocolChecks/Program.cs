@@ -10,14 +10,17 @@ using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using MessagePack;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
 using Mono.Cecil;
 using PrivateSekai.Config;
-using PrivateSekai.Crypto;
+using PrivateSekai.Transport;
 using PrivateSekai.Protocol;
-using PrivateSekai.Services;
-using PrivateSekai.Services.Master;
+using PrivateSekai.Modules.Accounts;
+using PrivateSekai.Modules.Home;
+using PrivateSekai.Shared.Master;
+using PrivateSekai.Shared.Users;
+using PrivateSekai.Storage;
 using Sekai = game::Sekai;
 
 var root = Path.GetFullPath(args.FirstOrDefault() ?? ".");
@@ -144,13 +147,38 @@ foreach (var member in DumpContract.For(typeof(Sekai.SuiteMaster)).Members)
     tables++;
 }
 Console.WriteLine($"master：{tables} 张本地表、{rows} 行读取与 MessagePack 往返通过。");
-MasterDataManager.Bind(new MasterDataManager(ServerConfig.MasterCache));
-var users = new UserManager(NullLogger<UserManager>.Instance);
-var userId = users.ForkNewUser();
-var newUser = users.GetUser(userId).GetSuiteUserData();
+var master = new MasterData(ServerConfig.MasterCache, ServerConfig.SekaiMasterDbDiffPath);
+var accounts = new AccountTemplates();
+var users = new MemoryUserStore();
+users.Save(0, accounts.CreateUser(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+var session = new UserSession();
+var operations = new UserOperation(users, new UserLocks(), session, TimeProvider.System);
+var userBytes = operations.Create(accounts.CreateUser, () =>
+{
+    new HomeService(session).EnsureShopAreaActionSets();
+    return session.BuildSuite();
+});
+var newUser = DumpSerializer.Deserialize<Sekai.SuiteUser>(userBytes);
+var userId = newUser.userRegistration.userId;
 Check(newUser.userRegistration.userId == userId && userId != 0, "新用户 ID");
-Check(users.GetUser(0).Data.userRegistration.userId == 0, "模板用户未被修改");
+Check(users.Read(0)!.Data.userRegistration.userId == 0, "模板用户未被修改");
 Check(DumpSerializer.Deserialize<Sekai.SuiteUser>(DumpSerializer.Serialize(newUser)).userRegistration.userId == userId, "新用户协议往返");
+var restoredUserId = userId + 10;
+var authController = new AuthController(accounts, TimeProvider.System, operations, session, new HomeService(session));
+var authResult = authController.HandleAuthUser(restoredUserId, new Sekai.UserAuthRequest
+{
+    credential = JwtSignature.GenUserCredential(restoredUserId)
+});
+Check(authResult is FileContentResult && users.Read(restoredUserId)?.Data.userRegistration.userId == restoredUserId,
+    "已验证凭证在认证入口恢复缺失用户");
+var restoredAuth = DumpSerializer.Deserialize<Sekai.UserAuthResponse>(((FileContentResult)authResult).FileContents);
+Check(!string.IsNullOrEmpty(restoredAuth.sessionToken), "恢复账号返回独立认证响应");
+var firstAuth = accounts.GetAuth("sample-session-one");
+var secondAuth = accounts.GetAuth("sample-session-two");
+Check(firstAuth.sessionToken == "sample-session-one" && secondAuth.sessionToken == "sample-session-two", "认证模板不共享可变响应");
+var invalidId = restoredUserId + 1;
+Check(authController.HandleAuthUser(invalidId, new Sekai.UserAuthRequest { credential = "invalid-sample" }) is UnauthorizedObjectResult &&
+    users.Read(invalidId) == null, "无效凭证不创建账号");
 Console.WriteLine("初始化：master 缓存、模板用户加载及新用户创建通过。");
 Check(hash == Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(dump))), "原始 DLL 未修改");
 

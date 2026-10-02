@@ -20,6 +20,12 @@
 ## 目录约定
 
 - `src/PrivateSekai.Server/`: 服务端项目源码、项目文件和可运行配置模板。
+- `src/PrivateSekai.Server/Modules/`: 按功能组织 Controller、Service、master 查询和资源 Handler；修改前按需读取模块内的 `AGENTS.md`。
+- `src/PrivateSekai.Server/Shared/`: 用户操作、资源分派和 master 缓存。
+- `src/PrivateSekai.Server/Transport/`: 加解密、MessagePack 输入输出和请求作用域。
+- `src/PrivateSekai.Server/Storage/`: 用户和图片存储实现。
+- `src/PrivateSekai.Protocol/`: dump 模型的序列化契约，不复制手写镜像模型。
+- `tests/PrivateSekai.Tests/`: 使用独立小型 master 数据的业务与架构检查。
 - `docs/`: 可提交的项目文档，只写脱敏后的协议、设计和实现说明。
 - `data/template/`: 模板用户和初始化 JSON。
 - `data/suitemasterfile/`: suite master 数据包。已跟踪的 zip 和说明文件可以保留，展开目录和缓存不提交。
@@ -33,10 +39,12 @@
 
 - 先证据，后实现。路径、HTTP method、request/response model、MessagePack key、字段可空性和状态变更必须来自客户端审计、抓包、master data 或现有实现交叉验证。
 - 不凭相似名称合并业务。相似 API、相似字段、相似 resource id 必须检查实际调用链或数据映射。
-- 控制器只做路由、解密、参数校验和调用 service。复杂业务状态放在 `Services/` 或已有业务门面中。
-- MessagePack model 放在 `Models/`，保持 `[MessagePackObject]` 和字符串 `[Key("...")]` 风格。
-- 常规加密请求使用 `await ReadBodyAsync()` 后通过 `PrskCrypto.PrskDec<T>(body)` 解密；常规加密响应使用 `PrskResponse(responseData)`。
-- 用户资源刷新优先返回 `SuiteUserCommonResponse { updatedResources = user.GetRefreshData() }`，除非已有证据说明该接口有更窄的返回集。
+- 控制器负责路由、参数校验和响应映射；业务放在所属模块的 Service。已有协议模型直接使用 dump 类型，自定义 MessagePack model 才放在 `Models/`。
+- 常规请求由 `PrskCryptoMiddleware` 解密、输入 formatter 读取；继承 `PrskController` 的响应统一加密，不在模块内重复编解码。
+- 用户写操作使用 `UserOperation.Execute`，查询使用 `Query` 或独立快照 `Read`；只有注册和验证凭证后的恢复入口可以创建账号。
+- 同一操作中的服务通过 scoped `UserSession` 共享隔离副本；业务方法不保存用户、不嵌套用户操作，也不拼装刷新响应。
+- 资源收支走 `ResourceService`，Handler 不回调 Service、资源分派或用户操作入口。
+- Controller 在最外层调用 `user.BuildRefresh()` 填充响应；操作入口编码成功后才提交。保留已有窄返回集和字段排除规则。
 - 不用 `try-catch` 掩盖尚未理解的协议、模型或状态错误。只有 IO 边界、兼容降级或已有项目模式明确需要时才捕获异常。
 - 不记录完整 cookie、token、authorization header、密码、手机号、邮箱或设备指纹。调试日志只记录是否存在、长度、哈希或脱敏摘要。
 
@@ -73,6 +81,14 @@ dotnet build src\PrivateSekai.Server\PrivateSekai.Server.csproj
 ```
 
 如果构建因正在运行的服务端进程、文件锁或本地环境问题失败，只记录失败原因和被锁文件，不主动停止用户进程，除非用户明确要求。
+
+业务、用户状态或模块依赖修改后执行：
+
+```powershell
+dotnet run --project tests/PrivateSekai.Tests
+```
+
+协议、模型、模板或数据读取修改后执行 `dotnet run --project tools/ProtocolChecks -- .`；需要本地 dump 和数据，测试不启动游戏或 HTTP 服务。
 
 提交前检查：
 
