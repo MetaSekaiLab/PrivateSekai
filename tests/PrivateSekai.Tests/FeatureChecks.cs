@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using game::Sekai;
 using MessagePack;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateSekai.Config;
 using PrivateSekai.Modules.Cards;
@@ -26,6 +27,11 @@ internal static class FeatureChecks
 {
     public static void Run()
     {
+        var cache = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["PinTables:0"] = "shopItems" })
+            .Build().Get<MasterCacheConfig>()!;
+        Check.That(cache.PinTables.SequenceEqual(["shopItems"]), "配置指定的预加载表不会合并隐式默认大表");
+        Check.That(new MasterCacheConfig().PinTables.Length == 0, "默认不预加载大表");
         var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
             "../../../obj/feature-fixtures", Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(directory);

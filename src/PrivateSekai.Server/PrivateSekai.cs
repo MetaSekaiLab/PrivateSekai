@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -21,7 +22,7 @@ ServerConfig.Load(builder.Configuration, builder.Environment.ContentRootPath);
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ListenAnyIP(ServerConfig.Port);
+    options.Listen(IPAddress.Parse(builder.Configuration["PrivateSekai:ListenAddress"] ?? "0.0.0.0"), ServerConfig.Port);
 });
 
 builder.Services.AddPrivateSekai();
