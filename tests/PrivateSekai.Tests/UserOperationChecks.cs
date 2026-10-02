@@ -3,6 +3,7 @@ extern alias game;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using game::Sekai;
@@ -26,9 +27,38 @@ internal static class UserOperationChecks
         DifferentUsersRemainIndependent();
         NestedOperationsAreRejected();
         RefreshIsStable();
+        MissionResponseFields();
         RegistrationIsExplicit();
         RegistrationDoesNotOverwriteRestoredUser();
         Console.WriteLine("用户操作：回滚、引用隔离、并发、刷新及注册检查通过。");
+    }
+
+    private static void MissionResponseFields()
+    {
+        var store = new MemoryUserStore();
+        var state = TestUsers.Create(1);
+        state.Data.userCharacterMissions = [new() { userId = 1, characterId = 1, characterMissionType = "read_card_episode_first", progress = 1,
+            achievedMissions = [new() { userId = 1, missionId = 1006 }] }];
+        state.Data.userMissionStatuses = [new() { userId = 1, missionType = "beginner_mission_v2", missionId = 7 },
+            new() { userId = 1, missionType = "live_mission", missionId = 1 }];
+        store.Save(1, state);
+        using var provider = TestUsers.Provider(store);
+        using var scope = provider.CreateScope();
+        var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
+        var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+        var bytes = operation.Execute(1, () => new SuiteUserCommonResponse { updatedResources = user.BuildSuite() });
+        using var json = JsonDocument.Parse(MessagePackSerializer.ConvertToJson(bytes));
+        var suite = json.RootElement.GetProperty("updatedResources");
+        var progress = suite.GetProperty("userCharacterMissionV2s")[0];
+        Check.That(!progress.TryGetProperty("userId", out _) &&
+            progress.GetProperty("achievedMissions")[0].GetProperty("userId").GetInt64() == 1,
+            "响应省略角色任务进度用户 ID，但保留达成状态用户 ID");
+        var statuses = suite.GetProperty("userMissionStatuses");
+        Check.That(!statuses[0].TryGetProperty("userId", out _) && statuses[1].GetProperty("userId").GetInt64() == 1,
+            "只省略已核验的新手任务状态用户 ID");
+        Check.That(store.Read(1)!.Data.userCharacterMissions[0].userId == 1 &&
+            DumpSerializer.Deserialize<SuiteUser>(DumpSerializer.Serialize(state.Data)).userMissionStatuses[0].userId == 1,
+            "响应字段省略不修改存储或原始 dump 往返契约");
     }
 
     private static void FailureDoesNotCommit()

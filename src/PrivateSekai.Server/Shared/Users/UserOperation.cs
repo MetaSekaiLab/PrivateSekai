@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using PrivateSekai.Protocol;
 
 namespace PrivateSekai.Shared.Users;
 
@@ -51,7 +50,7 @@ public sealed class UserOperation(IUserStore store, UserLocks locks, UserSession
         session.Begin(state, now);
         try
         {
-            var response = DumpSerializer.SerializeObject(action());
+            var response = UserResponseSerializer.Serialize(action());
             if (commit)
                 store.Save(userId, state);
             return response;

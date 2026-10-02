@@ -63,6 +63,10 @@ internal static class StoryHttpChecks
             saved.userCharacterMissionStatuses.Single(s => s.missionId == 1006).missionStatus == "achieved",
             "首次读前篇累计角色任务，重复阅读与日志不重复累计");
         var firstRead = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "002.json")))!;
+        var missionWire = firstRead["response"]!["updatedResources"]!["userCharacterMissionV2s"]!.AsArray()
+            .Single(m => m!["characterMissionType"]!.GetValue<string>() == "read_card_episode_first")!;
+        check(missionWire["userId"] == null && missionWire["achievedMissions"]![0]!["userId"] != null,
+            "真实 HTTP 省略任务进度用户 ID，保留达成状态用户 ID");
         check(firstRead["response"]!["updatedResources"]!["userCharacterMissionV2s"]!.AsArray()
             .Single(m => m!["characterMissionType"]!.GetValue<string>() == "read_card_episode_first")!["achievedMissions"]!.AsArray().Count == 1 &&
             saved.userCharacterMissions.Single(m => m.characterMissionType == "read_card_episode_first").achievedMissions.Length == 0,
@@ -130,6 +134,9 @@ internal static class StoryHttpChecks
             !saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 7).isNewAchieved,
             "前后篇全部已读时推进任务，重复阅读不增加进度且不持久化首次达成标志");
         var secondFirst = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "second-part/001.json")))!;
+        check(secondFirst["response"]!["updatedResources"]!["userMissionStatuses"]!.AsArray()
+            .Where(m => m!["missionType"]!.GetValue<string>() == "beginner_mission_v2").All(m => m!["userId"] == null),
+            "新手任务状态响应省略用户 ID");
         check(secondFirst["response"]!["updatedResources"]!["userBeginnerMissionV2s"]!.AsArray()
             .Single(m => m!["beginnerMissionV2Id"]!.GetValue<int>() == 7)!["isNewAchieved"]!.GetValue<bool>(),
             "前后篇任务首次达成仅在当次响应标记");
