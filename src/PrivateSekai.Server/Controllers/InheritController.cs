@@ -1,6 +1,9 @@
+extern alias game;
+
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using game::Sekai;
 using PrivateSekai.Crypto;
-using PrivateSekai.Models;
 using PrivateSekai.Services;
 
 namespace PrivateSekai.Controllers;
@@ -22,7 +25,7 @@ public class InheritController : PrskController
     [HttpGet("api/user/{userId}/restrict-info")]
     public IActionResult HandleRestrictInfo(long userId)
     {
-        return Ok(new RestrictInfoResponse
+        return Ok(new UserRestrictInfo
         {
             isRestrictDeviceTransfer = false
         });
@@ -32,7 +35,7 @@ public class InheritController : PrskController
     /// 设置 ID/password 引继码形式的账号继承信息。客户端提交用户输入的继承密码，服务端返回生成的 `inheritId` 和用户资源差异，客户端随后展示继承 ID 与密码给用户保存。
     /// </summary>
     [HttpPut("api/user/{userId}/inherit")]
-    public IActionResult HandleSetInherit(long userId, [FromBody] UserInheritRequest request)
+    public IActionResult HandleSetInherit(long userId, [FromBody] UserIPassInheritRequest request)
     {
         if (string.IsNullOrEmpty(request.password))
             return BadRequest("Missing password");
@@ -42,7 +45,7 @@ public class InheritController : PrskController
 
         _logger.LogInformation("User {UserId} set inherit ID {InheritId}", userId, inheritId);
 
-        return Ok(new UserInheritSetResponse
+        return Ok(new UserIPassInheritResponse
         {
             updatedResources = user.GetRefreshData(),
             userInherit = new UserInherit { inheritId = inheritId }
@@ -101,10 +104,10 @@ public class InheritController : PrskController
         _logger.LogInformation("User {UserId} inherited account with inherit ID {InheritId}",
             matchedUserId, inheritId);
 
-        var responseData = new InheritExecuteResponse
+        var responseData = new PlatformInheritResponse
         {
             afterUserGamedata = matchedUser.GetAfterUserGamedata(),
-            userEventDeviceTransferRestrict = new RestrictInfoResponse
+            userEventDeviceTransferRestrict = new UserRestrictInfo
             {
                 isRestrictDeviceTransfer = false
             }

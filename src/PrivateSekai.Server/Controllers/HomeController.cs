@@ -1,6 +1,10 @@
+extern alias game;
+
+using System;
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
+using game::Sekai;
 using PrivateSekai.Crypto;
-using PrivateSekai.Models;
 using PrivateSekai.Services;
 
 namespace PrivateSekai.Controllers;
@@ -19,7 +23,7 @@ public class HomeController : PrskController
     /// </summary>
     [HttpPut("api/user/{userId}/home/refresh")]
     [PrskOptionalBody]
-    public IActionResult HandleUserHomeRefresh(long userId, [FromBody] HomeRefreshRequest? request)
+    public IActionResult HandleUserHomeRefresh(long userId, [FromBody] UserHomeRefreshRequest? request)
     {
         var user = _users.GetUser(userId);
 
@@ -43,7 +47,7 @@ public class HomeController : PrskController
         var user = _users.GetUser(0);
         return Ok(new InformationResponse
         {
-            informations = user.Data.userInformations
+            informations = user.Data.userNews
         });
     }
 }

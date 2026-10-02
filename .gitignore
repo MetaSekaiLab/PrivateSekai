@@ -25,6 +25,7 @@ tools/__pycache__/
 /tools/mitm/dump*/
 
 # Large generated/master data
+/.re/
 /data/sekai-master-db-diff/
 /data/suitemasterfile/.encrypted-cache/
 /data/suitemasterfile/*/

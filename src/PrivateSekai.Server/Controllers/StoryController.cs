@@ -1,6 +1,11 @@
+extern alias game;
+
+using System.Collections.Generic;
 using Microsoft.AspNetCore.Mvc;
-using PrivateSekai.Models;
+using game::Sekai;
 using PrivateSekai.Services;
+using GetFriendStoryFavoriteStatusesResponse = game::Sekai.StoryFavorite.GetFriendStoryFavoriteStatusesResponse;
+using UserStoryRecommend = game::Sekai.UserStoryRecommendResponse.UserStoryRecommend;
 
 namespace PrivateSekai.Controllers;
 
@@ -45,7 +50,7 @@ public class StoryController : PrskController
         var consumedResources = user.ReleaseStoryEpisode(
             storyType,
             episodeId,
-            request.cardEpisodeReleaseCostType);
+            request.CardEpisodeReleaseCostType);
 
         return Ok(new UserStoryCostResponse
         {
@@ -118,7 +123,7 @@ public class StoryController : PrskController
     [HttpGet("api/user/{userId}/story-favorite/friend/status/{storyType}")]
     public IActionResult HandleStoryFavoriteFriendStatus(long userId, string storyType)
     {
-        return Ok(new StoryFavoriteFriendStatusResponse
+        return Ok(new GetFriendStoryFavoriteStatusesResponse
         {
             friendStoryFavoriteStatuses = []
         });

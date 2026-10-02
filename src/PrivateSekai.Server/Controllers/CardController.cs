@@ -1,6 +1,11 @@
+extern alias game;
+
+using System;
+using System.IO;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using MessagePack;
-using PrivateSekai.Models;
+using game::Sekai;
+using PrivateSekai.Protocol;
 using PrivateSekai.Services;
 
 namespace PrivateSekai.Controllers;
@@ -52,10 +57,10 @@ public class CardController : PrskController
     public IActionResult HandleCardMasterLesson(
         long userId,
         int cardId,
-        [FromBody] UserCardMasterLessonRequest request)
+        [FromBody] PostUserCardMasterLessonAPIRequest request)
     {
         var user = _users.GetUser(userId);
-        return Ok(user.MasterLessonCard(cardId, request.masterLessonCostIds));
+        return Ok(user.MasterLessonCard(cardId, request.MasterLessonCostIds));
     }
 
     /// <summary>
@@ -76,12 +81,12 @@ public class CardController : PrskController
         {
             case "special_training":
                 var specialTrainingRequest =
-                    MessagePackSerializer.Deserialize<UserCardSpecialTrainingRequest>(request);
+                    DumpSerializer.Deserialize<UserCardSpecialTrainingRequest>(request);
                 user.SetCardSpecialTrainingStatus(cardId, specialTrainingRequest?.specialTrainingStatus);
                 break;
             case "set_default_image":
                 var defaultImageRequest =
-                    MessagePackSerializer.Deserialize<UserCardDefaultImageRequest>(request);
+                    DumpSerializer.Deserialize<UserCardDefaultImageRequest>(request);
                 user.SetCardDefaultImage(cardId, defaultImageRequest?.defaultImage);
                 break;
             default:

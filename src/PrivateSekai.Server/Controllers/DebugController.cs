@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using PrivateSekai.Config;
+using PrivateSekai.Protocol;
 using PrivateSekai.Services;
 
 namespace PrivateSekai.Controllers;
@@ -8,7 +9,7 @@ namespace PrivateSekai.Controllers;
 [ApiController]
 public class DebugController : ControllerBase
 {
-    private static readonly JsonSerializerOptions JsonOpts = new() { IncludeFields = true };
+    private static readonly JsonSerializerOptions JsonOpts = DumpJson.Options;
 
     private readonly UserManager _users;
 

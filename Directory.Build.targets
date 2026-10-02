@@ -1,0 +1,38 @@
+<Project>
+  <PropertyGroup Condition="'$(UseGameDump)' == 'true'">
+    <GameDumpDirectory Condition="'$(GameDumpDirectory)' == ''">$(MSBuildThisFileDirectory).re/DummyDll</GameDumpDirectory>
+    <GameDumpPath>$([System.IO.Path]::GetFullPath('$(GameDumpDirectory)', '$(MSBuildThisFileDirectory)'))</GameDumpPath>
+    <GameModelDirectory>$(MSBuildThisFileDirectory)src/PrivateSekai.Protocol/obj/GameDump</GameModelDirectory>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UseGameDump)' == 'true'">
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GameModelDirectory)/Assembly-CSharp.dll</HintPath>
+      <Aliases>game</Aliases>
+    </Reference>
+    <Reference Include="Il2CppDummyDll">
+      <HintPath>$(GameDumpPath)/Il2CppDummyDll.dll</HintPath>
+      <Aliases>game</Aliases>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameDumpPath)/UnityEngine.CoreModule.dll</HintPath>
+      <Aliases>game</Aliases>
+    </Reference>
+  </ItemGroup>
+  <Target Name="FingerprintGameDump" Condition="'$(MSBuildProjectName)' == 'PrivateSekai.Protocol'">
+    <Error Condition="!Exists('$(GameDumpPath)/Assembly-CSharp.dll')" Text="请将完整的 Il2CppDumper DummyDll 放入 .re/DummyDll，或设置 GameDumpDirectory。" />
+    <MakeDir Directories="$(GameModelDirectory)" />
+    <GetFileHash Files="$(GameDumpPath)/Assembly-CSharp.dll">
+      <Output TaskParameter="Items" ItemName="GameDumpHash" />
+    </GetFileHash>
+    <WriteLinesToFile File="$(GameModelDirectory)/source.sha256" Lines="@(GameDumpHash->'%(FileHash)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+  <Target Name="PrepareGameDump" BeforeTargets="ResolveAssemblyReferences" DependsOnTargets="FingerprintGameDump"
+          Condition="'$(MSBuildProjectName)' == 'PrivateSekai.Protocol'"
+          Inputs="$(GameModelDirectory)/source.sha256;$(MSBuildThisFileDirectory)tools/DumpCompiler/Program.cs;$(MSBuildThisFileDirectory)tools/DumpCompiler/DumpCompiler.csproj;$(MSBuildThisFileFullPath)"
+          Outputs="$(GameModelDirectory)/Assembly-CSharp.dll;$(GameModelDirectory)/models.json">
+    <Exec StdOutEncoding="utf-8" StdErrEncoding="utf-8" Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)tools/DumpCompiler&quot; --configuration Release -- &quot;$(GameDumpPath)&quot; &quot;$(GameModelDirectory)&quot;" />
+  </Target>
+  <Target Name="CleanGameDump" AfterTargets="CoreClean" Condition="'$(MSBuildProjectName)' == 'PrivateSekai.Protocol'">
+    <Delete Files="$(GameModelDirectory)/source.sha256;$(GameModelDirectory)/Assembly-CSharp.dll;$(GameModelDirectory)/models.json" />
+  </Target>
+</Project>

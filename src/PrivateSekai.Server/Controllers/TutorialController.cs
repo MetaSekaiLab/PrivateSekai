@@ -1,5 +1,8 @@
+extern alias game;
+
 using Microsoft.AspNetCore.Mvc;
-using PrivateSekai.Models;
+using Microsoft.Extensions.Logging;
+using game::Sekai;
 using PrivateSekai.Services;
 
 namespace PrivateSekai.Controllers;
@@ -39,7 +42,7 @@ public class TutorialController : PrskController
     /// PATCH /api/user/{userId}
     /// </summary>
     [HttpPatch("api/user/{userId}")]
-    public IActionResult HandleUserUpdate(long userId, [FromBody] UserNameRequest request)
+    public IActionResult HandleUserUpdate(long userId, [FromBody] UserNameAPIRequest request)
     {
         var newName = request.userGamedata?.name;
         if (string.IsNullOrEmpty(newName))

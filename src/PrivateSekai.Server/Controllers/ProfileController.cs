@@ -1,5 +1,7 @@
+extern alias game;
+
 using Microsoft.AspNetCore.Mvc;
-using PrivateSekai.Models;
+using game::Sekai;
 using PrivateSekai.Services;
 
 namespace PrivateSekai.Controllers;
@@ -17,7 +19,7 @@ public class ProfileController : PrskController
     /// 更新玩家个人资料中的留言、Twitter ID 和头像显示信息。客户端在个人资料页离开或保存时检测到资料字段变化后提交，成功后合并返回的用户资源差异。
     /// </summary>
     [HttpPut("api/user/{userId}/profile")]
-    public IActionResult HandleUserProfile(long userId, [FromBody] UserProfileRequest request)
+    public IActionResult HandleUserProfile(long userId, [FromBody] PutUserProfileRequest request)
     {
         var user = _users.GetUser(userId);
         user.UpdateProfile(new UserProfile

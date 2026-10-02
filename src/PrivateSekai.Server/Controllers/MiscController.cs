@@ -1,5 +1,7 @@
+extern alias game;
+
 using Microsoft.AspNetCore.Mvc;
-using PrivateSekai.Models;
+using game::Sekai;
 using PrivateSekai.Services;
 
 namespace PrivateSekai.Controllers;
@@ -22,7 +24,7 @@ public class MiscController : PrskController
         var user = _users.GetUser(userId);
         user.RemoveTopic(topicId);
 
-        return Ok(new TopicResponse
+        return Ok(new SuiteUserCommonResponse
         {
             updatedResources = user.GetRefreshData()
         });

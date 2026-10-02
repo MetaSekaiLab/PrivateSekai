@@ -1,5 +1,7 @@
+extern alias game;
+
 using Microsoft.AspNetCore.Mvc;
-using PrivateSekai.Models;
+using game::Sekai;
 using PrivateSekai.Services;
 
 namespace PrivateSekai.Controllers;
@@ -22,7 +24,7 @@ public class PresentController : PrskController
         var user = _users.GetUser(userId);
         return Ok(new UserPresentHistoriesResponse
         {
-            userPresentHistories = user.GetPresentHistory()
+            UserPresentHistories = user.GetPresentHistory()
         });
     }
 
@@ -30,7 +32,7 @@ public class PresentController : PrskController
     /// 领取一个或多个礼物。客户端把要领取的 `presentIds` 提交给服务端，成功后合并返回的用户资源差异，并用 `receivedUserPresents` 展示奖励结果。
     /// </summary>
     [HttpPost("api/user/{userId}/present")]
-    public IActionResult HandleReceivePresent(long userId, [FromBody] UserPresentRequest request)
+    public IActionResult HandleReceivePresent(long userId, [FromBody] UserPresentAPIRequest request)
     {
         var user = _users.GetUser(userId);
         var received = user.ReceivePresent(request.presentIds ?? []);

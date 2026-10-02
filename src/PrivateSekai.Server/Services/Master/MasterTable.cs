@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 namespace PrivateSekai.Services.Master;
 
 public sealed class MasterTable<T> where T : class

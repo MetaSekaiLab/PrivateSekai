@@ -1,7 +1,12 @@
+extern alias game;
+
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using game::Sekai;
+using game::Sekai.CustomProfile;
 using PrivateSekai.Crypto;
-using PrivateSekai.Models;
 using PrivateSekai.Services;
+using EmptyResponse = PrivateSekai.Models.EmptyResponse;
 
 namespace PrivateSekai.Controllers;
 

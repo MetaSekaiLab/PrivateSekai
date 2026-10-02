@@ -1,6 +1,11 @@
+extern alias game;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using game::Sekai;
+using game::Sekai.ApiData;
 using PrivateSekai.Config;
-using PrivateSekai.Models;
-using PrivateSekai.Models.Master;
 
 namespace PrivateSekai.Services.Master;
 
@@ -36,7 +41,7 @@ public sealed class MasterDataManager
 
     public int GetConfigInt(string configKey, int fallback = 0)
     {
-        var config = _cache.GetTable<MasterConfigRow>("configs").Rows
+        var config = _cache.GetTable<MasterConfig>("configs").Rows
             .FirstOrDefault(c => string.Equals(c.configKey, configKey, StringComparison.Ordinal));
 
         return int.TryParse(config?.value, out var value) ? value : fallback;
@@ -70,8 +75,8 @@ public sealed class MasterDataManager
         if (rarity == null)
             return 1;
 
-        return specialTrained && rarity.trainingMaxLevel.HasValue
-            ? rarity.trainingMaxLevel.Value
+        return specialTrained && rarity.trainingMaxLevel > 0
+            ? rarity.trainingMaxLevel
             : rarity.maxLevel;
     }
 
@@ -121,19 +126,19 @@ public sealed class MasterDataManager
         if (requested.Count == 0)
             return [];
 
-        return _cache.GetTable<MasterLesson>("masterLessons")
+        return _cache.GetTable<MasterMasterLesson>("masterLessons")
             .Rows
             .SelectMany(row => row.costs ?? [])
             .Where(cost => requested.Contains(cost.id))
             .ToArray();
     }
 
-    public MasterLessonReward[] GetMasterLessonRewards(int cardId, int beforeMasterRank, int afterMasterRank)
+    public MasterMasterLessonReward[] GetMasterLessonRewards(int cardId, int beforeMasterRank, int afterMasterRank)
     {
         if (afterMasterRank <= beforeMasterRank)
             return [];
 
-        return _cache.GetTable<MasterLessonReward>("masterLessonRewards", r => r.id)
+        return _cache.GetTable<MasterMasterLessonReward>("masterLessonRewards", r => r.id)
             .Rows
             .Where(reward =>
                 reward.cardId == cardId &&
@@ -178,8 +183,7 @@ public sealed class MasterDataManager
         if (gacha?.gachaCeilItemId > 0)
             return gacha.gachaCeilItemId;
 
-        return _cache.GetTable<MasterGachaCeilItem>("gachaCeilItems", i => i.id).Rows
-            .FirstOrDefault(i => i.gachaId == gachaId)?.id ?? 0;
+        return GetMasterGacha(gachaId)?.gachaCeilItemId ?? 0;
     }
 
     public MasterGachaCeilExchange? GetMasterGachaCeilExchange(int gachaCeilExchangeId)
@@ -210,7 +214,7 @@ public sealed class MasterDataManager
 
     public MasterBoost BuildMasterBoost(int boostCount)
     {
-        foreach (var boost in _cache.GetTable<MasterBoostRow>("boosts", b => b.id).Rows)
+        foreach (var boost in _cache.GetTable<MasterBoost>("boosts", b => b.id).Rows)
         {
             if (boost.costBoost != boostCount)
                 continue;
@@ -223,8 +227,7 @@ public sealed class MasterDataManager
                 expRate = boost.expRate,
                 rewardRate = boost.rewardRate,
                 livePointRate = boost.livePointRate,
-                eventPointRate = boost.eventPointRate,
-                bondsExpRate = boost.bondsExpRate
+                eventPointRate = boost.eventPointRate
             };
         }
 
@@ -237,8 +240,7 @@ public sealed class MasterDataManager
             expRate = rate,
             rewardRate = rate,
             livePointRate = rate,
-            eventPointRate = rate,
-            bondsExpRate = rate
+            eventPointRate = rate
         };
     }
 
@@ -328,7 +330,7 @@ public sealed class MasterDataManager
     public int GetCurrentLiveMissionPeriodId()
     {
         var current = 0;
-        foreach (var pass in _cache.GetTable<MasterLiveMissionPass>("liveMissionPasses", p => p.id).Rows)
+        foreach (var pass in _cache.GetTable<MasterLiveMissionPath>("liveMissionPasses", p => p.id).Rows)
             current = Math.Max(current, pass.liveMissionPeriodId);
         return current;
     }

@@ -1,5 +1,9 @@
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using PrivateSekai.Protocol;
 
 namespace PrivateSekai.Crypto;
 
@@ -24,7 +28,7 @@ public sealed class PrskEncryptResponseAttribute : Attribute, IAsyncResultFilter
 
         if (context.Result is ObjectResult { Value: not null, StatusCode: null or >= 200 and < 300 } obj)
         {
-            var bytes = PrskCrypto.SerializeSkipNull(obj.Value);
+            var bytes = DumpSerializer.SerializeObject(obj.Value);
             context.Result = new FileContentResult(bytes, "application/octet-stream");
         }
 

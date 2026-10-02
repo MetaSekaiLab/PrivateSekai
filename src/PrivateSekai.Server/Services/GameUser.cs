@@ -1,10 +1,16 @@
-using System.Reflection;
-using MessagePack;
-using PrivateSekai.Config;
+extern alias game;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using game::Sekai;
+using game::Sekai.ApiData;
+using game::Sekai.CustomProfile;
 using PrivateSekai.Crypto;
 using PrivateSekai.Models;
-using PrivateSekai.Models.Master;
-using PrivateSekai.Services.Master;
+using PrivateSekai.Protocol;
+using MasterDataManager = PrivateSekai.Services.Master.MasterDataManager;
+using UserMasterLessonReward = game::Sekai.UserCardMasterLessonResponse.UserMasterLessonReward;
 
 namespace PrivateSekai.Services;
 
@@ -26,22 +32,11 @@ public class GameUser
     /// </summary>
     public NotSuiteData NotSuite { get; private set; }
 
-    /// <summary>反射缓存：MessagePack Key → SuiteUser FieldInfo</summary>
-    private static readonly Dictionary<string, FieldInfo> SuiteUserFields =
-        typeof(SuiteUser).GetFields()
-            .Where(f => f.GetCustomAttribute<KeyAttribute>() != null)
-            .ToDictionary(
-                f => f.GetCustomAttribute<KeyAttribute>()!.StringKey!,
-                f => f
-            );
+    private static readonly Dictionary<string, DumpMember> SuiteUserFields =
+        DumpContract.For(typeof(SuiteUser)).Members.ToDictionary(m => (string)m.Key, StringComparer.Ordinal);
 
     private static readonly Dictionary<string, string> SuiteUserFieldKeys =
-        typeof(SuiteUser).GetFields()
-            .Where(f => f.GetCustomAttribute<KeyAttribute>()?.StringKey != null)
-            .ToDictionary(
-                f => f.Name,
-                f => f.GetCustomAttribute<KeyAttribute>()!.StringKey!
-            );
+        DumpContract.For(typeof(SuiteUser)).Members.ToDictionary(m => m.Member.Name, m => (string)m.Key, StringComparer.Ordinal);
 
     /// <summary>
     /// 无实义
@@ -80,7 +75,6 @@ public class GameUser
             Data.userRegistration.signature = JwtSignature.GenUserSignature(newUserId);
         }
         if (Data.userGamedata != null) Data.userGamedata.userId = newUserId;
-        if (Data.userProfile != null) Data.userProfile.userId = newUserId;
 
         if (Data.userCards != null)
             foreach (var c in Data.userCards) c.userId = newUserId;
@@ -94,8 +88,8 @@ public class GameUser
             foreach (var m in Data.userMaterialExchanges) m.userId = newUserId;
         if (Data.userGachaCeilExchanges != null)
             foreach (var g in Data.userGachaCeilExchanges) g.userId = newUserId;
-        if (Data.userCharacterMissionV2Statuses != null)
-            foreach (var s in Data.userCharacterMissionV2Statuses) s.userId = newUserId;
+        if (Data.userCharacterMissionStatuses != null)
+            foreach (var s in Data.userCharacterMissionStatuses) s.userId = newUserId;
     }
 
     public void InitAllUserTime(long currentTime)
@@ -155,9 +149,9 @@ public class GameUser
         {
             if (SuiteUserFields.TryGetValue(rtype, out var field))
             {
-                var value = field.GetValue(Data);
+                var value = field.Get(Data);
                 if (value != null)
-                    field.SetValue(result, value);
+                    field.Set(result, value);
             }
         }
         result.now = now;
@@ -246,7 +240,7 @@ public class GameUser
     {
         Data.refreshableTypes ??= [];
         if (!Data.refreshableTypes.Contains(rtype))
-            Data.refreshableTypes.Add(rtype);
+            Data.refreshableTypes = [.. Data.refreshableTypes, rtype];
     }
 
     public void MarkAppealsViewed(int[]? appealIds)
@@ -254,17 +248,17 @@ public class GameUser
         if (appealIds == null || appealIds.Length == 0)
             return;
 
-        var mergedIds = (Data.userViewableAppeal?.appealIds ?? [])
+        var mergedIds = (Data.viewableAppeal?.appealIds ?? [])
             .Concat(appealIds.Where(id => id > 0))
             .Distinct()
             .OrderBy(id => id)
             .ToArray();
 
-        Data.userViewableAppeal = new ViewableAppeal
+        Data.viewableAppeal = new ViewableAppeal
         {
             appealIds = mergedIds
         };
-        UpdateRefreshableType(nameof(SuiteUser.userViewableAppeal));
+        UpdateRefreshableType(nameof(SuiteUser.viewableAppeal));
     }
 
     public void RefreshAreaActionSets()
@@ -336,8 +330,8 @@ public class GameUser
                 nameof(SuiteUser.userCards),
                 nameof(SuiteUser.userDecks),
                 nameof(SuiteUser.userUnitEpisodeStatuses),
-                nameof(SuiteUser.userCharacterMissionV2s),
-                nameof(SuiteUser.userCharacterMissionV2Statuses),
+                nameof(SuiteUser.userCharacterMissions),
+                nameof(SuiteUser.userCharacterMissionStatuses),
                 nameof(SuiteUser.userBeginnerMissionV2s),
                 nameof(SuiteUser.userMissionStatuses),
                 nameof(SuiteUser.userHonorMissions)
@@ -397,7 +391,7 @@ public class GameUser
 
         Data.userCards ??= [];
         if (Data.userCards.All(c => c.cardId != cardId))
-            Data.userCards.Add(newCard);
+            Data.userCards = [.. Data.userCards, newCard];
 
         UpdateRefreshableType(nameof(SuiteUser.userCards));
         return newCard;
@@ -440,8 +434,8 @@ public class GameUser
 
         UpdateRefreshableTypes(new []
         {
-            nameof(SuiteUser.userCharacterMissionV2s),
-            nameof(SuiteUser.userCharacterMissionV2Statuses),
+            nameof(SuiteUser.userCharacterMissions),
+            nameof(SuiteUser.userCharacterMissionStatuses),
             nameof(SuiteUser.userHonorMissions)
         });
 
@@ -953,14 +947,14 @@ public class GameUser
 
     private void ConsumeGachaCeilSubstituteCost(MasterGachaCeilExchange? exchange, UserGachaCeilItemExchangeRequest request)
     {
-        if (exchange?.gachaCeilExchangeSubstituteCosts == null ||
+        if (exchange?.substituteCosts == null ||
             request.gachaCeilExchangeSubstituteCostId <= 0 ||
             request.substituteCostCount <= 0)
         {
             return;
         }
 
-        foreach (var entry in exchange.gachaCeilExchangeSubstituteCosts)
+        foreach (var entry in exchange.substituteCosts)
         {
             if (entry.id != request.gachaCeilExchangeSubstituteCostId)
                 continue;
@@ -1069,7 +1063,7 @@ public class GameUser
             }
         }
 
-        Data.userCards = cards.OrderBy(c => c.cardId).ToList();
+        Data.userCards = cards.OrderBy(c => c.cardId).ToArray();
         UpdateRefreshableType(nameof(SuiteUser.userCards));
     }
 
@@ -1190,8 +1184,8 @@ public class GameUser
         {
             return new UserMissionReceiveResponse
             {
-                updatedResources = GetRefreshData(),
-                obtainedRewards = []
+                UpdatedResources = GetRefreshData(),
+                ObtainedRewards = []
             };
         }
 
@@ -1215,8 +1209,8 @@ public class GameUser
 
         return new UserMissionReceiveResponse
         {
-            updatedResources = GetRefreshData(),
-            obtainedRewards = obtainedRewards.ToArray()
+            UpdatedResources = GetRefreshData(),
+            ObtainedRewards = obtainedRewards.ToArray()
         };
     }
 
@@ -1501,8 +1495,8 @@ public class GameUser
 
         UpdateRefreshableTypes(new[]
         {
-            nameof(SuiteUser.userCharacterMissionV2s),
-            nameof(SuiteUser.userCharacterMissionV2Statuses)
+            nameof(SuiteUser.userCharacterMissions),
+            nameof(SuiteUser.userCharacterMissionStatuses)
         });
 
         return rewards;
@@ -1572,7 +1566,7 @@ public class GameUser
             .ToArray();
     }
 
-    public List<UserPresentData> ReceivePresent(string[] presentIds)
+    public List<UserPresentData> ReceivePresent(IEnumerable<string> presentIds)
     {
         var received = new List<UserPresentData>();
         foreach (var pid in presentIds)
@@ -1605,7 +1599,6 @@ public class GameUser
             resourceId = present.resourceId,
             resourceLevel = present.resourceLevel,
             resourceQuantity = present.resourceQuantity,
-            expiredAt = present.expiredAt,
             receivedAt = UserManager.Now,
             reason = present.reason
         });
@@ -1630,8 +1623,6 @@ public class GameUser
     public void UpdateProfile(UserProfile newProfile)
     {
         if (Data.userProfile == null) return;
-        // 保留原 userId
-        newProfile.userId = Data.userProfile.userId;
         Data.userProfile = newProfile;
         UpdateRefreshableType(nameof(SuiteUser.userProfile));
     }
@@ -1875,7 +1866,7 @@ public class GameUser
         UpdateRefreshableType(nameof(SuiteUser.userShops));
     }
 
-    private void ConsumeShopItemCosts(MasterShopItemCostEntry[] costs)
+    private void ConsumeShopItemCosts(MasterShopItemCost[] costs)
     {
         foreach (var entry in costs)
         {
@@ -2145,11 +2136,12 @@ public class GameUser
             CreatedAt = UserManager.Now
         };
 
+        NormalizeUserEventBreakTime(UserManager.Now);
         UpdateRefreshableType(nameof(SuiteUser.userEventBreakTime));
         return new UserLive
         {
             userLiveId = userLiveId,
-            updatedResources = GetRefreshData(),
+            updatedResources = new UpdatedResources { userEventBreakTime = Data.userEventBreakTime },
             skills = BuildIngameLotterySkills(request.deckId),
             comboCutins = [],
             isInBreakTime = false
@@ -2194,7 +2186,6 @@ public class GameUser
         return new UserLiveClearResponse
         {
             updatedResources = GetRefreshData(),
-            scoreRank = scoreRank,
             score = request.score,
             perfectCount = request.perfectCount,
             greatCount = request.greatCount,
@@ -2209,20 +2200,17 @@ public class GameUser
             deckCardExpResults = deckCardExpResults,
             unitExpResults = [],
             userDeck = GetUserDeck(session?.DeckId),
-            userMusicAchievements = grantedMusicAchievements,
             scoreRankRewards = scoreRankRewards,
             playerRankRewards = [],
             limitedTermScoreRankRewards = [],
-            musicAchievementRewards = musicAchievementRewards,
             boost = boost,
             beforeEventPoint = 0,
             afterEventPoint = 0,
             beforeEventItemQuantity = 0,
             afterEventItemQuantity = 0,
-            beforeWorldBloomChapterPoint = null,
-            afterWorldBloomChapterPoint = null,
+            beforeWorldBloomChapterPoint = 0,
+            afterWorldBloomChapterPoint = 0,
             worldBloomChapterNo = null,
-            isPreliminaryTournament = false,
             bondsUpdateExpResults = [],
             userEventDeviceTransferRestrict = new UserRestrictInfo(),
             userLivePoint = userLivePoint,
@@ -2631,7 +2619,7 @@ public class GameUser
                 seq = index + 1,
                 cardId = cardId,
                 relationCardId = null,
-                ingameCutinCharacterId = null
+                ingameCutinCharacterId = 0
             })
             .ToArray();
     }
@@ -2742,8 +2730,8 @@ public class GameUser
 
     public GameUser DeepClone()
     {
-        var bytes = MessagePackSerializer.Serialize(Data);
-        var clonedData = MessagePackSerializer.Deserialize<SuiteUser>(bytes);
+        var bytes = DumpSerializer.Serialize(Data);
+        var clonedData = DumpSerializer.Deserialize<SuiteUser>(bytes);
         var user = new GameUser(clonedData)
         {
             NotSuite = new NotSuiteData

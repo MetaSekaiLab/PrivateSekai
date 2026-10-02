@@ -1,5 +1,7 @@
+using System.Threading.Tasks;
 using MessagePack;
 using Microsoft.AspNetCore.Mvc.Formatters;
+using PrivateSekai.Protocol;
 
 namespace PrivateSekai.Crypto;
 
@@ -18,6 +20,7 @@ public sealed class PrskMessagePackInputFormatter : InputFormatter
         var model = await MessagePackSerializer.DeserializeAsync(
             context.ModelType,
             context.HttpContext.Request.Body,
+            options: DumpSerializer.Options,
             cancellationToken: context.HttpContext.RequestAborted);
         return await InputFormatterResult.SuccessAsync(model);
     }

@@ -1,13 +1,21 @@
+extern alias game;
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using game::Sekai;
 using PrivateSekai.Config;
-using PrivateSekai.Models;
+using PrivateSekai.Protocol;
 
 namespace PrivateSekai.Services;
 
 
 public class UserManager
 {
-    private static readonly JsonSerializerOptions JsonOpts = new() { IncludeFields = true };
+    private static readonly JsonSerializerOptions JsonOpts = DumpJson.Options;
 
     private readonly Dictionary<long, GameUser> _users = new();
     private readonly ILogger<UserManager> _logger;
@@ -24,9 +32,9 @@ public class UserManager
     }
 
     /// <summary>模板数据（对应 data/template/api_system.json）</summary>
-    private static SystemResponse ApiSystem { get; set; } = null!;
+    private static SystemFullResponse ApiSystem { get; set; } = null!;
 
-    public static SystemResponse GetApiSystem()
+    public static SystemFullResponse GetApiSystem()
     {
         ApiSystem.serverDate = Now;
         return ApiSystem;
@@ -70,7 +78,7 @@ public class UserManager
             File.ReadAllText(authPath), JsonOpts)!;
 
         var sysPath = Path.Combine(basePath, "api_system.json");
-        ApiSystem = JsonSerializer.Deserialize<SystemResponse>(
+        ApiSystem = JsonSerializer.Deserialize<SystemFullResponse>(
             File.ReadAllText(sysPath), JsonOpts)!;
     }
 

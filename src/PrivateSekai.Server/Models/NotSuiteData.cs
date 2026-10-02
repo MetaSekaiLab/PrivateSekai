@@ -1,3 +1,7 @@
+extern alias game;
+
+using System.Collections.Generic;
+using game::Sekai;
 namespace PrivateSekai.Models;
 
 /// <summary>
@@ -31,6 +35,6 @@ public class UserLiveSessionData
     public int BoostCount { get; set; }
     public bool IsAuto { get; set; }
     public string? MusicCategoryName { get; set; }
-    public long? CustomMusicScoreId { get; set; }
+    public string? CustomMusicScoreId { get; set; }
     public long CreatedAt { get; set; }
 }
