@@ -66,7 +66,7 @@ public sealed class StoryService(
             if (status.status == "already_read")
                 return [];
             if (status.status != "released" && !(storyType == "unit_story" &&
-                status.status == "unreleased" && master.IsUnconditionalUnitEpisode(episodeId)))
+                status.status == "unreleased" && master.AreUnitEpisodeConditionsMet(episodeId, user.Data.userReleaseConditions)))
                 throw new ArgumentException("Story episode is locked.");
             var rewards = master.GetEpisodeRewardBoxIds(storyType, episodeId).SelectMany(id =>
             {

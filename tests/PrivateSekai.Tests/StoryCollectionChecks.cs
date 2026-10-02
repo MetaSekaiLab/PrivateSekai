@@ -163,6 +163,15 @@ internal static class StoryCollectionChecks
                 "锁定剧情不可领取首读奖励");
             Check.Throws<ArgumentException>(() => operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 15)),
                 "无主条件的剧情仍须核对附加解锁条件");
+            operations.Execute(1, () =>
+            {
+                user.Data.userReleaseConditions = [new() { releaseConditionId = 2 }];
+                return new EmptyResponse();
+            });
+            var conditional = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 15)));
+            Check.That(conditional.Single().quantity == 3 &&
+                store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 15).status == "already_read",
+                "已有附加条件达成记录时允许主线首读");
             Check.Throws<InvalidOperationException>(() => operations.Execute(1, () => stories.CompleteStoryEpisode("special_story", 13)),
                 "剧情缺少奖励盒时不猜测奖励");
             Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
@@ -174,13 +183,13 @@ internal static class StoryCollectionChecks
             var reward = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 11)));
             var repeat = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 11)));
             Check.That(reward.Single().quantity == 3 && repeat.Length == 0 &&
-                store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 10).quantity == 3,
+                store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 10).quantity == 6,
                 "主线剧情读取嵌套 master 奖励且重复请求不再发奖");
             var opening = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 14)));
             var openingRepeat = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 14)));
             Check.That(opening.Single().quantity == 3 && openingRepeat.Length == 0 &&
                 store.Read(1)!.Data.userUnitEpisodeStatuses.Single(s => s.episodeId == 14).status == "already_read" &&
-                store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 10).quantity == 6,
+                store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 10).quantity == 9,
                 "无解锁条件的 unreleased 主线可首读且奖励只发一次");
             Console.WriteLine("剧情收藏：书签、缩略图、收藏槽位和失败回滚检查通过。");
         }

@@ -9,7 +9,7 @@ using PrivateSekai.Storage;
 
 internal static class StoryReplay
 {
-    private static readonly string[] StoryFields = ["userCards", "userUnitEpisodeStatuses", "userSpecialEpisodeStatuses",
+    private static readonly string[] StoryFields = ["userCards", "userUnitEpisodeStatuses", "userSpecialEpisodeStatuses", "userReleaseConditions",
         "userCharacterMissionV2s", "userCharacterMissionV2Statuses", "userBeginnerMissionV2s", "userMissionStatuses", "userPanelMissions"];
 
     public static void ImportMaster(string source, string destination)

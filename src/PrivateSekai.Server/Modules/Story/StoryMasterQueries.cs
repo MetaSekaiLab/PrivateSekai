@@ -9,16 +9,17 @@ namespace PrivateSekai.Modules.Story;
 
 public sealed class StoryMasterQueries(MasterData master)
 {
-    public bool IsUnconditionalUnitEpisode(int episodeId)
+    public bool AreUnitEpisodeConditionsMet(int episodeId, UserReleaseCondition[]? cleared)
     {
         var episode = master.GetTable<MasterUnitStory>("unitStories").Rows
             .SelectMany(s => s.chapters ?? []).SelectMany(c => c.episodes ?? [])
             .SingleOrDefault(e => e.id == episodeId);
         if (episode == null) return false;
         var conditions = master.GetTable<MasterReleaseCondition>("releaseConditions", c => c.id);
-        return conditions.FindById(episode.releaseConditionId)?.releaseConditionType == "none" &&
-            (episode.andReleaseConditionId == 0 ||
-             conditions.FindById(episode.andReleaseConditionId)?.releaseConditionType == "none");
+        bool IsClear(int id) => cleared?.Any(c => c.releaseConditionId == id) == true ||
+            conditions.FindById(id)?.releaseConditionType == "none";
+        return IsClear(episode.releaseConditionId) &&
+            (episode.andReleaseConditionId == 0 || IsClear(episode.andReleaseConditionId));
     }
 
     public int[] GetEpisodeRewardBoxIds(string type, int episodeId) => type switch
