@@ -60,6 +60,8 @@ if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
 if (args is ["--replay-story", _, var storyMaster, _])
     StoryReplay.ImportMaster(storyMaster, directory);
+if (args is ["--replay-area-shop", _, var areaMaster, _])
+    AreaShopReplay.ImportMaster(areaMaster, directory);
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Loopback, 0));
@@ -86,6 +88,8 @@ if (args is ["--replay-present", var replayCapture, _])
     builder.Services.AddSingleton<TimeProvider>(PresentReplay.Clock(replayCapture));
 if (args is ["--replay-story", var storyCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(StoryReplay.Clock(storyCapture));
+if (args is ["--replay-area-shop", var areaCapture, _, _])
+    builder.Services.AddSingleton<TimeProvider>(AreaShopReplay.Clock(areaCapture));
 builder.Services.AddControllers().AddApplicationPart(typeof(DeckController).Assembly)
     .ConfigureApplicationPartManager(manager => manager.FeatureProviders.Add(new TestedControllers()));
 await using var app = builder.Build();
@@ -159,6 +163,11 @@ try
     if (args is ["--replay-favorites", var favoriteCaptures, _, var favoriteOutput])
     {
         await FavoriteReplay.Run(client, store, favoriteCaptures, favoriteOutput);
+        return;
+    }
+    if (args is ["--replay-area-shop", var areaPath, _, var areaOutput])
+    {
+        await AreaShopReplay.Run(client, store, areaPath, areaOutput);
         return;
     }
     if (args is ["--replay-story", var storyPath, _, var storyOutput])

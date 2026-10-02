@@ -18,6 +18,15 @@ public sealed class ShopService(
     public void PurchaseShopItem(int shopId, int shopItemId)
     {
         var shopItem = master.GetMasterShopItem(shopId, shopItemId);
+        if (shopItem != null)
+        {
+            var areaRewards = resourceMaster.BuildResourcesFromBox("shop_item", shopItem.resourceBoxId);
+            if (areaRewards.Any(r => r.resourceType == "area_item"))
+            {
+                PurchaseAreaItem(shopId, shopItem, areaRewards);
+                return;
+            }
+        }
         var wasSoldOut = IsShopItemSoldOut(shopId, shopItemId);
 
         MarkShopItemSoldOut(shopId, shopItemId);
@@ -37,6 +46,31 @@ public sealed class ShopService(
         resourceService.Grant(rewards.Where(r => r.resourceType is
             "music" or "music_vocal" or "jewel" or "coin" or "virtual_coin" or
             "material" or "practice_ticket" or "costume_3d"));
+    }
+
+    private void PurchaseAreaItem(int shopId, MasterShopItem definition, UserResource[] rewards)
+    {
+        if (rewards.Length != 1 || rewards[0].resourceType != "area_item")
+            throw new InvalidOperationException("Unsupported area item reward box.");
+        var offer = user.Data.userShops?.SingleOrDefault(s => s.shopId == shopId)?.userShopItems?
+            .SingleOrDefault(i => i.shopItemId == definition.id)
+            ?? throw new ArgumentException("Area item offer is unavailable.");
+        var reward = rewards[0];
+        if (offer.status != "sale" || offer.level != reward.resourceLevel)
+            throw new ArgumentException("Area item offer is not on sale.");
+        var next = master.GetNextAreaItemOffer(shopId, reward.resourceId, reward.resourceLevel)
+            ?? throw new NotSupportedException("Final area item offer behavior is not verified.");
+        if (definition.costs == null || definition.costs.Length == 0)
+            throw new InvalidOperationException("Missing area item costs.");
+        foreach (var entry in definition.costs)
+        {
+            var cost = entry.cost ?? throw new InvalidOperationException("Missing area item cost.");
+            resourceService.Consume(cost.resourceType, cost.resourceId, cost.quantity);
+        }
+        resourceService.Grant(reward);
+        offer.shopItemId = next.id;
+        offer.level = reward.resourceLevel + 1;
+        user.MarkChanged(nameof(SuiteUser.userShops));
     }
 
     private bool IsShopItemSoldOut(int shopId, int shopItemId) =>

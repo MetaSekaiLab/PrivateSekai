@@ -10,6 +10,7 @@ internal static class Program
         ArchitectureChecks.Run();
         ResourceTests.Run();
         FeatureChecks.Run();
+        AreaShopChecks.Run();
         SkillPracticeChecks.Run();
         StoryCollectionChecks.Run();
         DeckMissionChecks.Run();

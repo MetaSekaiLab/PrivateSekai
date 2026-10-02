@@ -52,6 +52,7 @@ public static class ServerServices
         services.AddSingleton<IResourceHandler, MusicResourceHandler>();
         services.AddSingleton<IResourceHandler, ProfileResourceHandler>();
         services.AddSingleton<IResourceHandler, MysekaiResourceHandler>();
+        services.AddSingleton<IResourceHandler, AreaItemResourceHandler>();
 
         services.AddScoped<InheritService>();
         services.AddScoped<CardService>();
