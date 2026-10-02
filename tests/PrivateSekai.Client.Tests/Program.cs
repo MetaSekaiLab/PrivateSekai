@@ -345,7 +345,7 @@ try
     Fails(() => new TargetConfiguration { BaseUrl = "https://example.invalid" }.Validate(), "不能将远端伪装为 local");
     Fails(() => ScenarioRunner.Validate(scenario, [new() { Kind = "official", BaseUrl = "https://example.invalid" }], new HashSet<string>()), "官方写入需显式列出操作");
     Fails(() => Operations.Path(Operations.All["favorite-delete"], new() { Args = new() { ["shareNo"] = "../auth" } }, 1), "拒绝路径注入");
-    Console.WriteLine($"MockClient：通过 {count} 项检查；隔离 HTTP 服务即将关闭。");
+    Console.WriteLine($"Client：通过 {count} 项检查；隔离 HTTP 服务即将关闭。");
 }
 finally
 {

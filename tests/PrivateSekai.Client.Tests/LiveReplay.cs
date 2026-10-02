@@ -70,10 +70,38 @@ internal static class LiveReplay
         {
             var localPath = Path.Combine(output, "001.json");
             if (File.Exists(localPath))
+            {
+                var local = JsonNode.Parse(File.ReadAllText(localPath))!.AsObject();
                 JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official,
-                    JsonNode.Parse(File.ReadAllText(localPath))!.AsObject()));
+                    local));
+                foreach (var record in new[] { official, local })
+                {
+                    foreach (var side in new[] { "before", "after" })
+                        record[side] = SelectExperience(record[side]);
+                    var response = record["response"];
+                    record["response"] = new JsonObject
+                    {
+                        ["userExpResult"] = response?["userExpResult"]?.DeepClone(),
+                        ["deckCardExpResults"] = response?["deckCardExpResults"]?.DeepClone(),
+                        ["updatedResources"] = SelectExperience(response?["updatedResources"])
+                    };
+                }
+                JsonFiles.Write(Path.Combine(output, "experience-compare.json"), ScenarioRunner.Compare(official, local));
+            }
         }
     }
+
+    private static JsonObject SelectExperience(JsonNode? source) => new()
+    {
+        ["userGamedata"] = Select(source?["userGamedata"], ["rank", "exp", "totalExp"]),
+        ["userCards"] = source?["userCards"] is JsonArray cards
+            ? new JsonArray(cards.Select(card => (JsonNode?)Select(card, ["cardId", "level", "exp", "totalExp"])).ToArray())
+            : null
+    };
+
+    private static JsonObject? Select(JsonNode? source, string[] fields) => source == null ? null :
+        new(fields.Where(field => source.AsObject().ContainsKey(field))
+            .Select(field => KeyValuePair.Create(field, source![field]?.DeepClone())));
 
     private static void BindUser(JsonNode? node)
     {
