@@ -9,6 +9,10 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public MasterBeginnerMissionV2[] GetAreaItemPurchaseMissions() =>
+        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s").Rows
+            .Where(m => m.beginnerMissionV2Type == "exchange_any_area_item").ToArray();
+
     public MasterCharacterMissionV2[] GetAreaItemCharacterMissions(int areaItemId)
     {
         var characters = master.GetTable<MasterCharacterMissionV2AreaItem>("characterMissionV2AreaItems").Rows

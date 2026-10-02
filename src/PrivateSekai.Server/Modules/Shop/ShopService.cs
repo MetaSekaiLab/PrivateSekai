@@ -26,6 +26,8 @@ public sealed class ShopService(
             if (areaRewards.Any(r => r.resourceType == "area_item"))
             {
                 PurchaseAreaItem(shopId, shopItem, areaRewards);
+                if (areaRewards[0].resourceLevel == 1)
+                    missions.RecordAreaItemPurchase();
                 return missions.RecordAreaItemUpgrade(areaRewards[0].resourceId);
             }
         }

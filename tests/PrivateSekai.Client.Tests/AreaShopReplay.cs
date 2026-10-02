@@ -9,11 +9,11 @@ using PrivateSekai.Storage;
 
 internal static class AreaShopReplay
 {
-    private static readonly string[] Fields = ["userAreas", "userShops", "userMaterials", "userGamedata", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
+    private static readonly string[] Fields = ["userAreas", "userShops", "userMaterials", "userGamedata", "userCharacterMissionV2s", "userCharacterMissionV2Statuses", "userBeginnerMissionV2s", "userMissionStatuses"];
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "shopItems", "resourceBoxes", "areaItems", "characterMissionV2AreaItems", "characterMissionV2s", "characterMissionV2ParameterGroups" })
+        foreach (var table in new[] { "shopItems", "resourceBoxes", "areaItems", "characterMissionV2AreaItems", "characterMissionV2s", "characterMissionV2ParameterGroups", "beginnerMissionV2s" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -40,6 +40,8 @@ internal static class AreaShopReplay
         before["userGamedata"]!["userId"] = 1;
         foreach (var status in before["userCharacterMissionV2Statuses"]?.AsArray() ?? [])
             status!["userId"] = 1;
+        foreach (var status in before["userMissionStatuses"]?.AsArray() ?? [])
+            if (status?["userId"] != null) status["userId"] = 1;
         foreach (var member in DumpContract.For(typeof(SuiteUser)).Members.Where(m => Fields.Contains((string)m.Key)))
             if (before[(string)member.Key] is { } value)
                 member.Set(state.Data, JsonSerializer.Deserialize(value.ToJsonString(), member.Type, DumpJson.Options));

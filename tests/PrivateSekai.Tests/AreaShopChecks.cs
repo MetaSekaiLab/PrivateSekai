@@ -23,6 +23,8 @@ internal static class AreaShopChecks
         try
         {
             File.WriteAllText(Path.Combine(directory, "areaItems.json"), """[{"id":1,"areaId":5}]""");
+            File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"),
+                """[{"id":8,"beginnerMissionV2Type":"exchange_any_area_item","requirement":1}]""");
             File.WriteAllText(Path.Combine(directory, "characterMissionV2AreaItems.json"),
                 """[{"areaItemId":1,"characterId":1,"characterMissionType":"area_item_level_up_character"}]""");
             File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"),
@@ -81,6 +83,9 @@ internal static class AreaShopChecks
                 store.Read(1)!.Data.userCharacterMissionStatuses.Count(s => s.missionId == 1009) == 2 &&
                 store.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "area_item_level_up_character").achievedMissions.Length == 0,
                 "购买与升级各推进一次角色任务，达成提示不保存在进度内");
+            Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 8).progress == 1 &&
+                !store.Read(1)!.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 8).isNewAchieved,
+                "区域道具新手任务只计首次购买，不计普通升级或失败请求");
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

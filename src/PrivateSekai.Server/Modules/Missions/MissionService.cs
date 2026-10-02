@@ -61,9 +61,13 @@ public sealed class MissionService(
         return achieved.ToArray();
     }
 
-    public void RecordUnitStoryRead(string? unit)
+    public void RecordAreaItemPurchase() => RecordBeginnerMissionProgress(master.GetAreaItemPurchaseMissions());
+
+    public void RecordUnitStoryRead(string? unit) => RecordBeginnerMissionProgress(master.GetUnitStoryMissions(unit));
+
+    private void RecordBeginnerMissionProgress(IEnumerable<MasterBeginnerMissionV2> definitions)
     {
-        foreach (var definition in master.GetUnitStoryMissions(unit))
+        foreach (var definition in definitions)
         {
             var missions = (user.Data.userBeginnerMissionV2s ?? []).ToList();
             var progress = missions.SingleOrDefault(m => m.beginnerMissionV2Id == definition.id);
