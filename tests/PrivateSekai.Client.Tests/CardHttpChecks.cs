@@ -13,7 +13,7 @@ internal static class CardHttpChecks
             ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":3,"trainingMaxLevel":3}]""",
             ["practiceTickets"] = """[{"id":1,"exp":100}]""",
             ["levels"] = """[{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300}]""",
-            ["beginnerMissionV2s"] = """[{"id":6,"requirement":1}]""",
+            ["beginnerMissionV2s"] = """[{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1}]""",
             ["masterLessons"] = """[{"id":1,"costs":[{"id":11,"resourceType":"material","resourceId":1,"quantity":2}]}]""",
             ["masterLessonRewards"] = "[]",
             ["cardExchangeResources"] = """[{"cardRarityType":"rarity_1","seq":1,"resourceBoxId":12}]""",
@@ -49,6 +49,30 @@ internal static class CardHttpChecks
         var record = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "cards/001.json")))!;
         check(record["response"]!["updateExpResult"]!["afterLevel"]!.GetValue<int>() == 2 &&
             record["stateChanges"]!.AsArray().Count > 0, "练习响应与状态差异记录完整");
+        check(record["response"]!["updatedResources"]!["userBeginnerMissionV2s"]!.AsArray()
+            .Single(m => m!["beginnerMissionV2Id"]!.GetValue<int>() == 6)!["isNewAchieved"]!.GetValue<bool>() &&
+            !saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 6).isNewAchieved,
+            "首次练习达成标志仅存在于响应");
+
+        state = store.Read(1)!;
+        state.Data.userCards.Single().level = 1;
+        state.Data.userCards.Single().totalExp = 0;
+        state.Data.userCards.Single().exp = 0;
+        state.Data.userPracticeTickets.Single().quantity = 5;
+        store.Save(1, state);
+        await ScenarioRunner.Run(client, new() { Steps = [Step("card-practice",
+            """{"costs":[{"resourceType":"practice_ticket","resourceId":1,"quantity":4}]}""")] },
+            Path.Combine(directory, "card-practice-cap"));
+        saved = store.Read(1)!.Data;
+        check(saved.userCards.Single().level == 3 && saved.userCards.Single().totalExp == 300 &&
+            saved.userCards.Single().exp == 0 && saved.userPracticeTickets.Single().quantity == 1,
+            "练习溢出截断到满级并消耗全部提交练习券");
+        check(saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 6).progress == 3,
+            "已达成练习任务继续累计本次提升的两级");
+        var repeated = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "card-practice-cap/001.json")))!;
+        check(!repeated["response"]!["updatedResources"]!["userBeginnerMissionV2s"]!.AsArray()
+            .Single(m => m!["beginnerMissionV2Id"]!.GetValue<int>() == 6)!["isNewAchieved"]!.GetValue<bool>(),
+            "后续练习不重复报告首次达成");
     }
 
     private static ScenarioStep Step(string operation, string body) => new()

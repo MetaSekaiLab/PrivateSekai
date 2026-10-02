@@ -124,7 +124,7 @@ public sealed class CardService(
 
         var result = AddCardExperience(card, addExp);
         if (result.afterLevel > result.beforeLevel)
-            missions.TouchBeginnerMissionProgress(6);
+            missions.RecordCardPracticeLevelUp(result.afterLevel - result.beforeLevel);
         return new UserCardPracticeTicketResponse { updateExpResult = result };
     }
 

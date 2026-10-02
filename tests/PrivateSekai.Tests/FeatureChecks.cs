@@ -316,7 +316,7 @@ internal static class FeatureChecks
             ["levels"] = """[{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300},{"levelType":"user","level":1,"totalExp":0},{"levelType":"user","level":2,"totalExp":100},{"levelType":"user","level":3,"totalExp":1000}]""",
             ["playerRankRewards"] = """[{"playerRank":2,"seq":1,"resourceBoxId":1}]""",
             ["configs"] = """[{"configKey":"rank_up_recover_boost_count","value":"10"}]""",
-            ["beginnerMissionV2s"] = """[{"id":6,"requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
+            ["beginnerMissionV2s"] = """[{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
             ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
             ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",

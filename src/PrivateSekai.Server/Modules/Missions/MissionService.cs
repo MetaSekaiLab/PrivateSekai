@@ -65,7 +65,9 @@ public sealed class MissionService(
 
     public void RecordUnitStoryRead(string? unit) => RecordBeginnerMissionProgress(master.GetUnitStoryMissions(unit));
 
-    private void RecordBeginnerMissionProgress(IEnumerable<MasterBeginnerMissionV2> definitions)
+    public void RecordCardPracticeLevelUp(int levels) => RecordBeginnerMissionProgress(master.GetCardLevelMissions(), levels);
+
+    private void RecordBeginnerMissionProgress(IEnumerable<MasterBeginnerMissionV2> definitions, int amount = 1)
     {
         foreach (var definition in definitions)
         {
@@ -76,7 +78,7 @@ public sealed class MissionService(
                 progress = new UserBeginnerMissionV2 { beginnerMissionV2Id = definition.id };
                 missions.Add(progress);
             }
-            progress.progress++;
+            progress.progress += amount;
             user.Data.userBeginnerMissionV2s = missions.OrderBy(m => m.beginnerMissionV2Id).ToArray();
             user.MarkChanged(nameof(SuiteUser.userBeginnerMissionV2s));
             if (progress.progress < definition.requirement ||

@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    {
+      "operation": "card-practice",
+      "args": { "cardId": "1" },
+      "body": { "costs": [{ "resourceType": "practice_ticket", "resourceId": 2, "quantity": 1 }] }
+    },
+    { "operation": "suite" }
+  ]
+}

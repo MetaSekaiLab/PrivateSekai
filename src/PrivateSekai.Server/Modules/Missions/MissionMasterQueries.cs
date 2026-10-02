@@ -9,8 +9,12 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public MasterBeginnerMissionV2[] GetCardLevelMissions() =>
+        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
+            .Where(m => m.beginnerMissionV2Type == "any_card_level_up").ToArray();
+
     public MasterBeginnerMissionV2[] GetAreaItemPurchaseMissions() =>
-        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s").Rows
+        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "exchange_any_area_item").ToArray();
 
     public MasterCharacterMissionV2[] GetAreaItemCharacterMissions(int areaItemId)
@@ -44,7 +48,7 @@ public sealed class MissionMasterQueries(MasterData master)
             "theme_park" => 4, "school_refusal" => 5, "piapro" => 6,
             _ => 0
         };
-        return condition == 0 ? [] : master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s").Rows
+        return condition == 0 ? [] : master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "read_unit_story" && m.conditionValue == condition).ToArray();
     }
 

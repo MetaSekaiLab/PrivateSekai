@@ -62,6 +62,8 @@ if (args is ["--replay-story", _, var storyMaster, _])
     StoryReplay.ImportMaster(storyMaster, directory);
 if (args is ["--replay-area-shop", _, var areaMaster, _])
     AreaShopReplay.ImportMaster(areaMaster, directory);
+if (args is ["--replay-card-practice", _, var practiceMaster, _])
+    CardPracticeReplay.ImportMaster(practiceMaster, directory);
 if (args is ["--replay-live", _, _, var liveMaster, _])
     LiveReplay.ImportMaster(liveMaster, directory);
 var builder = WebApplication.CreateBuilder();
@@ -167,6 +169,11 @@ try
     if (args is ["--replay-favorites", var favoriteCaptures, _, var favoriteOutput])
     {
         await FavoriteReplay.Run(client, store, favoriteCaptures, favoriteOutput);
+        return;
+    }
+    if (args is ["--replay-card-practice", var practicePath, _, var practiceOutput])
+    {
+        await CardPracticeReplay.Run(client, store, practicePath, practiceOutput);
         return;
     }
     if (args is ["--replay-area-shop", var areaPath, _, var areaOutput])
