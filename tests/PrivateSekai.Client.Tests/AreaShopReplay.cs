@@ -13,7 +13,7 @@ internal static class AreaShopReplay
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "shopItems", "resourceBoxes", "areaItems", "characterMissionV2AreaItems", "characterMissionV2s", "characterMissionV2ParameterGroups", "beginnerMissionV2s", "gameCharacters" })
+        foreach (var table in new[] { "shopItems", "resourceBoxes", "areaItems", "musicVocals", "characterMissionV2AreaItems", "characterMissionV2s", "characterMissionV2ParameterGroups", "beginnerMissionV2s", "gameCharacters" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -32,8 +32,11 @@ internal static class AreaShopReplay
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeMilliseconds(now);
     }
 
-    public static async Task Run(ProtocolClient client, MemoryUserStore store, string path, string output)
+    public static async Task Run(ProtocolClient client, MemoryUserStore store, string path, string output, bool music = false)
     {
+        if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
+            throw new InvalidOperationException("重放输出目录必须为空。");
+        string[] fields = music ? ["userMusics", "userMusicVocals", "userShops", "userMaterials", "userBeginnerMissionV2s", "userMissionStatuses"] : Fields;
         var official = Read(path);
         var state = store.Read(1)!;
         var before = official["before"]!.DeepClone();
@@ -42,7 +45,7 @@ internal static class AreaShopReplay
             status!["userId"] = 1;
         foreach (var status in before["userMissionStatuses"]?.AsArray() ?? [])
             if (status?["userId"] != null) status["userId"] = 1;
-        foreach (var member in DumpContract.For(typeof(SuiteUser)).Members.Where(m => Fields.Contains((string)m.Key)))
+        foreach (var member in DumpContract.For(typeof(SuiteUser)).Members.Where(m => fields.Contains((string)m.Key)))
             if (before[(string)member.Key] is { } value)
                 member.Set(state.Data, JsonSerializer.Deserialize(value.ToJsonString(), member.Type, DumpJson.Options));
         store.Save(1, state);
@@ -56,11 +59,16 @@ internal static class AreaShopReplay
         JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official, local));
         foreach (var record in new[] { official, local })
         {
-            foreach (var side in new[] { "before", "after" }) record[side] = Select(record[side]);
-            record["response"]!["updatedResources"] = Select(record["response"]!["updatedResources"]);
+            foreach (var side in new[] { "before", "after" }) record[side] = Select(record[side], fields);
+            record["response"]!["updatedResources"] = Select(record["response"]!["updatedResources"], fields);
         }
-        JsonFiles.Write(Path.Combine(output, "area-shop-compare.json"), ScenarioRunner.Compare(official, local));
+        var report = ScenarioRunner.Compare(official, local);
+        JsonFiles.Write(Path.Combine(output, music ? "music-shop-compare.json" : "area-shop-compare.json"), report);
+        if (music && (!report["complete"]!.GetValue<bool>() ||
+            new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
+                .Any(k => report[k]!.AsArray().Count != 0)))
+            throw new InvalidOperationException("音乐商店与官方样本存在差异，见报告。");
     }
 
-    private static JsonObject Select(JsonNode? source) => new(Fields.Select(field => KeyValuePair.Create(field, source?[field]?.DeepClone())));
+    private static JsonObject Select(JsonNode? source, string[] fields) => new(fields.Select(field => KeyValuePair.Create(field, source?[field]?.DeepClone())));
 }

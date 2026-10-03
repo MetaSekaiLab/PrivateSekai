@@ -88,7 +88,7 @@ if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
 if (args is ["--replay-story", _, var storyMaster, _])
     StoryReplay.ImportMaster(storyMaster, directory);
-if (args is ["--replay-area-shop", _, var areaMaster, _])
+if (args is ["--replay-area-shop" or "--replay-music-shop", _, var areaMaster, _])
     AreaShopReplay.ImportMaster(areaMaster, directory);
 if (args is ["--replay-card-practice" or "--replay-special-training", _, var practiceMaster, _])
     CardPracticeReplay.ImportMaster(practiceMaster, directory);
@@ -293,9 +293,9 @@ try
         await MaterialExchangeReplay.Run(client, store, exchangePath, exchangeOutput);
         return;
     }
-    if (args is ["--replay-area-shop", var areaPath, _, var areaOutput])
+    if (args is ["--replay-area-shop" or "--replay-music-shop", var areaPath, _, var areaOutput])
     {
-        await AreaShopReplay.Run(client, store, areaPath, areaOutput);
+        await AreaShopReplay.Run(client, store, areaPath, areaOutput, args[0] == "--replay-music-shop");
         return;
     }
     if (args is ["--replay-live", var liveStartPath, var liveClearPath, _, var liveOutput])
@@ -472,7 +472,7 @@ try
         "练习券领取排序值、历史排序值及记录期限与官方两次样本一致");
     await CardHttpChecks.Run(client, config, store, directory, Check);
     await ShopHttpChecks.Run(client, store, directory, Check);
-    Check(shopRequests.SequenceEqual(new (string, long?)[] { ("POST", 0), ("PUT", 0) }),
+    Check(shopRequests.SequenceEqual(new (string, long?)[] { ("POST", 0), ("PUT", 0), ("POST", 0) }),
         "商店购买与升级分别使用 POST 和 PUT，均不发送 body");
     await GachaHttpChecks.Run(client, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);

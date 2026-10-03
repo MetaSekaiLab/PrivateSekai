@@ -119,9 +119,13 @@ public sealed class MissionService(
 
     public void RecordCardPracticeLevelUp(int levels) => RecordBeginnerMissionProgress(master.GetCardLevelMissions(), levels);
 
-    public void RecordManualLiveClear()
+    public void RecordManualLiveClear() => RecordLimitedBeginnerProgress(master.GetLiveClearMissions());
+
+    public void RecordMusicPurchase() => RecordLimitedBeginnerProgress(master.GetMusicPurchaseMissions());
+
+    private void RecordLimitedBeginnerProgress(IEnumerable<MasterBeginnerMissionV2> definitions)
     {
-        foreach (var definition in master.GetLiveClearMissions())
+        foreach (var definition in definitions)
         {
             var records = (user.Data.userBeginnerMissionV2s ?? []).ToList();
             var progress = records.SingleOrDefault(m => m.beginnerMissionV2Id == definition.id);

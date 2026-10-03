@@ -2115,6 +2115,14 @@ Server 已接入兑换期内、已存在记录的技能券、体力道具和金�
 
 Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示例 ID 须按当前 master 和账号库存调整。已取得成功样本的相关 HTTP、基线、响应和状态增量对拍一致；金币比较覆盖 `userGamedata.coin`，完整背景资源不在此结论范围内。
 
+### 音乐商店购买
+
+`POST /api/user/{userId}/shop/{shopId}/item/{shopItemId}`，无 body。客户端 `MusicShopDetailDialog.OnClickOK` 调用 `PostUserShopAPI`，成功后合并刷新数据并进入购买结果展示。
+
+官方在售歌曲样本确认：按 `shopItems.costs` 扣除音乐卡，通过 `shop_item` 资源盒解锁歌曲及 `musicVocals` 中条件为默认开放的音源；对应商品从 `sale` 变为 `sold_out`。刷新返回完整 `userMusics`、`userMusicVocals`、`userShops`、材料及新手任务相关数组。无等级商品省略 `level`；歌曲兑换任务在首次购买后达成，当次响应 `isNewAchieved=true`，Suite 回读为 false。
+
+Server 已接入歌曲购买的在售与持有检查及新手任务联动。Client 使用 `shop-purchase`，并提供 `--replay-music-shop`：单个官方成功样本的歌曲、音源、商店、材料、新手任务进度和状态范围 HTTP 对拍无差异。重复购买、材料不足、商品时间边界及非默认音源的额外解锁仍待官方样本核验。
+
 ### 新手任务重复领奖
 
 `PUT /api/user/{userId}/mission/beginner_mission_v2`，body 为 `missionIds` 数组。官方已达成任务首次领取成功；对同一已领取 ID 再次请求返回 HTTP 409，正文为 `httpStatus=409`、`errorCode=""`、`errorMessage=""`。随后回读确认材料、新手任务进度和任务状态均不变。

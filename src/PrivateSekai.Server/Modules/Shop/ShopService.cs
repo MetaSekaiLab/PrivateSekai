@@ -105,6 +105,26 @@ public sealed class ShopService(
                     missions.RecordAreaItemPurchase();
                 return missions.RecordAreaItemUpgrade(areaRewards[0].resourceId);
             }
+            if (areaRewards.Any(r => r.resourceType == "music"))
+            {
+                if (areaRewards.Length != 1 || areaRewards[0].quantity != 1)
+                    throw new NotSupportedException("Music shop reward combination is not verified.");
+                var offer = user.Data.userShops?.SingleOrDefault(s => s.shopId == shopId)?.userShopItems?
+                    .SingleOrDefault(i => i.shopItemId == shopItemId);
+                if (offer?.status != "sale" || user.Data.userMusics?.Any(m => m.musicId == areaRewards[0].resourceId) == true)
+                    throw new ArgumentException("Music shop item is unavailable.");
+                if (shopItem.costs == null || shopItem.costs.Length == 0)
+                    throw new InvalidOperationException("Missing music shop costs.");
+                foreach (var entry in shopItem.costs)
+                {
+                    var cost = entry.cost ?? throw new InvalidOperationException("Missing music shop cost.");
+                    resourceService.Consume(cost.resourceType, cost.resourceId, cost.quantity);
+                }
+                resourceService.Grant(areaRewards);
+                MarkShopItemSoldOut(shopId, shopItemId);
+                missions.RecordMusicPurchase();
+                return [];
+            }
         }
         var wasSoldOut = IsShopItemSoldOut(shopId, shopItemId);
 
