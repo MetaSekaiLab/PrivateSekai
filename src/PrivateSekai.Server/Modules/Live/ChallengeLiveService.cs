@@ -9,6 +9,43 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class ChallengeLiveService(UserSession user, LiveMasterQueries master)
 {
+    public (int Status, UserChallengeLiveStartResponse? Response) Start(UserChallengeLiveStartRequest request)
+    {
+        var deck = (user.Data.userChallengeLiveSoloDecks ?? []).SingleOrDefault(d => d.characterId == request.characterId);
+        if (deck == null) return (404, null);
+        if ((user.Data.userChallengeLivePlayStatuses ?? []).Sum(s => s.playCount) >= master.GetChallengePlayableCount())
+            return (409, null);
+        int?[] slots = [request.leader, request.support1, request.support2, request.support3, request.support4];
+        int?[] savedSlots = [deck.leader, deck.support1, deck.support2, deck.support3, deck.support4];
+        // 只接入已有官方开局样本的编队和模式。
+        if (request.isAuto || !slots.SequenceEqual(savedSlots) || !request.leader.HasValue ||
+            slots.Skip(2).Any(c => c.HasValue))
+            return (501, null);
+        var difficulty = master.GetMasterMusicDifficulty(request.musicDifficultyId);
+        if (difficulty == null || difficulty.musicId != request.musicId)
+            throw new ArgumentException("Challenge music difficulty does not match the song.");
+        SaveDeck(request.characterId, deck);
+        foreach (var previous in user.Private.ChallengeLiveSessions.Where(s => s.Value.characterId == request.characterId).Select(s => s.Key).ToArray())
+            user.Private.ChallengeLiveSessions.Remove(previous);
+        var id = Guid.NewGuid().ToString();
+        user.Private.ChallengeLiveSessions[id] = request;
+        var statuses = (user.Data.userChallengeLivePlayStatuses ?? []).ToList();
+        statuses.RemoveAll(s => s.characterId == request.characterId);
+        statuses.Add(new UserChallengeLivePlayStatus
+        {
+            userChallengeLiveId = id, characterId = request.characterId,
+            musicId = request.musicId, musicDifficultyId = request.musicDifficultyId, musicVoiceId = request.musicVocalId,
+            liveStatus = "start", playCount = 0, playStartAt = user.Now, isAuto = false
+        });
+        user.Data.userChallengeLivePlayStatuses = statuses.OrderBy(s => s.characterId).ToArray();
+        var members = slots.Where(c => c.HasValue).Select(c => c!.Value).Append(request.leader.Value);
+        return (200, new UserChallengeLiveStartResponse
+        {
+            userChallengeLiveId = id,
+            skills = members.Select((cardId, index) => new IngameLotterySkill { seq = index + 1, cardId = cardId }).ToArray()
+        });
+    }
+
     public bool TryUnlockFirstCharacter(int characterId)
     {
         const string behaviorType = "challenge_live_character_force_release";

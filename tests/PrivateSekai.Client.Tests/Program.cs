@@ -67,7 +67,7 @@ if (args is ["--replay-card-practice", _, var practiceMaster, _])
     CardPracticeReplay.ImportMaster(practiceMaster, directory);
 if (args is ["--replay-live", _, _, var liveMaster, _])
     LiveReplay.ImportMaster(liveMaster, directory);
-if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock", _, var challengeMaster, _])
+if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock" or "--replay-challenge-start", _, var challengeMaster, _])
     ChallengeDeckReplay.ImportMaster(challengeMaster, directory);
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
@@ -99,7 +99,7 @@ if (args is ["--replay-area-shop", var areaCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(AreaShopReplay.Clock(areaCapture));
 if (args is ["--replay-live", _, var liveCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(LiveReplay.Clock(liveCapture));
-if (args is ["--replay-challenge-unlock", var challengeClockCapture, _, _])
+if (args is ["--replay-challenge-unlock" or "--replay-challenge-start", var challengeClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(challengeClockCapture));
 builder.Services.AddControllers().AddApplicationPart(typeof(DeckController).Assembly)
     .ConfigureApplicationPartManager(manager => manager.FeatureProviders.Add(new TestedControllers()));
@@ -207,7 +207,7 @@ try
         await DeckReplay.Run(client, store, deckCaptures, deckOutput);
         return;
     }
-    if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock", var challengeCapture, _, var challengeOutput])
+    if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock" or "--replay-challenge-start", var challengeCapture, _, var challengeOutput])
     {
         await ChallengeDeckReplay.Run(client, store, challengeCapture, challengeOutput);
         return;

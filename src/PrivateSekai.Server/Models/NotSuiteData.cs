@@ -24,6 +24,8 @@ public class NotSuiteData
     /// <summary>进行中的单人 live session</summary>
     public Dictionary<string, UserLiveSessionData> UserLiveSessions { get; set; } = [];
 
+    public Dictionary<string, UserChallengeLiveStartRequest> ChallengeLiveSessions { get; set; } = [];
+
     public Dictionary<string, List<StoryBookmarkData>> StoryBookmarks { get; set; } = [];
 }
 

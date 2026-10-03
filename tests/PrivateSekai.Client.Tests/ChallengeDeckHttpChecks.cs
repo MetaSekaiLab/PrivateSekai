@@ -11,6 +11,7 @@ internal static class ChallengeDeckHttpChecks
         File.WriteAllText(Path.Combine(directory, "challengeLiveCharacters.json"),
             """[{"id":1,"characterId":1,"releaseConditionId":90001,"orReleaseConditionId":90002}]""");
         File.WriteAllText(Path.Combine(directory, "challengeLiveDecks.json"), "[]");
+        File.WriteAllText(Path.Combine(directory, "challengeLives.json"), """[{"id":1,"playableCount":1}]""");
         var configsPath = Path.Combine(directory, "configs.json");
         var configs = JsonNode.Parse(File.ReadAllText(configsPath))!.AsArray();
         configs.Add(JsonNode.Parse("""{"configKey":"default_challenge_live_deck_limit","value":"1"}"""));
@@ -101,6 +102,54 @@ internal static class ChallengeDeckHttpChecks
         check(repeatedFailed && eligible.LastHttpStatus == 409 &&
             store.Read(1)!.Data.userReleaseConditions.Single(c => c.releaseConditionId == 90002).createdAt == createdAt,
             "重复首次解锁返回 409，保留原创建时间");
+        await client.Send(new() { Operation = "system" });
+        state = store.Read(1)!;
+        state.Data.userChallengeLivePlayStatuses = [];
+        store.Save(1, state);
+        var start = new ScenarioStep { Operation = "challenge-live-start", Body = JsonNode.Parse(
+            """{"characterId":1,"leader":1,"musicId":7,"musicDifficultyId":71,"musicVocalId":1,"isAuto":false}""")!.AsObject() };
+        await ScenarioRunner.Run(client, new() { Steps = [start, start] }, Path.Combine(directory, "challenge-start"));
+        var first = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "challenge-start/001.json")))!["response"]!;
+        var second = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "challenge-start/002.json")))!["response"]!;
+        var oldId = first["userChallengeLiveId"]!.GetValue<string>();
+        var newId = second["userChallengeLiveId"]!.GetValue<string>();
+        state = store.Read(1)!;
+        check(oldId != newId && !state.Private.ChallengeLiveSessions.ContainsKey(oldId) &&
+            state.Private.ChallengeLiveSessions.Single().Key == newId &&
+            state.Data.userChallengeLivePlayStatuses.Single().userChallengeLiveId == newId &&
+            state.Data.userChallengeLivePlayStatuses.Single().playCount == 0,
+            "挑战重开替换私有会话和参与状态，不消耗次数");
+        check(second["updatedResources"]!["userChallengeLivePlayStatuses"]![0]!["playEndAt"] == null &&
+            second["skills"]![0]!["ingameCutinCharacterId"] == null && second["comboCutins"] == null &&
+            second["skills"]!.AsArray().Count == 2 && state.Data.userChallengeLiveSoloStages.Single().point == 20,
+            "挑战开局省略未发生的结束时间及切入字段，不修改阶段");
+        state.Data.userChallengeLivePlayStatuses = [new() { characterId = 2, playCount = 1 }];
+        store.Save(1, state);
+        using var quota = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await quota.Send(new() { Operation = "system" });
+        var quotaFailed = false;
+        try { await quota.Send(start); }
+        catch (ClientFailure) { quotaFailed = true; }
+        check(quotaFailed && quota.LastHttpStatus == 409 && store.Read(1)!.Private.ChallengeLiveSessions.Single().Key == newId,
+            "挑战次数跨角色合计，额度耗尽不覆盖已有会话");
+        state = store.Read(1)!;
+        state.Data.userChallengeLivePlayStatuses = [];
+        store.Save(1, state);
+        foreach (var (character, auto, status) in new[] { (99, false, 404), (1, true, 501) })
+        {
+            using var unsupported = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+            await unsupported.Send(new() { Operation = "system" });
+            var body = start.Body!.DeepClone().AsObject();
+            body["characterId"] = character;
+            body["isAuto"] = auto;
+            var rejectedStart = false;
+            try { await unsupported.Send(new() { Operation = "challenge-live-start", Body = body }); }
+            catch (ClientFailure) { rejectedStart = true; }
+            check(rejectedStart && unsupported.LastHttpStatus == status &&
+                store.Read(1)!.Private.ChallengeLiveSessions.Single().Key == newId &&
+                store.Read(1)!.Data.userChallengeLivePlayStatuses.Length == 0,
+                "缺少挑战编队或尚未支持的自动模式不产生会话及参与状态");
+        }
         await client.Send(new() { Operation = "system" });
     }
 

@@ -16,29 +16,41 @@ internal static class UserResponseSerializer
         CompositeResolver.Create(
             new IMessagePackFormatter[]
             {
-                new WithoutUserIdFormatter<UserCharacterMissionV2>(_ => true),
-                new WithoutUserIdFormatter<UserReleaseCondition>(_ => true),
-                new WithoutUserIdFormatter<UserMissionStatus>(s => s.missionType == "beginner_mission_v2")
+                new ChallengeStartFormatter(),
+                new FieldFilterFormatter<UserCharacterMissionV2>((_, key) => key == "userId"),
+                new FieldFilterFormatter<UserReleaseCondition>((_, key) => key == "userId"),
+                new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" && s.missionType == "beginner_mission_v2"),
+                new FieldFilterFormatter<UserChallengeLivePlayStatus>((s, key) => key == "playEndAt" && s.liveStatus == "start")
             },
             new[] { DumpSerializer.Options.Resolver }));
 
     public static byte[] Serialize(object? value) => value == null ? [0xc0] :
         MessagePackSerializer.Serialize(value.GetType(), value, Options);
 
-    private sealed class WithoutUserIdFormatter<T>(Func<T, bool> omit) : IMessagePackFormatter<T?> where T : class
+    internal sealed class ChallengeStartFormatter : IMessagePackFormatter<UserChallengeLiveStartResponse?>
     {
-        private static readonly DumpMember[] Members = DumpContract.For(typeof(T)).Members
-            .Where(m => (string)m.Key != "userId").ToArray();
+        public void Serialize(ref MessagePackWriter writer, UserChallengeLiveStartResponse? value, MessagePackSerializerOptions options)
+        {
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<IngameLotterySkill>((_, key) => key == "ingameCutinCharacterId") },
+                new[] { options.Resolver }));
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserChallengeLiveStartResponse>()
+                .Serialize(ref writer, value!, scoped);
+        }
+
+        public UserChallengeLiveStartResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserChallengeLiveStartResponse>()
+                .Deserialize(ref reader, DumpSerializer.Options);
+    }
+
+    private sealed class FieldFilterFormatter<T>(Func<T, string, bool> omit) : IMessagePackFormatter<T?> where T : class
+    {
+        private static readonly DumpMember[] Members = DumpContract.For(typeof(T)).Members.ToArray();
 
         public void Serialize(ref MessagePackWriter writer, T? value, MessagePackSerializerOptions options)
         {
             if (value == null) { writer.WriteNil(); return; }
-            if (!omit(value))
-            {
-                DumpSerializer.Options.Resolver.GetFormatterWithVerify<T>().Serialize(ref writer, value, options);
-                return;
-            }
-            var members = Members.Where(m => m.Get(value) != null).ToArray();
+            var members = Members.Where(m => !omit(value, (string)m.Key) && m.Get(value) != null).ToArray();
             writer.WriteMapHeader(members.Length);
             foreach (var member in members)
             {

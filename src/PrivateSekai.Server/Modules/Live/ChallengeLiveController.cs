@@ -11,6 +11,20 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class ChallengeLiveController(UserOperation operations, UserSession user, ChallengeLiveService challenges) : PrskController
 {
+    [HttpPost("api/user/{userId}/challenge-live/solo")]
+    public IActionResult Start(long userId, [FromBody] UserChallengeLiveStartRequest request)
+    {
+        var status = 200;
+        var encoded = operations.Execute(userId, () =>
+        {
+            var result = challenges.Start(request);
+            status = result.Status;
+            if (result.Response != null) result.Response.updatedResources = user.BuildRefresh();
+            return result.Response;
+        });
+        return status == 200 ? Encoded(encoded) : StatusCode(status);
+    }
+
     [HttpPost("api/user/{userId}/challenge-live-character/{characterId}")]
     public IActionResult UnlockCharacter(long userId, int characterId)
     {

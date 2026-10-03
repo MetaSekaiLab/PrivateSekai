@@ -1990,9 +1990,14 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 - Path：`userId`；无 query。
 - Body：`UserChallengeLiveStartRequest`，包含 `characterId`、`musicId`、`musicDifficultyId`、`musicVocalId`、可空卡牌 ID `leader`／`support1`～`support4`、`musicCategoryName`、`isAuto`。
 - Response：`userChallengeLiveId` 为后续结算会话；`skills` 为技能顺序；`updatedResources` 更新挑战状态。
-- 首次单卡样本新增参与状态：`liveStatus=start`、`playCount=0`、`isAuto=false`、`playStartAt`，省略 `playEndAt`；未新增成绩或阶段。返回两项技能，均为该领队卡，seq 为 1、2。多卡技能顺序仍待核验。
-- `ChallengeLiveUtility.GetRemainingCount` 从 master 的参与额度减去所有角色状态的 `playCount` 合计，最小为零。额度不能按每个角色独立计算；日界线和未结算重开行为仍待官方样本。
+- 首次单卡样本新增参与状态：`liveStatus=start`、`playCount=0`、`isAuto=false`、`playStartAt`，省略 `playEndAt`；未新增成绩或阶段。返回两项技能，均为该领队卡，seq 为 1、2。双卡连续两次开局样本均返回领队、支援、领队的三项技能；更多卡数及顺序随机性仍待核验。
+- `ChallengeLiveUtility.GetRemainingCount` 从 master 的参与额度减去所有角色状态的 `playCount` 合计，最小为零。额度不能按每个角色独立计算；日界线仍待官方样本。
+- 未结算时对同一角色和编队再次开局的样本返回成功，生成新的 `userChallengeLiveId` 并更新 `playStartAt`；仅保留一条该角色参与状态，`playCount` 仍为 0，未改变编队、成绩、阶段或高分奖励。随后提交旧会话返回 HTTP 404，回读确认挑战状态及经验、材料、体力未变化；提交新会话成功。
 - 官方样本：当天已完成一次挑战、`playCount` 合计为 1 时，再次开局返回 HTTP 409。重新认证回读后，参与状态、编队、高分奖励、成绩、阶段和出勤六组数据均未变化；错误正文与其他拒绝条件仍待核验。
+
+Server 已接入非自动、已保存且与请求一致的单卡或双卡编队开局；重开替换该角色私有会话，未保存编队返回 404，次数耗尽返回 409。自动模式、三卡以上或请求编队与存档不一致暂返回本地 501，此状态码不代表官方规则。跨日次数重置和结算仍未接入。
+
+Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且仍有挑战次数时保存编队并连续开局。`--replay-challenge-start` 支持官方成功样本的本地重放：先检查会话与参与状态对应，再将本次生成的会话 ID 对应比较；业务时间和其他字段保留检查。单卡、双卡及重开样本的相关响应与状态增量一致，不覆盖背景资源。
 
 ## PUT `/api/user/{userId}/challenge-live/solo/{userChallengeLiveId}`
 
@@ -2005,7 +2010,7 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 - `ChallengeLiveUtility` 按各阶段所需点数累加和定位当前阶段，达到门槛即进入下一阶段。普通阶段样本验证了跨级和剩余点数；EX 阶段仍需独立核验。
 - 两次 C 档样本的 `userLivePoint.addNormalProgress=30`、`addDailyBonusProgress=0`，与 `configs.obtain_live_point_for_challenge_live` 一致；`livePointBonusRemaining=3`。其中一份样本的 `userLiveMissions.progress` 从 150 增至 180，`paidProgress` 仍为 0。两份样本的 `userBoost` 均未变化；其他评分、付费状态和跨日情形仍待核验。
 
-当前结算样本使用模拟输入。两次 C 档样本中，7999 分获得 200 点，10000 分获得 201 点；玩家经验均增加 4000，未满级卡牌样本增加 12000 经验。部分评分奖励材料 ID 不同，发放规则仍待核验。完整点数公式、其他评分经验、奖励抽取、跨日和自动挑战尚未核验，不能把单次返回值用作固定公式。
+当前结算样本使用模拟输入。三次 C 档样本中，7999 分获得 200 点，8000 与 10000 分获得 201 点；玩家经验均增加 4000。双卡样本的两张卡各增加 12000 经验，响应 index 为 1、2，与领队、支援位对应。部分评分奖励材料 ID 不同，发放规则仍待核验。完整点数公式、其他评分经验、奖励抽取、跨日和自动挑战尚未核验，不能把单次返回值用作固定公式。
 
 ## POST `/api/user/{userId}/challenge-live/receive-select-reward/{resourceId}`
 

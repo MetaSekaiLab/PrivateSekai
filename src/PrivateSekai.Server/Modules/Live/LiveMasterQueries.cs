@@ -10,6 +10,8 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class LiveMasterQueries(MasterData master)
 {
+    public int GetChallengePlayableCount() => master.GetTable<MasterChallengeLive>("challengeLives").Rows.First().playableCount;
+
     public int GetFirstChallengeUnlockRank()
     {
         var behavior = master.GetTable<MasterOneTimeBehavior>("oneTimeBehaviors").Rows
