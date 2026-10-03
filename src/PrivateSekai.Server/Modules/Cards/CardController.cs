@@ -118,7 +118,8 @@ public sealed class CardController(UserOperation operations, UserSession user, C
         if (behavior is not ("special_training" or "set_default_image"))
             return NotFound();
 
-        return Encoded(operations.Execute(userId, () =>
+        var alreadyTrained = false;
+        var encoded = operations.Execute(userId, () =>
         {
             switch (behavior)
             {
@@ -128,6 +129,11 @@ public sealed class CardController(UserOperation operations, UserSession user, C
                     var before = (user.Data.userCharacterMissionStatuses ?? [])
                         .Select(s => (s.characterId, s.missionId, s.parameterGroupId, s.seq)).ToHashSet();
                     var rewards = cards.SetCardSpecialTrainingStatus(cardId, specialTrainingRequest?.specialTrainingStatus);
+                    if (rewards == null)
+                    {
+                        alreadyTrained = true;
+                        return null;
+                    }
                     var achieved = (user.Data.userCharacterMissionStatuses ?? [])
                         .Where(s => !before.Contains((s.characterId, s.missionId, s.parameterGroupId, s.seq))).ToArray();
                     var refresh = user.BuildRefresh();
@@ -151,6 +157,7 @@ public sealed class CardController(UserOperation operations, UserSession user, C
             {
                 updatedResources = user.BuildRefresh()
             };
-        }));
+        });
+        return alreadyTrained ? StatusCode(409) : Encoded(encoded);
     }
 }

@@ -292,7 +292,7 @@ try
         && receipt["seq"]!.GetValue<long>() == store.Read(1)!.Private.PresentHistories.Last().seq
         && receipt["expiredAt"]!.GetValue<long>() - receipt["receivedAt"]!.GetValue<long>() == 30L * 24 * 60 * 60 * 1000,
         "练习券领取排序值、历史排序值及记录期限与官方两次样本一致");
-    await CardHttpChecks.Run(client, store, directory, Check);
+    await CardHttpChecks.Run(client, config, store, directory, Check);
     await ShopHttpChecks.Run(client, store, directory, Check);
     Check(shopRequests.SequenceEqual(new (string, long?)[] { ("POST", 0), ("PUT", 0) }),
         "商店购买与升级分别使用 POST 和 PUT，均不发送 body");

@@ -918,7 +918,7 @@
 
 后续官方样本：三星卡在 40 级完成特训后，等级及累计经验不变，`specialTrainingStatus=done`，`defaultImage=special_training`；材料按逐卡配置扣除。所属角色 `collect_member` 进度增加 1，新达成项同时出现在 `userCharacterMissionV2Statuses` 和响应进度项的 `achievedMissions` 中；后者不保留到后续 Suite 状态。无特殊奖励的样本额外返回 `obtainedResources: []`，该字段不在旧 `SuiteUserCommonResponse` 内。
 
-Server 已补卡面和任务联动，Client 支持 `--replay-special-training`。该样本的相关响应与增量一致；导入基线仍有一项无关 Live 任务的 `userId` 字段差异。非空特殊奖励、重复特训及其他稀有度尚需官方样本；非空奖励返回字段不按空数组样本推定。`special-training.json` 中的卡牌须替换为目标账号持有、未特训且已达等级上限的卡，并准备 master 指定材料。
+Server 已补卡面和任务联动，Client 支持 `--replay-special-training`。该样本的相关响应与增量一致；导入基线仍有一项无关 Live 任务的 `userId` 字段差异。随后对已特训卡再次请求，官方返回 HTTP 409；重新认证回读确认卡牌、材料、角色任务及服装状态不变。Server 已对齐重复请求的状态码和无副作用行为，错误正文未核验。非空特殊奖励及其他稀有度尚需官方样本；非空奖励返回字段不按空数组样本推定。`special-training.json` 中的卡牌须替换为目标账号持有、未特训且已达等级上限的卡，并准备 master 指定材料。
 
 ## PUT `/api/user/{userId}/card/{cardId}?behavior=set_default_image`
 

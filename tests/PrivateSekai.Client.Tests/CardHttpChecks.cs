@@ -22,7 +22,7 @@ internal static class CardHttpChecks
         foreach (var (table, json) in tables) File.WriteAllText(Path.Combine(directory, table + ".json"), json);
     }
 
-    public static async Task Run(ProtocolClient client, MemoryUserStore store, string directory, Action<bool, string> check)
+    public static async Task Run(ProtocolClient client, TargetConfiguration config, MemoryUserStore store, string directory, Action<bool, string> check)
     {
         var state = store.Read(1)!;
         state.Data.userCards = [new() { cardId = 1, level = 1, duplicateCount = 2, defaultImage = "special_training" }];
@@ -95,6 +95,22 @@ internal static class CardHttpChecks
         var episode = store.Read(1)!.Data.userCards.Single().episodes.Single();
         check(episode.scenarioStatus == "unreleased" && episode.scenarioStatusReasons.Length == 0,
             "前篇已读且等级达标后，剧情变为可解锁");
+        var original = store.Read(1)!;
+        state = original.DeepClone();
+        state.Data.userCards.Single().specialTrainingStatus = "done";
+        store.Save(1, state);
+        var before = PrivateSekai.Protocol.DumpSerializer.Serialize(state.Data);
+        using var repeatClient = new ProtocolClient(config, directory,
+            PrivateSekai.Config.ServerConfig.AesKey.ToArray(), PrivateSekai.Config.ServerConfig.AesIv.ToArray());
+        await repeatClient.Send(new() { Operation = "system" });
+        var rejected = false;
+        try { await repeatClient.Send(Step("special-training", """{"specialTrainingStatus":"done"}""")); }
+        catch (ClientFailure) { rejected = true; }
+        check(rejected && repeatClient.LastHttpStatus == 409 &&
+            before.SequenceEqual(PrivateSekai.Protocol.DumpSerializer.Serialize(store.Read(1)!.Data)),
+            "重复特训返回 409，完整用户数据保持不变");
+        store.Save(1, original);
+        await client.Send(new() { Operation = "system" });
     }
 
     private static ScenarioStep Step(string operation, string body) => new()
