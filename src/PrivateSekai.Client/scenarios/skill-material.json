@@ -1,0 +1,13 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    {
+      "operation": "skill-material",
+      "requireReleaseConditionIds": [10030],
+      "args": { "cardId": "1" },
+      "body": {
+        "costs": [{ "resourceType": "material", "resourceId": 15, "resourceLevel": 0, "quantity": 1 }]
+      }
+    }
+  ]
+}

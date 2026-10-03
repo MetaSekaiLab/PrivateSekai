@@ -17,21 +17,42 @@ public sealed class CardController(UserOperation operations, UserSession user, C
 {
     [HttpPost("api/user/{userId}/card/{cardId}/skill-practice-ticket")]
     public IActionResult HandleSkillPracticeTicket(long userId, int cardId,
-        [FromBody] UserCardSkillPracticeTicketRequest request) =>
-        Encoded(operations.Execute(userId, () => new UserCardSkillPracticeTicketResponse
+        [FromBody] UserCardSkillPracticeTicketRequest request)
+    {
+        var lockedResponse = SkillPracticeLockedResponse(userId);
+        if (lockedResponse != null) return lockedResponse;
+        return Encoded(operations.Execute(userId, () =>
         {
-            updateExpResult = cards.PracticeCardSkill(cardId, request.costs, "skill_practice_ticket"),
-            updatedResources = user.BuildRefresh()
+            var result = cards.PracticeCardSkill(cardId, request.costs, "skill_practice_ticket");
+            return new UserCardSkillPracticeTicketResponse { updateExpResult = result, updatedResources = user.BuildRefresh() };
         }));
+    }
 
     [HttpPost("api/user/{userId}/card/{cardId}/material")]
     public IActionResult HandleSkillPracticeMaterial(long userId, int cardId,
-        [FromBody] UserCardSkillPracticeMaterialRequest request) =>
-        Encoded(operations.Execute(userId, () => new UserCardSkillPracticeMaterialResponse
+        [FromBody] UserCardSkillPracticeMaterialRequest request)
+    {
+        var lockedResponse = SkillPracticeLockedResponse(userId);
+        if (lockedResponse != null) return lockedResponse;
+        return Encoded(operations.Execute(userId, () =>
         {
-            updateExpResult = cards.PracticeCardSkill(cardId, request.costs, "material"),
-            updatedResources = user.BuildRefresh()
+            var result = cards.PracticeCardSkill(cardId, request.costs, "material");
+            return new UserCardSkillPracticeMaterialResponse { updateExpResult = result, updatedResources = user.BuildRefresh() };
         }));
+    }
+
+    private IActionResult? SkillPracticeLockedResponse(long userId)
+    {
+        var locked = false;
+        var response = operations.Query(userId, () =>
+        {
+            locked = !cards.IsSkillPracticeReleased();
+            return locked ? new ClientErrorResponse { HttpStatus = 409, ErrorCode = "", ErrorMessage = "" } : null;
+        });
+        if (!locked) return null;
+        Response.StatusCode = 409;
+        return Encoded(response);
+    }
 
     /// <summary>
     /// 执行等待室卡牌转换。客户端把确认转换的卡牌汇总成 `userCards` 发给服务端，请求成功后合并返回的用户资源差异，并刷新等待室显示。

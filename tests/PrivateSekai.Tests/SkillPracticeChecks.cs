@@ -26,6 +26,8 @@ internal static class SkillPracticeChecks
         try
         {
             // 等级及道具经验取自现有 master；卡牌和角色关系为独立测试数据。
+            File.WriteAllText(Path.Combine(directory, "facilities.json"),
+                """[{"id":1,"facilityType":"skill_practice","releaseConditionId":10030}]""");
             File.WriteAllText(Path.Combine(directory, "cards.json"),
                 """[{"id":1,"characterId":1,"cardRarityType":"rarity_4"}]""");
             File.WriteAllText(Path.Combine(directory, "cardRarities.json"),
@@ -61,6 +63,29 @@ internal static class SkillPracticeChecks
             state.Data.userCards = [new UserCard { cardId = 1, skillLevel = 1, totalSkillExp = 900, skillExp = 900 }];
             state.Data.userMaterials = [new UserMaterial { materialId = 15, quantity = 10000 },
                 new UserMaterial { materialId = 127, quantity = 100 }, new UserMaterial { materialId = 128, quantity = 100 }];
+            state.Data.refreshableTypes = ["userCards"];
+            store.Save(1, state);
+            var controller = new CardController(operations, user, cards)
+            {
+                ControllerContext = new() { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() }
+            };
+            var materialError = (Microsoft.AspNetCore.Mvc.FileContentResult)controller.HandleSkillPracticeMaterial(1, 1,
+                new() { costs = [Cost("material", 15, 1)] });
+            var materialErrorBody = DumpSerializer.Deserialize<ClientErrorResponse>(materialError.FileContents);
+            Check.That(controller.Response.StatusCode == 409 && materialErrorBody.HttpStatus == 409 &&
+                materialErrorBody.ErrorCode == "" && materialErrorBody.ErrorMessage == "", "未解锁材料升级返回官方错误模型及 409");
+            controller.Response.StatusCode = 200;
+            var ticketError = (Microsoft.AspNetCore.Mvc.FileContentResult)controller.HandleSkillPracticeTicket(1, 1,
+                new() { costs = [Cost("skill_practice_ticket", 3, 1)] });
+            var ticketErrorBody = DumpSerializer.Deserialize<ClientErrorResponse>(ticketError.FileContents);
+            Check.That(controller.Response.StatusCode == 409 && ticketErrorBody.HttpStatus == 409 &&
+                ticketErrorBody.ErrorCode == "" && ticketErrorBody.ErrorMessage == "", "未解锁技能券升级返回官方错误模型及 409");
+            Check.That(store.Read(1)!.Data.userCards.Single().totalSkillExp == 900 &&
+                store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 15).quantity == 10000,
+                "未解锁请求不扣材、不改变卡牌经验");
+            Check.That(store.Read(1)!.Data.refreshableTypes.SequenceEqual(["userCards"]),
+                "未解锁拒绝不消耗原有待刷新字段");
+            state.Data.userReleaseConditions = [new() { releaseConditionId = 10030 }];
             store.Save(1, state);
             operations.Execute(1, () =>
             {

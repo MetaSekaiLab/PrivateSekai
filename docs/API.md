@@ -2058,11 +2058,14 @@ Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchan
 - Body：`costs` 数组，包含 `resourceType`、`resourceId`、`resourceLevel`、`quantity`。材料类型为 `material`，技能券为 `skill_practice_ticket`。客户端提交时将 `resourceLevel` 设为 0。
 - Response：`updateExpResult` 用于展示升级前后经验，`updatedResources` 合并用户状态。
 - 请求时机：玩家在技能升级选择页确认投入；证据为 `ScreenLayerSkillPracticeItemSelect.OnExecutePractice` 及两个 `PostUserCardSkillPractice*API.Execute`、`OnCallBack`。
+- 入口解锁：`ScreenLayerPracticeCardSelect.SetupSkillPracticeTab` 经 `FacilityUtility.CheckReleased` 检查设施解锁。`facilities` 中 `skill_practice` 引用条件 10030，`releaseConditions` 对应玩家 Rank 30；客户端通过 `userReleaseConditions` 中的解锁记录判断入口是否可用。
 - master：材料经验来自 `cardSkillCosts`，技能券经验来自 `skillPracticeTickets`；等级阈值按卡牌稀有度查 `levels`，上限查 `cardRarities`。
 
-两个测试账号的材料升级请求均返回 HTTP 409，重新认证回读确认未扣材、技能未变化。第二份样本在持有材料 300 时投入 1 个，本地重放返回 200 并扣除 1 个材料、增加 1 点技能经验，明确存在差异；拒绝条件仍未查明，不据此新增猜测规则。技能券成功升级、满级溢出和角色任务联动也待官方成功样本核验。
+材料升级拒绝样本包含玩家 Rank 1 和 Rank 5 的账号，均未持有条件 10030 的解锁记录，低于技能升级入口要求。官方返回 HTTP 409，回读确认未扣材、技能未变化。Server 已按 `facilities` 的主条件及附加条件检查解锁记录，在扣材前拒绝未解锁请求；材料和技能券的拒绝样本现已对齐 HTTP 状态、错误正文及状态增量。正文使用 `ClientErrorResponse`，`httpStatus=409`、`errorCode=""`、`errorMessage=""`，经现有协议管线编码与加密。技能券重放基线仍有两条无关 Live 任务的用户字段省略差异。尚需玩家 Rank 30 且已解锁账号的成功样本核验正向流程；满级溢出和角色任务联动也待核验。
 
-活动兑换取得中级技能券后，对二星卡投入一张也返回 HTTP 409；回读确认券和卡牌未变。本地重放则扣券并将累计技能经验从 0 截到满级阈值 25。这份拒绝样本不能证明官方的溢出处理规则。
+活动兑换取得中级技能券后，对二星卡投入一张也返回 HTTP 409；回读确认券和卡牌未变。本地旧实现曾扣券并将累计技能经验从 0 截到满级阈值 25，解锁检查已阻止该请求。这份拒绝样本不能证明官方的溢出处理规则。
+
+Client 的 `skill-material.json` 示例携带 `requireReleaseConditionIds: [10030]`，写前回读缺少该条件时停止，不发送升级请求。使用前需替换为目标账号持有、技能未满级的卡牌，并确认材料库存。
 
 Client 检查项目支持 `--replay-skill-practice <请求记录> <回读记录> <master目录> <输出目录>`。调用者须确认回读来自同一账号，且两次记录间未进行其他业务写操作。失败请求的 HTTP 状态和错误响应参与比较，缺失回读时状态增量标为未知，不视为全量删除；回读失败的状态码不覆盖原写请求结果。
 

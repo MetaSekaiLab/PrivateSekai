@@ -10,16 +10,17 @@ using PrivateSekai.Storage;
 internal static class CardPracticeReplay
 {
     private static readonly string[] Fields = ["userCards", "userPracticeTickets", "userBeginnerMissionV2s", "userMissionStatuses",
-        "userMaterials", "userSkillPracticeTickets", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
+        "userMaterials", "userSkillPracticeTickets", "userCharacterMissionV2s", "userCharacterMissionV2Statuses", "userReleaseConditions"];
 
     public static void ImportMaster(string source, string destination)
     {
         foreach (var table in new[] { "cards", "cardRarities", "levels", "practiceTickets", "beginnerMissionV2s", "cardEpisodes", "releaseConditions",
-                     "characterMissionV2s", "characterMissionV2ParameterGroups", "resourceBoxes", "cardSkillCosts", "skillPracticeTickets", "gameCharacters" })
+                     "characterMissionV2s", "characterMissionV2ParameterGroups", "resourceBoxes", "cardSkillCosts", "skillPracticeTickets", "gameCharacters", "facilities" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
-    public static async Task Run(ProtocolClient client, MemoryUserStore store, string path, string output, string? readbackPath = null)
+    public static async Task Run(ProtocolClient client, MemoryUserStore store, string path, string output,
+        string? readbackPath = null, Func<ProtocolClient>? createReadbackClient = null)
     {
         var official = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
         var operation = official["operation"]?.GetValue<string>();
@@ -59,6 +60,15 @@ internal static class CardPracticeReplay
             // 保留拒绝记录参与比较，不把失败请求视为成功。
         }
         var local = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "001.json")))!.AsObject();
+        if (local["status"]?.GetValue<string>() == "stopped" && createReadbackClient != null)
+        {
+            using var readbackClient = createReadbackClient();
+            var readbackDirectory = Path.Combine(output, "rejection-readback");
+            await ScenarioRunner.Run(readbackClient, new() { Steps = [new() { Operation = "system" }, new() { Operation = "suite" }] }, readbackDirectory);
+            var readback = JsonNode.Parse(File.ReadAllText(Path.Combine(readbackDirectory, "002.json")))!;
+            local["after"] = readback["response"]!.DeepClone();
+            JsonFiles.Write(Path.Combine(output, "001.json"), local);
+        }
         JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official, local));
         foreach (var record in new[] { official, local })
         {

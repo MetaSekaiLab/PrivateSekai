@@ -11,6 +11,12 @@ namespace PrivateSekai.Modules.Cards;
 
 public sealed class CardMasterQueries(MasterData master, ResourceMasterQueries resources)
 {
+    public int[] GetSkillPracticeReleaseConditions()
+    {
+        var facility = master.GetTable<MasterFacility>("facilities").Rows.Single(f => f.facilityType == "skill_practice");
+        return new[] { facility.releaseConditionId, facility.andReleaseConditionId }.Where(id => id > 0).ToArray();
+    }
+
     public MasterLevel[] GetSkillLevels(MasterCard card)
     {
         var type = card.cardRarityType switch

@@ -230,7 +230,8 @@ try
     }
     if (args is ["--replay-skill-practice", var skillPath, var skillReadback, _, var skillOutput])
     {
-        await CardPracticeReplay.Run(client, store, skillPath, skillOutput, skillReadback);
+        await CardPracticeReplay.Run(client, store, skillPath, skillOutput, skillReadback,
+            () => new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray()));
         return;
     }
     if (args is ["--replay-material-exchange" or "--replay-event-exchange", var exchangePath, _, var exchangeOutput])

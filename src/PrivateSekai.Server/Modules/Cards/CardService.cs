@@ -21,8 +21,15 @@ public sealed class CardService(
     MissionService missions,
     StoryService story)
 {
+    public bool IsSkillPracticeReleased()
+    {
+        var released = (user.Data.userReleaseConditions ?? []).Select(c => c.releaseConditionId).ToHashSet();
+        return master.GetSkillPracticeReleaseConditions().All(released.Contains);
+    }
+
     public UpdateExpResult PracticeCardSkill(int cardId, UserResource[]? costs, string resourceType)
     {
+        if (!IsSkillPracticeReleased()) throw new InvalidOperationException("Skill practice is locked.");
         if (resourceType is not ("material" or "skill_practice_ticket") || costs == null || costs.Length == 0)
             throw new ArgumentException("Missing skill practice costs.");
         var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId)
