@@ -8,6 +8,7 @@ using MessagePack;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateSekai.Config;
 using PrivateSekai.Modules.Live;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Master;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
@@ -20,6 +21,11 @@ internal static class ChallengeStageChecks
     {
         var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../obj/challenge-stage-fixtures", Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "liveMissionPeriods.json"), """
+            [{"id":99,"startAt":100,"endAt":200},
+             {"id":9,"startAt":300,"endAt":4102444800000},
+             {"id":100,"startAt":4102444800000,"endAt":4105123200000}]
+            """);
         File.WriteAllText(Path.Combine(directory, "configs.json"), """
             [{"configKey":"challenge_base_point","value":"17"},
              {"configKey":"challenge_point_calc_value","value":"13"},
@@ -70,6 +76,11 @@ internal static class ChallengeStageChecks
         var challenges = scope.ServiceProvider.GetRequiredService<ChallengeLiveService>();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
         var master = scope.ServiceProvider.GetRequiredService<LiveMasterQueries>();
+        var missionMaster = scope.ServiceProvider.GetRequiredService<MissionMasterQueries>();
+        foreach (var (time, period) in new[] { (99L, 0), (100L, 99), (199L, 99), (200L, 0), (299L, 0),
+                     (300L, 9), (4102444799999L, 9), (4102444800000L, 100), (4105123200000L, 0) })
+            Check.That(missionMaster.GetLiveMissionPeriodId(time) == period,
+                "任务周期按时间包含起点、排除终点，不按 ID 大小或未来周期选择");
         foreach (var (score, expected) in new[] { (0, 17), (12, 17), (13, 18), (25, 18), (26, 19) })
             Check.That(master.CalculateChallengeBasePoint(score) == expected, "挑战点数读取配置并向下取整");
         Check.Throws<ArgumentOutOfRangeException>(() => master.CalculateChallengeBasePoint(-1), "拒绝负挑战分数");
@@ -94,7 +105,7 @@ internal static class ChallengeStageChecks
         });
         Reset();
         void UpdateMissions() => challenges.UpdateMissions(new UserChallengeLiveStartRequest { characterId = 1 },
-            new UserChallengeLiveClearRequest { life = 1000 }, 9);
+            new UserChallengeLiveClearRequest { life = 1000 });
         Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
         {
             UpdateMissions();

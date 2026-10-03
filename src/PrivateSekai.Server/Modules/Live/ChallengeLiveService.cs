@@ -21,11 +21,13 @@ public sealed class ChallengeLiveService(
     CharacterService characters,
     LiveService live,
     CardService cards,
-    MissionService missions)
+    MissionService missions,
+    MissionMasterQueries missionMaster)
 {
-    public void UpdateMissions(UserChallengeLiveStartRequest start, UserChallengeLiveClearRequest clear, int liveMissionPeriodId)
+    public void UpdateMissions(UserChallengeLiveStartRequest start, UserChallengeLiveClearRequest clear)
     {
-        if (liveMissionPeriodId <= 0) throw new ArgumentOutOfRangeException(nameof(liveMissionPeriodId));
+        var liveMissionPeriodId = missionMaster.GetLiveMissionPeriodId(user.Now);
+        if (liveMissionPeriodId <= 0) throw new NotSupportedException("Challenge outside a Live mission period is not verified.");
         if (start.isAuto || clear.life <= 0 || user.Data.userColorfulPassV2?.colorfulPassId > 0 ||
             user.Data.userLiveMissions?.Any(m => m.liveMissionPeriodId == liveMissionPeriodId && m.liveMissionStatus != "free") == true)
             throw new NotSupportedException("Challenge mission mode is not verified.");

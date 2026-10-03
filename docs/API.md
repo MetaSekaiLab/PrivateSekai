@@ -2065,11 +2065,11 @@ Server 的挑战评分查询按曲目难度的 `playLevel` 选择 `playLevelScor
 
 普通挑战点数按 `challenge_base_point + floor(score / challenge_point_calc_value)` 计算；当前 master 参数为 200、8000。[公开分析](https://note.com/notnishikori_18/n/nd3b1719c555f) 明确给出同一公式，五份官方样本交叉验证了 3999、7999、8000、10000、100000 分的结果。Server 已将其接入手动成功、无会员的阶段业务；会员倍率、自动和失败结算仍待核验。
 
-挑战任务联动已接入业务层：按 `configs.obtain_live_point_for_challenge_live` 增加免费 Live 任务进度，并按 `beginnerMissionV2Type=challenge_live_clear` 推进新手任务。五份官方样本中该新手任务从无记录变为进度 1、`isNewAchieved=false`，对应状态为 `achieved`，普通 Live 新手任务不变。任务周期由结算入口提供；自动、失败、会员和付费任务状态暂不支持。完整结算入口、跨期选择及每日加成响应仍待接入和核验。
+挑战任务联动已接入业务层：按 `configs.obtain_live_point_for_challenge_live` 增加免费 Live 任务进度，并按 `beginnerMissionV2Type=challenge_live_clear` 推进新手任务。五份官方样本中该新手任务从无记录变为进度 1、`isNewAchieved=false`，对应状态为 `achieved`，普通 Live 新手任务不变。任务周期按结算时间查询；自动、失败、会员、付费任务及无匹配周期暂不支持。完整结算入口、跨期演出及每日加成响应仍待接入和核验。
 
 Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 从请求分数独立计算评分和点数，再重放阶段业务，不使用官方 `addPoint` 作为输入。五份样本的评分、点数、阶段记录、角色状态及解码后的完整 `userChallengeLiveStageResult` 一致，涵盖角色 1 和 21 从等级 1 升至 3 的经验与奖励；该检查不覆盖网络字段省略规则或完整 HTTP 结算。样本新增的释放条件来自活动积分，不属于角色升级。
 
-该回放同时比较 `userLiveMissions`、`userBeginnerMissionV2s`、`userMissionStatuses` 的完整业务状态，五份样本一致；周期取结算前唯一免费任务记录。用户 ID 映射为本地测试账号，不据此验证网络字段省略规则。后续挑战不重复推进已达成新手任务，以及编码失败回滚两类任务，另有本地检查。
+该回放同时比较 `userLiveMissions`、`userBeginnerMissionV2s`、`userMissionStatuses` 的完整业务状态，五份样本一致。回放时间固定为官方结算响应的 `updatedResources.now`，周期独立查询 master；D／C 档样本通过。用户 ID 映射为本地测试账号，不据此验证网络字段省略规则。后续挑战不重复推进已达成新手任务，以及编码失败回滚两类任务，另有本地检查。
 
 高分业务已实现：保存角色最高分，按 master 门槛发放未记录的奖励，保存 `complete` 记录。四份样本经 `--replay-challenge-high-score` 重放，覆盖未达门槛和首次达到单个门槛，解码后响应、最高分及已领记录一致。一次跨越多门槛、较低成绩和重复成绩只有本地检查，仍需官方样本。
 
@@ -2228,6 +2228,8 @@ Server 已实现上述普通手动 Live 联动，Client 结算重放覆盖新手
 - 普通 Live 的任务达成样本：进度从 90 增至 120，跨过 master 的 100 门槛后新增 `achieved` 状态。本次结算的 `userLiveMissions.achievedMissionIds` 包含新达成 ID，随后 Suite 回读为空；后续 120 至 150 不重复提示，也不重复刷新任务状态。`userLiveMissions` 省略 `userId`。
 
 Server 已补免费任务达成及结算提示，Client 支持领奖场景和 `--replay-live-mission` 样本重放。门槛前、跨门槛及达成后的三次普通 Live HTTP 重放，在任务进度、任务状态和对应响应字段范围无差异；领奖样本在金币、任务进度、任务状态及奖励响应范围无差异。全量背景字段、其他奖励种类、批量及重复领奖、付费通行证和周期边界仍待官方核验；本地防重复测试不代表官方重复请求行为已确认。
+
+普通 Live 与挑战任务共用时间周期查询：`liveMissionPeriods.startAt <= timestamp < endAt`，不按通行证或周期最大 ID 选择。依据为 `MasterDataManager.GetMasterLiveMissionPeriodNow`（RVA `0x62aad00`）及 `GetMasterLiveMissionPeriod`（RVA `0x62aad60`）；无匹配返回 0。本地检查覆盖起止边界、空档和未来大 ID；普通 Live 官方样本的任务 HTTP 回放一致。跨月开局后结算仍待官方样本确认。
 
 证据：`PutUserMissionReceiveAPI` 构造、Execute 和回调，任务请求与响应契约、`liveMissions` 与 `mission_reward` 资源盒，以及免费任务达成、领奖和回读样本。
 

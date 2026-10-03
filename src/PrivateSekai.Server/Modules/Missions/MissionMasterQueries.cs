@@ -127,11 +127,7 @@ public sealed class MissionMasterQueries(MasterData master)
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id)
             .FindById(missionId);
 
-    public int GetCurrentLiveMissionPeriodId()
-    {
-        var current = 0;
-        foreach (var pass in master.GetTable<MasterLiveMissionPath>("liveMissionPasses", p => p.id).Rows)
-            current = Math.Max(current, pass.liveMissionPeriodId);
-        return current;
-    }
+    public int GetLiveMissionPeriodId(long timestamp) =>
+        master.GetTable<MasterLiveMissionPeriod>("liveMissionPeriods").Rows
+            .FirstOrDefault(p => p.startAt <= timestamp && timestamp < p.endAt)?.id ?? 0;
 }

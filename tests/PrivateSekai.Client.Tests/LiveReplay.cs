@@ -18,7 +18,7 @@ internal static class LiveReplay
     public static void ImportMaster(string source, string destination)
     {
         foreach (var table in new[] { "cards", "cardRarities", "musicDifficulties", "playLevelScores",
-            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPasses", "liveMissions", "beginnerMissionV2s", "levels", "playerRankRewards", "configs", "releaseConditions" })
+            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPeriods", "liveMissions", "beginnerMissionV2s", "levels", "playerRankRewards", "configs", "releaseConditions" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
         rankReleaseIds = JsonNode.Parse(File.ReadAllText(Path.Combine(source, "releaseConditions.json")))!.AsArray()
             .Where(c => c?["releaseConditionType"]?.GetValue<string>() == "user_rank")

@@ -14,7 +14,7 @@ internal static class ChallengeStageReplay
 {
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores", "configs", "liveMissions", "beginnerMissionV2s" })
+        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores", "configs", "liveMissions", "liveMissionPeriods", "beginnerMissionV2s" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -44,7 +44,6 @@ internal static class ChallengeStageReplay
         state.Data.userBeginnerMissionV2s = official["before"]!["userBeginnerMissionV2s"]!.Deserialize<UserBeginnerMissionV2[]>(DumpJson.Options);
         foreach (var mission in state.Data.userLiveMissions ?? []) mission.userId = 1;
         foreach (var status in state.Data.userMissionStatuses ?? []) status.userId = 1;
-        var periodId = (state.Data.userLiveMissions ?? []).Single(m => m.liveMissionStatus == "free").liveMissionPeriodId;
         store.Save(1, state);
         using var scope = provider.CreateScope();
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
@@ -64,7 +63,7 @@ internal static class ChallengeStageReplay
         operations.Execute(1, () =>
         {
             var result = service.AdvanceStage(start, clear);
-            service.UpdateMissions(start, clear, periodId);
+            service.UpdateMissions(start, clear);
             actual = JsonSerializer.SerializeToNode(result, DumpJson.Options)!.AsObject();
             return user.BuildRefresh();
         });
@@ -92,7 +91,7 @@ internal static class ChallengeStageReplay
             JsonSerializer.SerializeToNode(actualMissions, DumpJson.Options));
         JsonFiles.Write(Path.Combine(output, "challenge-stage-compare.json"), new
         {
-            scope = "评分、普通挑战点数、阶段、角色升级和任务业务重放；任务周期取结算前状态，不验证跨期或完整 HTTP 结算",
+            scope = "评分、普通挑战点数、阶段、角色升级和任务业务重放；按结算时间查询周期，不验证跨期演出或完整 HTTP 结算",
             scoreRank,
             expected = projected, actual,
             resultDifferences = differences, stageDifferences, characterDifferences, missionDifferences,

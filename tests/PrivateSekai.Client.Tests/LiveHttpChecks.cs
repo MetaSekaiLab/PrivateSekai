@@ -22,7 +22,7 @@ internal static class LiveHttpChecks
             ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
             ["boosts"] = """[{"id":1,"costBoost":1,"rewardRate":2,"livePointRate":3}]""",
-            ["liveMissionPasses"] = """[{"id":1,"liveMissionPeriodId":1}]""",
+            ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = """[{"id":1,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":3}]""",
             ["musicAchievements"] = "[]"
         };

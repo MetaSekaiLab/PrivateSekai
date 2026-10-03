@@ -468,7 +468,7 @@ public sealed class LiveService(
             addNormalProgress = boost.livePointRate,
             addDailyBonusProgress = 0,
             livePointBonusRemaining = boost.costBoost,
-            liveMissionPeriodId = missionMaster.GetCurrentLiveMissionPeriodId()
+            liveMissionPeriodId = missionMaster.GetLiveMissionPeriodId(user.Now)
         };
 
     private static int PlayResultRank(string result) => result switch

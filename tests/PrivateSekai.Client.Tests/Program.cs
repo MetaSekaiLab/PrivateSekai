@@ -164,7 +164,7 @@ if (args is ["--replay-natural-boost", _, var naturalBoostClock, _, _])
     builder.Services.AddSingleton<TimeProvider>(BoostReplay.NaturalClock(naturalBoostClock));
 if (args is ["--replay-challenge-unlock" or "--replay-challenge-start", var challengeClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(challengeClockCapture));
-if (args is ["--replay-challenge-play-day", var dayCaptureClock, _, _])
+if (args is ["--replay-challenge-play-day" or "--replay-challenge-stage", var dayCaptureClock, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(dayCaptureClock));
 if (args is ["--replay-material-exchange" or "--replay-event-exchange", var exchangeClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(MaterialExchangeReplay.Clock(exchangeClockCapture));
