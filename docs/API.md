@@ -975,6 +975,8 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 - `READ_CARD_EPISODE_FIRST`：领取前篇任务增加 1 点经验，样本未升级。
 - `READ_CARD_EPISODE_SECOND`：领取后篇任务增加 1 点经验，角色等级 3 → 4，累计经验 3 → 4，并发放等级奖励。
 - `AREA_ITEM_LEVEL_UP_CHARACTER`：领取 2 条区域道具任务，共增加 2 点经验，样本未升级。
+- `PLAY_LIVE`：领取首条队长 Live 次数任务增加 1 点经验，角色等级 1 → 2，累计经验 0 → 1，并发放等级奖励。
+- `WAITING_ROOM`：领取首条休息室收集任务增加 1 点经验，累计经验 8 → 9，样本未升级。
 
 上述样本均回读确认任务已领取，相关基线、响应和状态增量一致；对拍范围为角色、任务和奖励资源，不包含无关背景字段。其余任务类型、已有称号升级及满角色等级仍待核验；全部领取遇到未核验类型或缺失定义的达成项时整次拒绝，不静默跳过。`reportedMissionStatuses` 省略 `userId`，`updatedResources.userCharacterMissionV2Statuses` 保留。称号与名片的所属用户字段已补入模型构建副本；角色记录省略 `userId`，leader 名片省略零值 `profileImageId`。
 

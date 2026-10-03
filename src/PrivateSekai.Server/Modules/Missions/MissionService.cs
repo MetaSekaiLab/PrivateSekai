@@ -23,7 +23,7 @@ public sealed class MissionService(
     public UserCharacterMissionV2Status[] ReceiveCharacterMissions(int characterId, string? type)
     {
         if (type is not (null or "COLLECT_COSTUME_3D" or "COLLECT_CHARACTER_ARCHIVE_VOICE" or "COLLECT_MEMBER" or
-            "READ_CARD_EPISODE_FIRST" or "READ_CARD_EPISODE_SECOND" or "AREA_ITEM_LEVEL_UP_CHARACTER"))
+            "READ_CARD_EPISODE_FIRST" or "READ_CARD_EPISODE_SECOND" or "AREA_ITEM_LEVEL_UP_CHARACTER" or "PLAY_LIVE" or "WAITING_ROOM"))
             throw new NotSupportedException("Character mission type is not verified.");
         var definitions = master.GetCharacterMissions(characterId).ToDictionary(m => m.id);
         var statuses = (user.Data.userCharacterMissionStatuses ?? []).Where(s => s.characterId == characterId &&
@@ -43,7 +43,7 @@ public sealed class MissionService(
             if (!definitions.TryGetValue(status.missionId, out var definition))
                 throw new InvalidOperationException("Missing character mission definition.");
             if (definition.characterMissionType is not ("collect_costume_3d" or "collect_character_archive_voice" or "collect_member" or
-                "read_card_episode_first" or "read_card_episode_second" or "area_item_level_up_character"))
+                "read_card_episode_first" or "read_card_episode_second" or "area_item_level_up_character" or "play_live" or "waiting_room"))
                 throw new NotSupportedException("Character mission type is not verified.");
             var parameter = master.GetCharacterMissionParameters(definition.parameterGroupId)
                 .SingleOrDefault(p => p.id == status.parameterGroupId && p.seq == status.seq)
