@@ -1992,6 +1992,7 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 - Response：`userChallengeLiveId` 为后续结算会话；`skills` 为技能顺序；`updatedResources` 更新挑战状态。
 - 首次单卡样本新增参与状态：`liveStatus=start`、`playCount=0`、`isAuto=false`、`playStartAt`，省略 `playEndAt`；未新增成绩或阶段。返回两项技能，均为该领队卡，seq 为 1、2。多卡技能顺序仍待核验。
 - `ChallengeLiveUtility.GetRemainingCount` 从 master 的参与额度减去所有角色状态的 `playCount` 合计，最小为零。额度不能按每个角色独立计算；日界线和未结算重开行为仍待官方样本。
+- 官方样本：当天已完成一次挑战、`playCount` 合计为 1 时，再次开局返回 HTTP 409。重新认证回读后，参与状态、编队、高分奖励、成绩、阶段和出勤六组数据均未变化；错误正文与其他拒绝条件仍待核验。
 
 ## PUT `/api/user/{userId}/challenge-live/solo/{userChallengeLiveId}`
 
@@ -2002,6 +2003,7 @@ SNC/Play Integrity 校验链路的第二步：客户端拿到 Play Integrity JWS
 - 主要响应：`scoreRank`、成绩标志、玩家／卡牌经验、`userChallengeLiveStageResult`、`userChallengeLiveHighScoreResult`、各类奖励和出勤状态。成功样本的参与状态更新为 `cleared`、`playCount=1`，新增 `playEndAt`。
 - 评分使用 `playLevelScores.liveType=challenge_live`，不能复用普通 solo 阈值。
 - `ChallengeLiveUtility` 按各阶段所需点数累加和定位当前阶段，达到门槛即进入下一阶段。普通阶段样本验证了跨级和剩余点数；EX 阶段仍需独立核验。
+- 两次 C 档样本的 `userLivePoint.addNormalProgress=30`、`addDailyBonusProgress=0`，与 `configs.obtain_live_point_for_challenge_live` 一致；`livePointBonusRemaining=3`。其中一份样本的 `userLiveMissions.progress` 从 150 增至 180，`paidProgress` 仍为 0。两份样本的 `userBoost` 均未变化；其他评分、付费状态和跨日情形仍待核验。
 
 当前结算样本使用模拟输入。两次 C 档样本中，7999 分获得 200 点，10000 分获得 201 点；玩家经验均增加 4000，未满级卡牌样本增加 12000 经验。部分评分奖励材料 ID 不同，发放规则仍待核验。完整点数公式、其他评分经验、奖励抽取、跨日和自动挑战尚未核验，不能把单次返回值用作固定公式。
 
