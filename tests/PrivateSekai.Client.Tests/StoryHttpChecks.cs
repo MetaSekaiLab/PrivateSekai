@@ -157,6 +157,9 @@ internal static class StoryHttpChecks
         var repeatedUnit = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "rewards/003.json")))!;
         check(repeatedUnit["httpStatus"]!.GetValue<int>() == 204 && repeatedUnit["response"]!.AsObject().Count == 0,
             "已读主线返回 204 空响应并继续完成后续请求");
+        var repeatedSpecial = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "rewards/004.json")))!;
+        check(repeatedSpecial["httpStatus"]!.GetValue<int>() == 204 && repeatedSpecial["response"]!.AsObject().Count == 0,
+            "已读特殊剧情返回 204 空响应，Client 正常回读状态");
         state = store.Read(1)!;
         state.Data.refreshableTypes = ["userCards"];
         store.Save(1, state);
@@ -176,7 +179,7 @@ internal static class StoryHttpChecks
         Operation = "story-read", Args = new() { ["storyType"] = type, ["episodeId"] = id },
         Expect = quantity is { } value
             ? new() { ["/obtainedResources/0/quantity"] = JsonValue.Create(value) }
-            : type == "unit_story" ? new() : new() { ["/obtainedResources"] = new JsonArray() }
+            : new()
     };
 
     private static ScenarioStep Step(string operation, string? body = null) => new()

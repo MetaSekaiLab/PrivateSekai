@@ -211,7 +211,7 @@ public sealed class ProtocolClient : IDisposable
             }
             var noContent = response.StatusCode == System.Net.HttpStatusCode.NoContent;
             if (noContent && (step.Operation != "story-read" ||
-                step.Args.GetValueOrDefault("storyType") is not ("unit_story" or "card_story") || ciphertext.Length != 0))
+                step.Args.GetValueOrDefault("storyType") is not ("unit_story" or "card_story" or "special_story") || ciphertext.Length != 0))
                 throw new InvalidOperationException("该操作尚未核验 HTTP 204 空响应；已停止。");
             var decoded = noContent ? new JsonObject() :
                 JsonNode.Parse(MessagePackSerializer.ConvertToJson(PrskCrypto.DecryptAesCbc(ciphertext, key, iv))) as JsonObject

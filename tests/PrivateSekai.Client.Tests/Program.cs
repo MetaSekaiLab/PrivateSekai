@@ -293,11 +293,20 @@ try
     Check(ScenarioRunner.Compare(noContentRecord.AsObject(), differentStatus)["httpStatusDifferences"]!.AsArray().Count == 1,
         "双端响应正文相同但 HTTP 状态不同时仍报告差异");
     noContentPath = "/api/user/1/story/special_story/episode/991";
+    await ScenarioRunner.Run(client, new() { Steps = [new()
+    {
+        Operation = "story-read", Args = new() { ["storyType"] = "special_story", ["episodeId"] = "991" }
+    }] }, Path.Combine(directory, "special-story-no-content"));
+    var specialNoContent = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "special-story-no-content/001.json")))!;
+    Check(specialNoContent["httpStatus"]!.GetValue<int>() == 204 &&
+        specialNoContent["status"]!.GetValue<string>() == "completed",
+        "特殊剧情重复阅读的 204 空响应完成会话轮换及状态回读");
+    noContentPath = "/api/user/1/story/event_story/episode/991";
     using (var unsupportedClient = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray()))
     {
         await unsupportedClient.Send(new() { Operation = "system" });
         var rejected = false;
-        try { await unsupportedClient.Send(new() { Operation = "story-read", Args = new() { ["storyType"] = "special_story", ["episodeId"] = "991" } }); }
+        try { await unsupportedClient.Send(new() { Operation = "story-read", Args = new() { ["storyType"] = "event_story", ["episodeId"] = "991" } }); }
         catch (InvalidOperationException) { rejected = true; }
         Check(rejected, "未核验剧情类型的 204 不当作成功响应");
     }

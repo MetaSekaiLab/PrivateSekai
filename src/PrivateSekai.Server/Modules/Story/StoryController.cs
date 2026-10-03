@@ -23,11 +23,15 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
     [HttpPost("api/user/{userId}/story/{storyType}/episode/{episodeId}")]
     public IActionResult HandleStoryEpisode(long userId, string storyType, int episodeId)
     {
-        if (storyType is "unit_story" or "card_story")
+        if (storyType is "unit_story" or "card_story" or "special_story")
         {
             var alreadyRead = false;
-            operations.Query(userId, () => alreadyRead = storyType == "unit_story"
-                ? story.IsUnitEpisodeRead(episodeId) : story.IsCardEpisodeRead(episodeId));
+            operations.Query(userId, () => alreadyRead = storyType switch
+            {
+                "unit_story" => story.IsUnitEpisodeRead(episodeId),
+                "card_story" => story.IsCardEpisodeRead(episodeId),
+                _ => story.IsSpecialEpisodeRead(episodeId)
+            });
             if (alreadyRead) return NoContent();
         }
         return Encoded(operations.Execute(userId, () =>

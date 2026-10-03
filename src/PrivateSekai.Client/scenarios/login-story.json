@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "story-read", "args": { "storyType": "special_story", "episodeId": "75" } },
+    { "operation": "story-read", "args": { "storyType": "special_story", "episodeId": "75" } },
+    { "operation": "suite" }
+  ]
+}

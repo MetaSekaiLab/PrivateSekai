@@ -27,6 +27,9 @@ public sealed class StoryService(
 
     public bool IsCardEpisodeRead(int episodeId) => FindCardEpisode(episodeId)?.scenarioStatus == "already_read";
 
+    public bool IsSpecialEpisodeRead(int episodeId) =>
+        user.Data.userSpecialEpisodeStatuses?.Any(s => s.episodeId == episodeId && s.status == "already_read") == true;
+
     public void RefreshCardLevelConditions(int cardId)
     {
         var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId);
