@@ -20,18 +20,23 @@ public sealed class MissionService(
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
 
-    public UserCharacterMissionV2Status[] ReceiveCharacterMissions(int characterId, string type)
+    public UserCharacterMissionV2Status[] ReceiveCharacterMissions(int characterId, string? type)
     {
-        if (type != "COLLECT_COSTUME_3D")
+        if (type is not (null or "COLLECT_COSTUME_3D" or "COLLECT_CHARACTER_ARCHIVE_VOICE"))
             throw new NotSupportedException("Character mission type is not verified.");
-        var definitions = master.GetCostumeCollectionMissions(characterId).ToDictionary(m => m.id);
+        var definitions = master.GetCharacterMissions(characterId).ToDictionary(m => m.id);
         var statuses = (user.Data.userCharacterMissionStatuses ?? []).Where(s => s.characterId == characterId &&
-            s.missionStatus == "achieved" && definitions.ContainsKey(s.missionId)).ToArray();
+            s.missionStatus == "achieved" && (type == null ||
+                (definitions.TryGetValue(s.missionId, out var definition) && definition.characterMissionType.ToUpperInvariant() == type)))
+            .OrderBy(s => s.missionId).ThenBy(s => s.parameterGroupId).ThenBy(s => s.seq).ToArray();
         if (statuses.Length == 0) throw new ArgumentException("No achieved character missions.");
         var experience = 0;
         foreach (var status in statuses)
         {
-            var definition = definitions[status.missionId];
+            if (!definitions.TryGetValue(status.missionId, out var definition))
+                throw new InvalidOperationException("Missing character mission definition.");
+            if (definition.characterMissionType is not ("collect_costume_3d" or "collect_character_archive_voice"))
+                throw new NotSupportedException("Character mission type is not verified.");
             var parameter = master.GetCharacterMissionParameters(definition.parameterGroupId)
                 .SingleOrDefault(p => p.id == status.parameterGroupId && p.seq == status.seq)
                 ?? throw new InvalidOperationException("Missing character mission parameter.");

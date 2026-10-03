@@ -23,7 +23,8 @@ internal static class CharacterMissionReplay
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
             throw new InvalidOperationException("重放输出目录必须为空。");
         var official = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        if (official["operation"]?.GetValue<string>() != "character-mission-receive" || official["status"]?.GetValue<string>() != "completed")
+        var operation = official["operation"]?.GetValue<string>();
+        if (operation is not ("character-mission-receive" or "character-mission-receive-all") || official["status"]?.GetValue<string>() != "completed")
             throw new InvalidOperationException("需要成功的角色任务领奖记录。");
         var state = store.Read(1)!;
         var baseline = official["before"]!.DeepClone();
@@ -41,7 +42,7 @@ internal static class CharacterMissionReplay
         await client.Send(new() { Operation = "system" });
         await ScenarioRunner.Run(client, new() { Steps = [new()
         {
-            Operation = "character-mission-receive",
+            Operation = operation,
             Args = JsonSerializer.Deserialize<Dictionary<string, string>>(official["args"]!.ToJsonString())!
         }] }, output);
         var local = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "001.json")))!.AsObject();

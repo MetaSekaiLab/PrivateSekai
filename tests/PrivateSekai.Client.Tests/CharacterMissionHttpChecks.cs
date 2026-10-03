@@ -25,7 +25,13 @@ internal static class CharacterMissionHttpChecks
         var parameterPath = Path.Combine(directory, "characterMissionV2ParameterGroups.json");
         var parameters = JsonNode.Parse(File.ReadAllText(parameterPath))!.AsArray();
         parameters.Single(r => r!["id"]!.GetValue<int>() == 3)!["exp"] = 4;
+        parameters.Add(JsonNode.Parse("""{"id":3,"seq":2,"requirement":2,"exp":4}"""));
+        parameters.Add(JsonNode.Parse("""{"id":19,"seq":1,"requirement":1,"exp":1}"""));
         JsonFiles.Write(parameterPath, parameters);
+        var missionPath = Path.Combine(directory, "characterMissionV2s.json");
+        var missions = JsonNode.Parse(File.ReadAllText(missionPath))!.AsArray();
+        missions.Add(JsonNode.Parse("""{"id":1019,"characterId":1,"characterMissionType":"collect_character_archive_voice","parameterGroupId":19}"""));
+        JsonFiles.Write(missionPath, missions);
     }
 
     public static async Task Run(ProtocolClient client, MemoryUserStore store, IServiceProvider provider, string directory, Action<bool, string> check)
@@ -75,5 +81,32 @@ internal static class CharacterMissionHttpChecks
         catch (ArgumentException) { rejected = true; }
         check(rejected && store.Read(1)!.Data.userChargedCurrency.free == 110 && store.Read(1)!.Data.userCharacters.Single().totalExp == 4,
             "已领取角色任务不能重复发放经验和奖励");
+        state = store.Read(1)!;
+        state.Data.userCharacterMissionStatuses = [.. state.Data.userCharacterMissionStatuses,
+            new() { userId = 1, characterId = 1, missionId = 1019, parameterGroupId = 19, seq = 1, missionStatus = "achieved" },
+            new() { userId = 1, characterId = 1, missionId = 1003, parameterGroupId = 3, seq = 2, missionStatus = "achieved" },
+            new() { userId = 1, characterId = 2, missionId = 2003, parameterGroupId = 3, seq = 1, missionStatus = "achieved" }];
+        store.Save(1, state);
+        await ScenarioRunner.Run(client, new() { Steps = [new()
+        {
+            Operation = "character-mission-receive-all", Args = new() { ["characterId"] = "1" }
+        }] }, Path.Combine(directory, "character-mission-all"));
+        saved = store.Read(1)!.Data;
+        response = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "character-mission-all/001.json")))!["response"]!;
+        check(saved.userCharacters.Single().totalExp == 9 && saved.userCharacters.Single().exp == 6 && saved.userChargedCurrency.free == 110 &&
+            saved.userCharacterMissionStatuses.Single(s => s.characterId == 2).missionStatus == "achieved",
+            "全部领取合并两类新任务经验，跳过已领取项且不修改其他角色");
+        check(response["reportedMissionStatuses"]!.AsArray().Select(s => s!["missionId"]!.GetValue<int>()).SequenceEqual(new[] { 1003, 1019 }) &&
+            response["updatedResources"]!["userHonors"] == null,
+            "全部领取只报告本次任务并按任务顺序返回，不重复发称号");
+        state = store.Read(1)!;
+        state.Data.userCharacterMissionStatuses = [.. state.Data.userCharacterMissionStatuses,
+            new() { userId = 1, characterId = 1, missionId = 999999, parameterGroupId = 1, seq = 1, missionStatus = "achieved" }];
+        store.Save(1, state);
+        rejected = false;
+        try { operation.Execute(1, () => missions.ReceiveCharacterMissions(1, null)); }
+        catch (InvalidOperationException) { rejected = true; }
+        check(rejected && store.Read(1)!.Data.userCharacters.Single().totalExp == 9,
+            "全部领取遇到缺失定义的达成项时拒绝，不静默遗漏");
     }
 }

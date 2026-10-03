@@ -9,6 +9,10 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public MasterCharacterMissionV2[] GetCharacterMissions(int characterId) =>
+        master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
+            .Where(m => m.characterId == characterId).ToArray();
+
     public MasterEventMission[] GetEventItemConsumptionMissions(int eventId) =>
         master.GetTable<MasterEventMission>("eventMissions").Rows
             .Where(m => m.eventId == eventId && m.eventMissionType == "consume_event_item").ToArray();
