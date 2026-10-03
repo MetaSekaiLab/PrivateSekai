@@ -112,7 +112,13 @@ public sealed class ChallengeLiveService(
         return rewards;
     }
 
-    // addPoint 由结算提供；这里不推断分数、活动或会员的点数倍率。
+    public UserChallengeLiveStageResult AdvanceStage(UserChallengeLiveStartRequest start, UserChallengeLiveClearRequest clear)
+    {
+        if (start.isAuto || clear.life <= 0 || user.Data.userColorfulPassV2?.colorfulPassId > 0)
+            throw new NotSupportedException("Challenge point mode is not verified.");
+        return AdvanceStage(start.characterId, master.CalculateChallengeBasePoint(clear.score));
+    }
+
     public UserChallengeLiveStageResult AdvanceStage(int characterId, int addPoint)
     {
         if (addPoint <= 0) throw new ArgumentOutOfRangeException(nameof(addPoint));

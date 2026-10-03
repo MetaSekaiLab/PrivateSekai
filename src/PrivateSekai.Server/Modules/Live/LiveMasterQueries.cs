@@ -18,6 +18,19 @@ public sealed class LiveMasterQueries(MasterData master)
 
     public int GetChallengePlayableCount() => master.GetTable<MasterChallengeLive>("challengeLives").Rows.First().playableCount;
 
+    public int CalculateChallengeBasePoint(int score)
+    {
+        if (score < 0) throw new ArgumentOutOfRangeException(nameof(score));
+        var configs = master.GetTable<MasterConfig>("configs").Rows;
+        var basePoint = int.Parse(configs.Single(c => c.configKey == "challenge_base_point").value,
+            System.Globalization.CultureInfo.InvariantCulture);
+        var divisor = int.Parse(configs.Single(c => c.configKey == "challenge_point_calc_value").value,
+            System.Globalization.CultureInfo.InvariantCulture);
+        if (basePoint <= 0 || divisor <= 0)
+            throw new InvalidOperationException("Invalid challenge point configuration.");
+        return checked(basePoint + score / divisor);
+    }
+
     public string GetChallengeScoreRank(int musicDifficultyId, int score)
     {
         if (score < 0) throw new ArgumentOutOfRangeException(nameof(score));

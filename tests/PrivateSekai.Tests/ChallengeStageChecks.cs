@@ -20,6 +20,10 @@ internal static class ChallengeStageChecks
     {
         var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../obj/challenge-stage-fixtures", Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "configs.json"), """
+            [{"configKey":"challenge_base_point","value":"17"},
+             {"configKey":"challenge_point_calc_value","value":"13"}]
+            """);
         File.WriteAllText(Path.Combine(directory, "musicDifficulties.json"), """
             [{"id":1,"playLevel":5},{"id":2,"playLevel":6}]
             """);
@@ -58,6 +62,9 @@ internal static class ChallengeStageChecks
         var challenges = scope.ServiceProvider.GetRequiredService<ChallengeLiveService>();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
         var master = scope.ServiceProvider.GetRequiredService<LiveMasterQueries>();
+        foreach (var (score, expected) in new[] { (0, 17), (12, 17), (13, 18), (25, 18), (26, 19) })
+            Check.That(master.CalculateChallengeBasePoint(score) == expected, "挑战点数读取配置并向下取整");
+        Check.Throws<ArgumentOutOfRangeException>(() => master.CalculateChallengeBasePoint(-1), "拒绝负挑战分数");
         foreach (var (score, expected) in new[]
                  { (0, "rank_d"), (99, "rank_d"), (100, "rank_c"), (199, "rank_c"),
                    (200, "rank_b"), (299, "rank_b"), (300, "rank_a"), (399, "rank_a"), (400, "rank_s") })
@@ -77,6 +84,21 @@ internal static class ChallengeStageChecks
             challenges.AdvanceStage(1, point);
             return user.BuildRefresh();
         });
+        Reset();
+        operations.Execute(1, () =>
+        {
+            var result = challenges.AdvanceStage(new UserChallengeLiveStartRequest { characterId = 1 },
+                new UserChallengeLiveClearRequest { score = 429, life = 1000 });
+            Check.That(result.addPoint == 50 && result.afterRank == 2 && result.afterPoint == 0,
+                "按结算分数计算点数并推进阶段");
+            return user.BuildRefresh();
+        });
+        Check.Throws<NotSupportedException>(() => operations.Execute(1, () => challenges.AdvanceStage(
+            new UserChallengeLiveStartRequest { characterId = 1, isAuto = true },
+            new UserChallengeLiveClearRequest { score = 429, life = 1000 })), "自动挑战不套用普通点数规则");
+        Check.Throws<NotSupportedException>(() => operations.Execute(1, () => challenges.AdvanceStage(
+            new UserChallengeLiveStartRequest { characterId = 1 },
+            new UserChallengeLiveClearRequest { score = 429, life = 0 })), "失败挑战不套用成功点数规则");
         Reset();
         Advance(49);
         Check.That(store.Read(1)!.Data.userChallengeLiveSoloStages.Single().point == 49 &&

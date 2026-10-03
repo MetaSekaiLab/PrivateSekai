@@ -14,7 +14,7 @@ internal static class ChallengeStageReplay
 {
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores" })
+        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores", "configs" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -38,6 +38,7 @@ internal static class ChallengeStageReplay
         state.Data.userCharacters = JsonSerializer.Deserialize<UserCharacter[]>(
             official["before"]!["userCharacters"]!.ToJsonString(), DumpJson.Options)!;
         state.Data.userChargedCurrency = new() { paidUnitPrices = [] };
+        state.Data.userColorfulPassV2 = official["before"]?["userColorfulPassV2"]?.Deserialize<UserColorfulPassV2>(DumpJson.Options);
         store.Save(1, state);
         using var scope = provider.CreateScope();
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
@@ -51,7 +52,10 @@ internal static class ChallengeStageReplay
         JsonObject actual = new();
         operations.Execute(1, () =>
         {
-            var result = service.AdvanceStage(characterId, expected["addPoint"]!.GetValue<int>());
+            var result = service.AdvanceStage(new UserChallengeLiveStartRequest
+            {
+                characterId = characterId, isAuto = playStatus["isAuto"]?.GetValue<bool>() ?? false
+            }, official["request"]!.Deserialize<UserChallengeLiveClearRequest>(DumpJson.Options)!);
             actual = JsonSerializer.SerializeToNode(result, DumpJson.Options)!.AsObject();
             return user.BuildRefresh();
         });
@@ -66,7 +70,7 @@ internal static class ChallengeStageReplay
             JsonSerializer.SerializeToNode(store.Read(1)!.Data.userCharacters, DumpJson.Options));
         JsonFiles.Write(Path.Combine(output, "challenge-stage-compare.json"), new
         {
-            scope = "评分、阶段及角色升级业务重放；点数取官方响应，不验证点数公式或完整 HTTP 结算",
+            scope = "评分、普通挑战点数、阶段及角色升级业务重放；不验证完整 HTTP 结算",
             scoreRank,
             expected = projected, actual,
             resultDifferences = differences, stageDifferences, characterDifferences,
