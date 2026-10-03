@@ -76,11 +76,15 @@ internal static class CharacterMissionHttpChecks
             response["updatedResources"]!["userCharacterMissionV2Statuses"]![0]!["userId"] != null &&
             response["updatedResources"]!["userCharacters"]![0]!["userId"] == null,
             "领奖报告省略用户字段，持久任务状态保留，角色记录省略");
-        rejected = false;
-        try { operation.Execute(1, () => missions.ReceiveCharacterMissions(1, "COLLECT_COSTUME_3D")); }
-        catch (ArgumentException) { rejected = true; }
-        check(rejected && store.Read(1)!.Data.userChargedCurrency.free == 110 && store.Read(1)!.Data.userCharacters.Single().totalExp == 4,
-            "已领取角色任务不能重复发放经验和奖励");
+        await ScenarioRunner.Run(client, new() { Steps = [new()
+        {
+            Operation = "character-mission-receive", Args = new() { ["characterId"] = "1", ["characterMissionType"] = "COLLECT_COSTUME_3D" }
+        }] }, Path.Combine(directory, "character-mission-repeat"));
+        var repeated = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "character-mission-repeat/001.json")))!["response"]!;
+        check(repeated["reportedMissionStatuses"]!.AsArray().Count == 0 && repeated["updatedResources"]!["userCharacters"] != null &&
+            repeated["updatedResources"]!["userCharacterMissionV2Statuses"] == null && repeated["updatedResources"]!["userHonors"] == null &&
+            store.Read(1)!.Data.userChargedCurrency.free == 110 && store.Read(1)!.Data.userCharacters.Single().totalExp == 4,
+            "指定任务重复领取返回空报告和角色刷新，不重复发奖或刷新任务状态");
         state = store.Read(1)!;
         state.Data.userCharacterMissionStatuses = [.. state.Data.userCharacterMissionStatuses,
             new() { userId = 1, characterId = 1, missionId = 1019, parameterGroupId = 19, seq = 1, missionStatus = "achieved" },
@@ -99,6 +103,14 @@ internal static class CharacterMissionHttpChecks
         check(response["reportedMissionStatuses"]!.AsArray().Select(s => s!["missionId"]!.GetValue<int>()).SequenceEqual(new[] { 1003, 1019 }) &&
             response["updatedResources"]!["userHonors"] == null,
             "全部领取只报告本次任务并按任务顺序返回，不重复发称号");
+        await ScenarioRunner.Run(client, new() { Steps = [new()
+        {
+            Operation = "character-mission-receive-all", Args = new() { ["characterId"] = "1" }
+        }] }, Path.Combine(directory, "character-mission-all-repeat"));
+        repeated = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "character-mission-all-repeat/001.json")))!["response"]!;
+        check(repeated["reportedMissionStatuses"]!.AsArray().Count == 0 && repeated["updatedResources"]!["userCharacters"] != null &&
+            repeated["updatedResources"]!["userCharacterMissionV2Statuses"] == null && store.Read(1)!.Data.userCharacters.Single().totalExp == 9,
+            "全部任务重复领取成功返回空报告，经验保持不变");
         state = store.Read(1)!;
         state.Data.userCharacterMissionStatuses = [.. state.Data.userCharacterMissionStatuses,
             new() { userId = 1, characterId = 1, missionId = 999999, parameterGroupId = 1, seq = 1, missionStatus = "achieved" }];

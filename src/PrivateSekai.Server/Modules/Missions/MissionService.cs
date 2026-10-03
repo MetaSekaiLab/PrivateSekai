@@ -29,7 +29,13 @@ public sealed class MissionService(
             s.missionStatus == "achieved" && (type == null ||
                 (definitions.TryGetValue(s.missionId, out var definition) && definition.characterMissionType.ToUpperInvariant() == type)))
             .OrderBy(s => s.missionId).ThenBy(s => s.parameterGroupId).ThenBy(s => s.seq).ToArray();
-        if (statuses.Length == 0) throw new ArgumentException("No achieved character missions.");
+        if (statuses.Length == 0)
+        {
+            if (user.Data.userCharacters?.Any(c => c.characterId == characterId) != true)
+                throw new ArgumentException("Unknown character.");
+            user.MarkChanged(nameof(SuiteUser.userCharacters));
+            return [];
+        }
         var experience = 0;
         foreach (var status in statuses)
         {
