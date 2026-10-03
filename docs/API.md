@@ -2051,6 +2051,8 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 
 新增 3999 分成功样本为 D 档：挑战点 200，玩家经验增加 400，两张卡各增加 1200 经验；评分奖励仅金币 10000、材料 1×40。首次出勤仍给水晶 20，Live 任务仍增加 30，样本活动积分及道具分别增加 12000、1200；限时生日奖励仍为材料 297×3。不得将此样本的材料属性固定为通用奖励。该样本的评分、阶段与角色升级、高分记录、首次出勤业务回放均通过，完整 HTTP 结算尚未接通。
 
+Server 已接入手动成功 D／C 档的玩家与卡牌经验业务，复用普通 Live 的玩家升级处理和卡牌经验处理；自动挑战、失败结算、会员及其他评分仍待核验。Client 测试入口 `--replay-challenge-exp <record> <master> <output>` 比较经验响应、玩家经验持久状态和卡牌状态，D 档双卡及 C 档单／双卡样本通过。回放另检查后续卡牌发放失败时回滚玩家和领队经验。本组样本没有玩家升级，不据此宣称挑战升级奖励或体力联动已获官方核验；完整结算路由仍未接入。
+
 普通阶段及角色升级业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp`。角色等级按 `levels.levelType=character` 的累计门槛计算，更新 `userCharacters` 的等级、总经验和余经验；跨越的等级按 `characterRanks.rewardResourceBoxIds` 与 `character_rank_reward` 用途发奖。EX、角色满级及含额外解锁奖励的等级暂不支持。
 
 Server 的挑战评分查询按曲目难度的 `playLevel` 选择 `playLevelScores.liveType=challenge_live`，从 S 到 C 比较包含边界的门槛，低于 C 返回 D。证据为 `MusicUtility.GetScoreRankStr`、master 及四份官方 C 档样本；缺少对应表项时不回退普通 Live 的评分门槛。该查询尚未接入完整挑战结算路由。

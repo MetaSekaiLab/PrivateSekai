@@ -397,8 +397,9 @@ public sealed class LiveService(
             .ToArray();
     }
 
-    private (UpdateExpResult Result, UserResource[] Rewards) GainPlayerExperience(int addedExp)
+    public (UpdateExpResult Result, UserResource[] Rewards) GainPlayerExperience(int addedExp)
     {
+        if (addedExp < 0) throw new ArgumentOutOfRangeException(nameof(addedExp));
         var result = BuildNoopExpResult();
         var data = user.Data.userGamedata ?? throw new InvalidOperationException("Player data is missing.");
         var levels = master.GetUserLevels();

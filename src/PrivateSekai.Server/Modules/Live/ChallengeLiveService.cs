@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
+using PrivateSekai.Modules.Cards;
 using PrivateSekai.Modules.Characters;
 using PrivateSekai.Modules.Inventory;
 using PrivateSekai.Shared.Resources;
@@ -16,8 +17,33 @@ public sealed class ChallengeLiveService(
     LiveMasterQueries master,
     ResourceMasterQueries resourceMaster,
     ResourceService resources,
-    CharacterService characters)
+    CharacterService characters,
+    LiveService live,
+    CardService cards)
 {
+    public (UpdateExpResult Player, DeckCardUpdateExpResult[] Cards, UserResource[] Rewards) GainExperience(
+        UserChallengeLiveStartRequest start, UserChallengeLiveClearRequest clear)
+    {
+        if (start.isAuto || clear.life <= 0 || user.Data.userColorfulPassV2?.colorfulPassId > 0)
+            throw new NotSupportedException("Challenge experience mode is not verified.");
+        var addedExp = master.GetChallengeScoreRank(start.musicDifficultyId, clear.score) switch
+        {
+            "rank_d" => 400,
+            "rank_c" => 4000,
+            _ => throw new NotSupportedException("Challenge experience rank is not verified.")
+        };
+        int?[] slots = [start.leader, start.support1, start.support2, start.support3, start.support4];
+        if (!start.leader.HasValue || slots.Where(c => c.HasValue).Distinct().Count() != slots.Count(c => c.HasValue))
+            throw new ArgumentException("Invalid challenge experience recipients.");
+        var (player, rewards) = live.GainPlayerExperience(addedExp);
+        var results = slots.Select((id, index) => (id, index)).Where(s => s.id.HasValue)
+            .Select(s => new DeckCardUpdateExpResult
+            {
+                index = s.index + 1, expResult = cards.GainExperience(s.id!.Value, checked(addedExp * 3))
+            }).ToArray();
+        return (player, results, rewards);
+    }
+
     public UserChallengeLiveHighScoreResult UpdateHighScore(int characterId, int score)
     {
         if (score < 0) throw new ArgumentOutOfRangeException(nameof(score));

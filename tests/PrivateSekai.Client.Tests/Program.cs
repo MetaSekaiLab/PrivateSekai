@@ -113,6 +113,8 @@ if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock" or "--repl
     ChallengeDeckReplay.ImportMaster(challengeMaster, directory);
 if (args is ["--replay-login-bonus", _, var loginMaster, _])
     LoginBonusReplay.ImportMaster(loginMaster, directory);
+if (args is ["--replay-challenge-exp", _, var challengeExpMaster, _])
+    ChallengeExperienceReplay.ImportMaster(challengeExpMaster, directory);
 if (args is ["--replay-challenge-stage", _, var stageMaster, _])
     ChallengeStageReplay.ImportMaster(stageMaster, directory);
 if (args is ["--replay-challenge-play-day", _, var dayMaster, _])
@@ -177,6 +179,11 @@ if (args is ["--replay-challenge-high-score", var highScoreCapture, _, var highS
 if (args is ["--replay-challenge-play-day", var dayCapture, _, var dayOutput])
 {
     ChallengePlayDayReplay.Run(app.Services, store, dayCapture, dayOutput);
+    return;
+}
+if (args is ["--replay-challenge-exp", var challengeExpCapture, _, var challengeExpOutput])
+{
+    ChallengeExperienceReplay.Run(app.Services, store, challengeExpCapture, challengeExpOutput);
     return;
 }
 if (args is ["--replay-challenge-stage", var stageCapture, _, var stageOutput])
