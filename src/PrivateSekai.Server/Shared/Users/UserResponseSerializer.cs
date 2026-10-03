@@ -25,6 +25,7 @@ internal static class UserResponseSerializer
                     (key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0 && s.refreshedAt == 0)),
                 new FieldFilterFormatter<UserCharacterMissionV2>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserReleaseCondition>((_, key) => key == "userId"),
+                new FieldFilterFormatter<UserPresentData>((s, key) => key == "grantedAt" && s.grantedAt == 0),
                 new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" && s.missionType == "beginner_mission_v2"),
                 new FieldFilterFormatter<UserChallengeLivePlayStatus>((s, key) => key == "playEndAt" && s.liveStatus == "start")
             },

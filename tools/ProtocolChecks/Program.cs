@@ -51,6 +51,11 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
                 ? "musicVoiceId:System.Int32:musicVocalId" : s)
             .Append("isAuto:System.Boolean:isAuto").Order(StringComparer.Ordinal).ToArray();
     }
+    if (type == typeof(Sekai.UserPresentData))
+    {
+        Check(!expectedSignature.Any(s => s.StartsWith("grantedAt:", StringComparison.Ordinal)), "礼物原始契约前置");
+        expectedSignature = expectedSignature.Append("grantedAt:System.Int64:grantedAt").Order(StringComparer.Ordinal).ToArray();
+    }
     Check(expectedSignature.SequenceEqual(Signature(compiledTypes[source.FullName])), $"元数据及已核验修正 {type.FullName}");
     foreach (var union in DumpContract.For(type).Unions)
     {
@@ -86,6 +91,13 @@ foreach (var auto in new[] { false, true })
 }
 var legacyStatus = JsonSerializer.Deserialize<Sekai.UserChallengeLivePlayStatus>("{\"musicVoiceId\":7}", DumpJson.Options)!;
 Check(legacyStatus.musicVoiceId == 7, "本地旧 JSON 的 CLR 字段别名仍可读取");
+
+var presentWithTime = JsonSerializer.Deserialize<Sekai.UserPresentData>(
+    "{\"presentId\":\"fixture\",\"grantedAt\":1790999824218}", DumpJson.Options)!;
+var restoredPresent = DumpSerializer.Deserialize<Sekai.UserPresentData>(DumpSerializer.Serialize(presentWithTime));
+Check(restoredPresent.grantedAt == 1790999824218L, "礼物发放时间从 JSON 导入后保留 64 位毫秒值");
+Check(JsonSerializer.Deserialize<Sekai.UserPresentData>("{\"presentId\":\"legacy\"}", DumpJson.Options)!.grantedAt == 0,
+    "旧礼物缺少发放时间时不推测时间");
 
 var card = new Sekai.UserCard { cardId = 123, userId = 9007199254740993L, level = 7 };
 var suite = new Sekai.SuiteUser { userCards = [card], refreshableTypes = [] };

@@ -105,6 +105,16 @@ autoKey.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.S
 isAuto.CustomAttributes.Add(autoKey);
 challengeStatus.Fields.Add(isAuto);
 
+// 官方礼物包含发放时间；仅补充构建副本，保留原始 dump。
+var presentData = module.GetType("Sekai.UserPresentData");
+if (presentData.Fields.Any(f => f.Name == "grantedAt"))
+    throw new InvalidDataException("礼物 dump 已变化，请重新核验发放时间字段。");
+var grantedAt = new FieldDefinition("grantedAt", FieldAttributes.Public, module.TypeSystem.Int64);
+var grantedAtKey = new CustomAttribute(vocalKey.Constructor);
+grantedAtKey.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, "grantedAt"));
+grantedAt.CustomAttributes.Add(grantedAtKey);
+presentData.Fields.Add(grantedAt);
+
 Directory.CreateDirectory(output);
 var dll = Path.Combine(output, "Assembly-CSharp.dll");
 assembly.Write(dll + ".tmp");
@@ -112,7 +122,11 @@ File.Move(dll + ".tmp", dll, overwrite: true);
 File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(new
 {
     sourceSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(input, "Assembly-CSharp.dll")))),
-    protocolAdjustments = new[] { "Sekai.UserChallengeLivePlayStatus: musicVoiceId key -> musicVocalId; add isAuto:Boolean" },
+    protocolAdjustments = new[]
+    {
+        "Sekai.UserChallengeLivePlayStatus: musicVoiceId key -> musicVocalId; add isAuto:Boolean",
+        "Sekai.UserPresentData: add grantedAt:Int64"
+    },
     models = models.Select(t => t.FullName.Replace('/', '+')).Order(StringComparer.Ordinal)
 }, new JsonSerializerOptions { WriteIndented = true }));
 Console.WriteLine($"已为 {models.Length} 个 dump 模型修复 CLR 接口和属性存储；原始 DLL 未修改。");
