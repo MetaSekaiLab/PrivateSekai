@@ -14,7 +14,7 @@ internal static class ChallengeStageReplay
 {
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes" })
+        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -34,6 +34,8 @@ internal static class ChallengeStageReplay
         var state = store.Read(1)!;
         state.Data.userChallengeLiveSoloStages = JsonSerializer.Deserialize<UserChallengeLiveSoloStage[]>(
             official["before"]!["userChallengeLiveSoloStages"]!.ToJsonString(), DumpJson.Options)!;
+        state.Data.userCharacters = JsonSerializer.Deserialize<UserCharacter[]>(
+            official["before"]!["userCharacters"]!.ToJsonString(), DumpJson.Options)!;
         state.Data.userChargedCurrency = new() { paidUnitPrices = [] };
         store.Save(1, state);
         using var scope = provider.CreateScope();
@@ -44,34 +46,26 @@ internal static class ChallengeStageReplay
         operations.Execute(1, () =>
         {
             var result = service.AdvanceStage(characterId, expected["addPoint"]!.GetValue<int>());
-            actual = new JsonObject
-            {
-                ["beforeRank"] = result.BeforeRank, ["beforePoint"] = result.BeforePoint,
-                ["afterRank"] = result.AfterRank, ["afterPoint"] = result.AfterPoint,
-                ["challengeStageRewards"] = JsonSerializer.SerializeToNode(result.Rewards, DumpJson.Options),
-                ["characterExp"] = result.CharacterExp
-            };
+            actual = JsonSerializer.SerializeToNode(result, DumpJson.Options)!.AsObject();
             return user.BuildRefresh();
         });
-        var projected = new JsonObject();
-        foreach (var field in new[] { "beforeRank", "beforePoint", "afterRank", "afterPoint" })
-            projected[field] = expected[field]!.DeepClone();
         // 比较解码后的业务资源；网络字段省略规则需在完整结算接口中另行核验。
-        projected["challengeStageRewards"] = JsonSerializer.SerializeToNode(
-            JsonSerializer.Deserialize<UserResource[]>(expected["challengeStageRewards"]!.ToJsonString(), DumpJson.Options), DumpJson.Options);
-        projected["characterExp"] = expected["characterExpResult"]!["afterTotalExp"]!.GetValue<int>() -
-            expected["characterExpResult"]!["beforeTotalExp"]!.GetValue<int>();
+        var projected = JsonSerializer.SerializeToNode(JsonSerializer.Deserialize<UserChallengeLiveStageResult>(
+            expected.ToJsonString(), DumpJson.Options), DumpJson.Options);
         var after = JsonSerializer.SerializeToNode(store.Read(1)!.Data.userChallengeLiveSoloStages, DumpJson.Options);
         var differences = Comparison.Diff(projected, actual);
         var stageDifferences = Comparison.Diff(official["after"]!["userChallengeLiveSoloStages"], after);
+        var characterDifferences = Comparison.Diff(JsonSerializer.SerializeToNode(
+                JsonSerializer.Deserialize<UserCharacter[]>(official["after"]!["userCharacters"]!.ToJsonString(), DumpJson.Options), DumpJson.Options),
+            JsonSerializer.SerializeToNode(store.Read(1)!.Data.userCharacters, DumpJson.Options));
         JsonFiles.Write(Path.Combine(output, "challenge-stage-compare.json"), new
         {
-            scope = "阶段业务重放；点数取官方响应，不验证点数公式、角色升级或完整 HTTP 结算",
+            scope = "阶段及角色升级业务重放；点数取官方响应，不验证点数公式或完整 HTTP 结算",
             expected = projected, actual,
-            resultDifferences = differences, stageDifferences,
+            resultDifferences = differences, stageDifferences, characterDifferences,
             actualStages = after
         });
-        if (differences.Count != 0 || stageDifferences.Count != 0)
+        if (differences.Count != 0 || stageDifferences.Count != 0 || characterDifferences.Count != 0)
             throw new InvalidOperationException("挑战阶段与官方样本存在差异，见重放报告。");
         Console.WriteLine("挑战阶段业务重放通过；不代表完整结算接口通过。");
     }

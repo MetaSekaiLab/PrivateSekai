@@ -65,6 +65,14 @@ public sealed class LiveMasterQueries(MasterData master)
     public MasterLevel[] GetUserLevels() => master.GetTable<MasterLevel>("levels").Rows
         .Where(l => l.levelType == "user").OrderBy(l => l.level).ToArray();
 
+    public MasterLevel[] GetCharacterLevels() => master.GetTable<MasterLevel>("levels").Rows
+        .Where(l => l.levelType == "character").OrderBy(l => l.level).ToArray();
+
+    public MasterCharacterRank GetCharacterRank(int characterId, int rank) =>
+        master.GetTable<MasterCharacterRank>("characterRanks").Rows
+            .SingleOrDefault(r => r.characterId == characterId && r.characterRank == rank)
+        ?? throw new InvalidOperationException("Missing character rank.");
+
     public MasterPlayerRankReward[] GetPlayerRankRewards(int before, int after) =>
         master.GetTable<MasterPlayerRankReward>("playerRankRewards").Rows
             .Where(r => r.playerRank > before && r.playerRank <= after)

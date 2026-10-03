@@ -2018,9 +2018,9 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 
 当前结算样本使用模拟输入。三次 C 档样本中，7999 分获得 200 点，8000 与 10000 分获得 201 点；玩家经验均增加 4000。双卡样本的两张卡各增加 12000 经验，响应 index 为 1、2，与领队、支援位对应。部分评分奖励材料 ID 不同，发放规则仍待核验。完整点数公式、其他评分经验、奖励抽取、跨日和自动挑战尚未核验，不能把单次返回值用作固定公式。
 
-普通阶段业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp` 供后续角色升级使用。EX 阶段暂不支持。
+普通阶段及角色升级业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp`。角色等级按 `levels.levelType=character` 的累计门槛计算，更新 `userCharacters` 的等级、总经验和余经验；跨越的等级按 `characterRanks.rewardResourceBoxIds` 与 `character_rank_reward` 用途发奖。EX、角色满级及含额外解锁奖励的等级暂不支持。
 
-Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 使用官方响应的 `addPoint` 重放阶段业务。三份样本的阶段记录、前后等级与点数、解码后奖励及待发角色经验均一致；该检查不覆盖点数公式、角色升级、网络字段省略规则或完整 HTTP 结算。
+Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 使用官方响应的 `addPoint` 重放阶段业务。三份样本的阶段记录、角色状态及解码后的完整 `userChallengeLiveStageResult` 一致，涵盖角色 1 和 21 从等级 1 升至 3 的经验与奖励；该检查不覆盖点数公式、网络字段省略规则或完整 HTTP 结算。样本新增的释放条件来自活动积分，不属于角色升级。
 
 ## POST `/api/user/{userId}/challenge-live/receive-select-reward/{resourceId}`
 
