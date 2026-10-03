@@ -969,7 +969,14 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 指定服装类型和全部领取在没有新达成项时均返回 200、`reportedMissionStatuses=[]`，仍刷新 `userCharacters`，不刷新任务状态和奖励资源。官方重复领取前后角色经验、任务状态及奖励库存不变，两类样本的相关字段 HTTP 对拍一致。
 
-其他任务类型、已有称号升级及满角色等级仍待核验；全部领取遇到未核验类型或缺失定义的达成项时整次拒绝，不静默跳过。`reportedMissionStatuses` 省略 `userId`，`updatedResources.userCharacterMissionV2Statuses` 保留。称号与名片的所属用户字段已补入模型构建副本；角色记录省略 `userId`，leader 名片省略零值 `profileImageId`。
+另已接入并完成指定类型 HTTP 对拍：
+
+- `COLLECT_MEMBER`：领取 4 条任务，每条按 master 增加 2 点经验，角色等级 1 → 5，累计经验 0 → 8。
+- `READ_CARD_EPISODE_FIRST`：领取前篇任务增加 1 点经验，样本未升级。
+- `READ_CARD_EPISODE_SECOND`：领取后篇任务增加 1 点经验，角色等级 3 → 4，累计经验 3 → 4，并发放等级奖励。
+- `AREA_ITEM_LEVEL_UP_CHARACTER`：领取 2 条区域道具任务，共增加 2 点经验，样本未升级。
+
+上述样本均回读确认任务已领取，相关基线、响应和状态增量一致；对拍范围为角色、任务和奖励资源，不包含无关背景字段。其余任务类型、已有称号升级及满角色等级仍待核验；全部领取遇到未核验类型或缺失定义的达成项时整次拒绝，不静默跳过。`reportedMissionStatuses` 省略 `userId`，`updatedResources.userCharacterMissionV2Statuses` 保留。称号与名片的所属用户字段已补入模型构建副本；角色记录省略 `userId`，leader 名片省略零值 `profileImageId`。
 
 证据：`PutUserCharacterMissionReceiveAPI` 的两个构造、Execute 与回调，`ScreenLayerCharacterRankMission.ExecuteApi`、响应契约、角色任务参数和等级奖励 master，以及官方指定类型领取与 Suite 回读样本。
 
