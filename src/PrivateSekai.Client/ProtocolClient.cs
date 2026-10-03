@@ -32,6 +32,9 @@ public sealed class ProtocolClient : IDisposable
     private bool poisoned;
     private string? credential;
     private TestAccount? savedAccount;
+    private string? captureDirectory;
+    private int captureSequence;
+    private static readonly HttpRequestOptionsKey<string> CaptureFile = new("PrivateSekai.CaptureFile");
     public long UserId { get; private set; }
     public bool OwnTestAccount { get; private set; }
     public Redactor Redactor { get; } = new();
@@ -39,6 +42,15 @@ public sealed class ProtocolClient : IDisposable
     public int? LastHttpStatus { get; private set; }
     public string? LastLoginBonusStatus { get; private set; }
     public string[] LastResponseHeaderNames { get; private set; } = [];
+
+    public void CaptureTo(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        if (Directory.EnumerateFileSystemEntries(directory).Any())
+            throw new InvalidOperationException("HTTP 抓包目录须为空，避免覆盖已有记录。");
+        captureDirectory = directory;
+        captureSequence = 0;
+    }
 
     public ProtocolClient(TargetConfiguration config, string configDirectory, byte[]? testKey = null, byte[]? testIv = null)
     {
@@ -110,7 +122,7 @@ public sealed class ProtocolClient : IDisposable
             request.Headers.TryAddWithoutValidation(header.Key, header.Value);
         request.Content = new ByteArrayContent(PrskCrypto.EncryptAesCbc([], key, iv));
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        using var response = await http.SendAsync(request);
+        using var response = await SendCaptured(request, null, "signature");
         if (!response.IsSuccessStatusCode || !response.Headers.TryGetValues("Set-Cookie", out var cookies))
             throw new ClientFailure($"签名请求未返回有效 cookie（HTTP {(int)response.StatusCode}）。");
         var parts = cookies.SelectMany(value => System.Text.RegularExpressions.Regex.Matches(value,
@@ -201,7 +213,8 @@ public sealed class ProtocolClient : IDisposable
             var hadToken = headers.ContainsKey("X-Session-Token");
             // 请求离开进程后，任何异常都需要显式重新登录，而不是重复消费旧 token。
             poisoned = true;
-            using var response = await http.SendAsync(request);
+            using var response = await SendCaptured(request,
+                packed == null ? null : JsonNode.Parse(MessagePackSerializer.ConvertToJson(packed)), "protocol");
             LastHttpStatus = (int)response.StatusCode;
             LastLoginBonusStatus = response.Headers.TryGetValues("X-Login-Bonus-Status", out var loginStatus)
                 ? loginStatus.Single() : null;
@@ -306,10 +319,20 @@ public sealed class ProtocolClient : IDisposable
             using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(origin, ThumbnailDownload.ValidatePath(path)));
             // 普通图片请求不复制 API 凭证、会话或签名 header。
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            using var response = await SendCaptured(request, null, "image", timeout.Token);
             LastHttpStatus = (int)response.StatusCode;
             LastResponseHeaderNames = response.Headers.Select(h => h.Key).OrderBy(k => k).ToArray();
-            var result = await ThumbnailDownload.Save(response, outputStem, timeout.Token);
+            JsonObject result;
+            try
+            {
+                result = await ThumbnailDownload.Save(response, outputStem, timeout.Token);
+                CompleteImageCapture(request, result, null);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                CompleteImageCapture(request, null, ex);
+                throw;
+            }
             LastResponse = result.DeepClone().AsObject();
             return result;
         }
@@ -318,6 +341,88 @@ public sealed class ProtocolClient : IDisposable
 
     private static string RequiredEnvironment(string name) => Environment.GetEnvironmentVariable(name)
         ?? throw new InvalidOperationException("缺少指定的环境变量。");
+
+    private async Task<HttpResponseMessage> SendCaptured(HttpRequestMessage request, JsonNode? body,
+        string format, CancellationToken cancellationToken = default)
+    {
+        if (captureDirectory == null)
+            return await http.SendAsync(request, format == "image" ? HttpCompletionOption.ResponseHeadersRead :
+                HttpCompletionOption.ResponseContentRead, cancellationToken);
+
+        var uri = request.RequestUri!.IsAbsoluteUri ? request.RequestUri : new Uri(http.BaseAddress!, request.RequestUri);
+        var path = format == "image" ? "/thumbnail" : Redactor.Clean(JsonValue.Create(Uri.UnescapeDataString(uri.AbsolutePath)))!.GetValue<string>();
+        path = System.Text.RegularExpressions.Regex.Replace(path, @"/user/\d+(?=/|$)", "/user/account");
+        var name = System.Text.RegularExpressions.Regex.Replace(path.Trim('/'), "[^A-Za-z0-9_-]+", "_");
+        if (name.Length > 120) name = name[..120];
+        var stem = System.IO.Path.Combine(captureDirectory, $"{Interlocked.Increment(ref captureSequence):D4}_{request.Method}_{name}");
+        request.Options.Set(CaptureFile, stem + "_response.json");
+        var query = new JsonArray();
+        foreach (var part in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            var queryKey = Uri.UnescapeDataString(pair[0].Replace('+', ' '));
+            query.Add(new JsonObject { ["key"] = Redactor.Clean(JsonValue.Create(queryKey)),
+                ["value"] = Redactor.Clean(JsonValue.Create(pair.Length == 2 ? Uri.UnescapeDataString(pair[1].Replace('+', ' ')) : ""), queryKey) });
+        }
+        JsonFiles.Write(stem + "_request.json", new JsonObject
+        {
+            ["at"] = DateTimeOffset.UtcNow, ["method"] = request.Method.Method, ["path"] = path,
+            ["query"] = query, ["headerNames"] = System.Text.Json.JsonSerializer.SerializeToNode(
+                request.Headers.Select(h => h.Key).Concat(request.Content?.Headers.Select(h => h.Key) ?? [])),
+            ["format"] = format, ["body"] = Redactor.Clean(body)
+        });
+        var record = new JsonObject { ["method"] = request.Method.Method, ["path"] = path, ["format"] = format };
+        HttpResponseMessage? response = null;
+        try
+        {
+            response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            record["at"] = DateTimeOffset.UtcNow;
+            record["httpStatus"] = (int)response.StatusCode;
+            record["headerNames"] = System.Text.Json.JsonSerializer.SerializeToNode(
+                response.Headers.Select(h => h.Key).Concat(response.Content.Headers.Select(h => h.Key)));
+            if (response.Headers.TryGetValues("X-Login-Bonus-Status", out var loginBonusStatus))
+                record["loginBonusStatusHeader"] = Redactor.Clean(System.Text.Json.JsonSerializer.SerializeToNode(loginBonusStatus.ToArray()));
+            record["status"] = "headers-received";
+            JsonFiles.Write(stem + "_response.json", record);
+            if (format != "image")
+            {
+                // 缓存正文供后续协议处理复用；失败响应也保留可解密的内容。
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(http.Timeout);
+                var bytes = await response.Content.ReadAsByteArrayAsync(timeout.Token);
+                record["byteCount"] = bytes.Length;
+                record["body"] = bytes.Length == 0 ? null : ReadError(bytes);
+                record["status"] = "received";
+                JsonFiles.Write(stem + "_response.json", record);
+            }
+            return response;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            response?.Dispose();
+            record["failedAt"] = DateTimeOffset.UtcNow;
+            record["status"] = "failed";
+            record["errorType"] = ex.GetType().Name;
+            record["transportError"] = FailureDiagnostics.Transport(ex);
+            JsonFiles.Write(stem + "_response.json", record);
+            throw;
+        }
+    }
+
+    private void CompleteImageCapture(HttpRequestMessage request, JsonObject? result, Exception? error)
+    {
+        if (!request.Options.TryGetValue(CaptureFile, out var file)) return;
+        var record = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+        record["completedAt"] = DateTimeOffset.UtcNow;
+        record["status"] = error == null ? "received" : "failed";
+        record["body"] = Redactor.Clean(result);
+        if (error != null)
+        {
+            record["errorType"] = error.GetType().Name;
+            record["transportError"] = FailureDiagnostics.Transport(error);
+        }
+        JsonFiles.Write(file, record);
+    }
 
     private void SaveAccount()
     {

@@ -177,6 +177,7 @@ app.Use(async (context, next) =>
     }
     token = Guid.NewGuid().ToString();
     if (!omitNext) context.Response.Headers["X-Session-Token"] = token;
+    if (context.Request.Path == "/api/system") context.Response.Headers["X-Login-Bonus-Status"] = "true";
     if (noContentPath != null && context.Request.Path == noContentPath)
     {
         context.Response.StatusCode = 204;
@@ -282,11 +283,74 @@ try
         "拒绝编队请求中与当前目标不一致的账号");
     Check(requests == beforeInvalidDeck, "错误账号编队在发包前拒绝，不消耗会话 token");
     Check(requests == 5, "写入前后各同步一次，无额外或重复请求");
+    var httpCaptures = Path.Combine(directory, "http");
+    Check(Directory.GetFiles(httpCaptures, "*_request.json").Length == 5 &&
+        Directory.GetFiles(httpCaptures, "*_response.json").Length == 5,
+        "每个实际 HTTP 请求均留存成对文件，包括写入前后的自动回读");
+    var systemCapture = JsonNode.Parse(File.ReadAllText(Path.Combine(httpCaptures, "0001_GET_api_system_response.json")))!;
+    Check(systemCapture["loginBonusStatusHeader"]?[0]?.GetValue<string>() == "true",
+        "逐包记录保留登录奖励状态提示，不展开敏感响应头");
+    Check(systemCapture["httpStatus"]!.GetValue<int>() == 200 && systemCapture["body"]?["appVersions"] is JsonArray,
+        "HTTP 抓包使用方法和路由命名，保存解密后的响应");
+    var deckCapture = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(httpCaptures, "0004_*_request.json").Single()))!;
+    Check(deckCapture["body"]?["userDeckUpdates"]?[0]?["userDeck"]?["userId"]?.GetValue<string>() == "<redacted>",
+        "HTTP 请求记录包含实际注入的账号字段并脱敏");
+    Check(Directory.GetFiles(httpCaptures).All(file => !File.ReadAllText(file).Contains(token)),
+        "HTTP 抓包不保存轮换 token");
+    Fails(() => client.CaptureTo(httpCaptures), "已有抓包目录不能覆盖");
+    using (var disconnected = new ProtocolClient(new() { BaseUrl = "http://127.0.0.1:0" }, directory,
+        ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray()))
+    {
+        var disconnectedDirectory = Path.Combine(directory, "disconnected");
+        disconnected.CaptureTo(disconnectedDirectory);
+        var disconnectedFailed = false;
+        try { await disconnected.Send(new() { Operation = "system" }); }
+        catch (HttpRequestException) { disconnectedFailed = true; }
+        var disconnectedResponse = JsonNode.Parse(File.ReadAllText(Path.Combine(disconnectedDirectory,
+            "0001_GET_api_system_response.json")))!;
+        Check(disconnectedFailed && disconnectedResponse["status"]!.GetValue<string>() == "failed" &&
+            disconnectedResponse["httpStatus"] == null, "网络失败保留成对记录，不虚构 HTTP 状态");
+    }
     Check(validHeaders, "配置 Accept 不重复，GET 与写请求都携带二进制 Content-Type");
     var record = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "003.json")))!.AsObject();
     Check(record["status"]!.GetValue<string>() == "completed" && record["stateChanges"]!.AsArray().Count > 0, "记录状态变化");
     Check(!record.ToJsonString().Contains(token), "不留存轮换 token");
     Check(record["after"]!["userRegistration"]!["userId"]!.GetValue<string>() == "<redacted>", "账号字段脱敏");
+    var guardedStep = new ScenarioStep
+    {
+        Operation = "deck-save", Body = scenario.Steps[2].Body,
+        RequireReleaseConditionIds = [90001]
+    };
+    var guardedScenario = new Scenario { Steps = [guardedStep] };
+    ScenarioRunner.Validate(guardedScenario, [config], new HashSet<string>());
+    var guardedBefore = requests;
+    var guardedOutput = Path.Combine(directory, "guarded-missing");
+    var guardedStopped = false;
+    try { await ScenarioRunner.Run(client, guardedScenario, guardedOutput); }
+    catch (ClientFailure) { guardedStopped = true; }
+    var guardedRecord = JsonNode.Parse(File.ReadAllText(Path.Combine(guardedOutput, "001.json")))!;
+    Check(guardedStopped && requests == guardedBefore + 1 &&
+        guardedRecord["failurePhase"]!.GetValue<string>() == "release-condition" &&
+        guardedRecord["missingReleaseConditionIds"]![0]!.GetValue<int>() == 90001,
+        "未解锁时只回读一次，记录缺少的条件，不发送写请求");
+    var guardedState = store.Read(1)!;
+    var priorConditions = guardedState.Data.userReleaseConditions;
+    guardedState.Data.userReleaseConditions = [new UserReleaseCondition { releaseConditionId = 90001 }];
+    store.Save(1, guardedState);
+    guardedBefore = requests;
+    await ScenarioRunner.Run(client, guardedScenario, Path.Combine(directory, "guarded-released"));
+    Check(requests == guardedBefore + 3, "已解锁时沿用原会话完成写入及前后回读");
+    guardedState = store.Read(1)!;
+    guardedState.Data.userReleaseConditions = priorConditions;
+    store.Save(1, guardedState);
+    Fails(() => ScenarioRunner.Validate(new() { Steps = [new()
+    {
+        Operation = "system", RequireReleaseConditionIds = [90001]
+    }] }, [config], new HashSet<string>()), "不支持回读的操作不能配置解锁检查");
+    Fails(() => ScenarioRunner.Validate(new() { Steps = [new()
+    {
+        Operation = "deck-save", Body = guardedStep.Body, RequireReleaseConditionIds = [0]
+    }] }, [config], new HashSet<string>()), "解锁条件必须为正整数");
     await DeckNameHttpChecks.Run(client, config, store, directory, Check);
     noContentPath = "/api/user/1/story/unit_story/episode/991";
     await ScenarioRunner.Run(client, new() { Steps = [new()
@@ -430,6 +494,10 @@ try
         var failure = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "001.json")))!;
         Check(stopped && failure["failurePhase"]!.GetValue<string>() == phase && requests == beforeRequests + offset,
             "失败记录标明实际请求阶段且不自动重发");
+        var failedHttp = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(Path.Combine(output, "http"),
+            $"{offset:D4}_*_response.json").Single()))!;
+        Check(failedHttp["httpStatus"]!.GetValue<int>() == 503 && failedHttp["status"]!.GetValue<string>() == "received",
+            "HTTP 错误响应独立留存，不被自动回读覆盖");
         Check((store.Read(1)!.Data.userDecks.Any(d => d.deckId == 201)) == (phase == "after-snapshot"),
             "写前或写入失败不改变编队，写后读取失败保留已提交结果");
         if (phase == "after-snapshot")

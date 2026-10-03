@@ -24,6 +24,9 @@ public sealed class ScenarioRunner
             var step = ResolveLiveSession(configured, liveId, challengeLiveId);
             if (!Operations.All.TryGetValue(step.Operation, out var definition))
                 throw new InvalidOperationException("未知操作；使用 list 查看支持的操作。");
+            if (step.RequireReleaseConditionIds.Any(id => id <= 0) ||
+                (step.RequireReleaseConditionIds.Length > 0 && (!definition.IsWrite || !definition.Snapshot)))
+                throw new InvalidOperationException("解锁条件须为正整数，且仅用于有状态回读的写操作。");
             if (step.Operation == "thumbnail-download")
             {
                 if (previousOperation is "" or "thumbnail-download" || step.ThumbnailPathPointer?.StartsWith('/') != true)
@@ -54,6 +57,7 @@ public sealed class ScenarioRunner
     public static async Task Run(ProtocolClient client, Scenario scenario, string directory)
     {
         Directory.CreateDirectory(directory);
+        client.CaptureTo(Path.Combine(directory, "http"));
         await client.AcquireSignature();
         string? liveId = null;
         string? challengeLiveId = null;
@@ -82,7 +86,19 @@ public sealed class ScenarioRunner
                 if (definition.IsWrite && definition.Snapshot)
                 {
                     phase = "before-snapshot";
-                    capture["before"] = client.Redactor.Clean(await client.Suite());
+                    var before = await client.Suite();
+                    capture["before"] = client.Redactor.Clean(before);
+                    if (step.RequireReleaseConditionIds.Length > 0)
+                    {
+                        phase = "release-condition";
+                        var released = before["userReleaseConditions"]?.AsArray()
+                            .Select(item => item?["releaseConditionId"]?.GetValue<int>()).ToHashSet() ?? [];
+                        var missing = step.RequireReleaseConditionIds.Where(id => !released.Contains(id)).Distinct().ToArray();
+                        capture["requiredReleaseConditionIds"] = JsonSerializer.SerializeToNode(step.RequireReleaseConditionIds);
+                        capture["missingReleaseConditionIds"] = JsonSerializer.SerializeToNode(missing);
+                        if (missing.Length > 0)
+                            throw new ClientFailure("前置解锁条件未满足，未发送业务请求。");
+                    }
                 }
                 phase = "prepare-request";
                 capture["request"] = client.Redactor.Clean(step.Body);
@@ -155,7 +171,8 @@ public sealed class ScenarioRunner
         var resolved = new ScenarioStep
         {
             Operation = step.Operation, Args = new(step.Args), Query = new(step.Query), QueryLists = new(step.QueryLists),
-            Body = step.Body?.DeepClone().AsObject(), Expect = step.Expect, DelayBeforeMs = step.DelayBeforeMs
+            Body = step.Body?.DeepClone().AsObject(), Expect = step.Expect, DelayBeforeMs = step.DelayBeforeMs,
+            RequireReleaseConditionIds = step.RequireReleaseConditionIds
         };
         if (step.Operation is "live-clear" or "challenge-live-clear") resolved.Args[sessionKey] = sessionId;
         else if (resolved.Body != null) resolved.Body[sessionKey] = sessionId;

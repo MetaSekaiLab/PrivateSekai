@@ -51,6 +51,7 @@ public sealed class ScenarioStep
     public string Operation { get; set; } = "";
     public bool UseLiveSession { get; set; }
     public int DelayBeforeMs { get; set; }
+    public int[] RequireReleaseConditionIds { get; set; } = [];
     public string? ThumbnailPathPointer { get; set; }
     public Dictionary<string, string> Args { get; set; } = [];
     public Dictionary<string, string> Query { get; set; } = [];
