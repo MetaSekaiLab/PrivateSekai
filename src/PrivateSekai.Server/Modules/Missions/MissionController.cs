@@ -25,11 +25,20 @@ public sealed class MissionController(UserOperation operations, UserSession user
         long userId,
         [FromBody] UserMissionReceiveRequest request)
     {
-        return Encoded(operations.Execute(userId, () =>
+        try
         {
-            var response = missions.ReceiveBeginnerMissionV2Rewards(request.missionIds);
-            response.UpdatedResources = user.BuildRefresh();
-            return response;
-        }));
+            return Encoded(operations.Execute(userId, () =>
+            {
+                var response = missions.ReceiveBeginnerMissionV2Rewards(request.missionIds);
+                response.UpdatedResources = user.BuildRefresh();
+                return response;
+            }));
+        }
+        catch (MissionAlreadyReceivedException)
+        {
+            Response.StatusCode = 409;
+            return Encoded(operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = 409, ErrorCode = "", ErrorMessage = "" }));
+        }
     }
 }

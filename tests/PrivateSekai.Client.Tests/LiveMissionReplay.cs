@@ -13,8 +13,43 @@ internal static class LiveMissionReplay
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "liveMissions", "resourceBoxes" })
+        foreach (var table in new[] { "liveMissions", "beginnerMissionV2s", "resourceBoxes" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
+    }
+
+    public static async Task RunBeginnerRepeat(ProtocolClient client, MemoryUserStore store, string path, string output)
+    {
+        if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
+            throw new InvalidOperationException("重放输出目录必须为空。");
+        Directory.CreateDirectory(output);
+        var official = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        if (official["operation"]?.GetValue<string>() != "beginner-mission-receive" ||
+            official["failurePhase"]?.GetValue<string>() != "request" || official["lastHttpStatus"]?.GetValue<int>() != 409)
+            throw new InvalidOperationException("需要新手任务重复领取的官方 409 记录。");
+        string[] fields = ["userMaterials", "userMissionStatuses", "userBeginnerMissionV2s"];
+        var state = store.Read(1)!;
+        foreach (var member in DumpContract.For(typeof(SuiteUser)).Members.Where(m => fields.Contains((string)m.Key)))
+            if (official["before"]![(string)member.Key] is { } value)
+                member.Set(state.Data, JsonSerializer.Deserialize(value.ToJsonString(), member.Type, DumpJson.Options));
+        store.Save(1, state);
+        var before = JsonSerializer.SerializeToNode(store.Read(1)!.Data, DumpJson.Options);
+        await client.Send(new() { Operation = "system" });
+        client.CaptureTo(Path.Combine(output, "http"));
+        var rejected = false;
+        try
+        {
+            await client.Send(new() { Operation = "beginner-mission-receive", Body = official["request"]!.DeepClone().AsObject() });
+        }
+        catch (ClientFailure) { rejected = true; }
+        var responseDifferences = Comparison.Diff(official["lastResponse"], client.LastResponse);
+        var stateDifferences = Comparison.Diff(before, JsonSerializer.SerializeToNode(store.Read(1)!.Data, DumpJson.Options));
+        JsonFiles.Write(Path.Combine(output, "beginner-repeat-compare.json"), new
+        {
+            rejected, expectedStatus = 409, actualStatus = client.LastHttpStatus, responseDifferences, stateDifferences
+        });
+        if (!rejected || client.LastHttpStatus != 409 || responseDifferences.Count != 0 || stateDifferences.Count != 0)
+            throw new InvalidOperationException("新手任务重复领奖与官方拒绝样本不一致。");
+        Console.WriteLine("新手任务重复领奖 HTTP 状态和错误正文与官方一致，本地用户状态无变化。");
     }
 
     public static async Task Run(ProtocolClient client, MemoryUserStore store, string path, string output)

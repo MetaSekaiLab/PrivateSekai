@@ -2115,6 +2115,12 @@ Server 已接入兑换期内、已存在记录的技能券、体力道具和金�
 
 Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示例 ID 须按当前 master 和账号库存调整。已取得成功样本的相关 HTTP、基线、响应和状态增量对拍一致；金币比较覆盖 `userGamedata.coin`，完整背景资源不在此结论范围内。
 
+### 新手任务重复领奖
+
+`PUT /api/user/{userId}/mission/beginner_mission_v2`，body 为 `missionIds` 数组。官方已达成任务首次领取成功；对同一已领取 ID 再次请求返回 HTTP 409，正文为 `httpStatus=409`、`errorCode=""`、`errorMessage=""`。随后回读确认材料、新手任务进度和任务状态均不变。
+
+Server 已在用户事务内检查已领取状态，拒绝时回滚整次操作；Client 的 `--replay-beginner-repeat` 对齐该拒绝样本的 HTTP 状态、错误正文，并检查本地用户状态不变。未达成或不存在的任务也不允许发奖，但这些输入的官方错误响应尚未核验。混合批量请求的官方行为、首次领奖的完整联动仍待核验。
+
 ### 普通 Live 结算：新手演出任务
 
 `PUT /api/user/{userId}/live/{userLiveId}` 的普通手动演出成功样本中，`beginnerMissionV2s` 的 `any_live_clear` 任务每次增加 1，达到 master 的 `requirement` 后停止增长。已核验任务的门槛为 3，第三次结算新增 `beginner_mission_v2` 的 `achieved` 状态。

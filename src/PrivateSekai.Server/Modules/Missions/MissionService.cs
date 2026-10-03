@@ -222,8 +222,15 @@ public sealed class MissionService(
 
         foreach (var missionId in missionIds.Where(id => id > 0).Distinct())
         {
+            var mission = master.GetBeginnerMissionV2(missionId)
+                ?? throw new ArgumentException("Unknown beginner mission.");
+            var status = user.Data.userMissionStatuses?.SingleOrDefault(s =>
+                s.missionType == BeginnerMissionV2Type && s.missionId == missionId);
+            if (status?.missionStatus == "received")
+                throw new MissionAlreadyReceivedException();
+            if (status?.missionStatus != "achieved")
+                throw new ArgumentException("Beginner mission is not achieved.");
             MarkMissionReceived(BeginnerMissionV2Type, missionId);
-            var mission = master.GetBeginnerMissionV2(missionId);
             foreach (var reward in mission?.rewards ?? [])
             {
                 var resources = resourceMaster.BuildResourcesFromBox("mission_reward", reward.resourceBoxId);
@@ -364,3 +371,5 @@ public sealed class MissionService(
         }
     }
 }
+
+public sealed class MissionAlreadyReceivedException : Exception;

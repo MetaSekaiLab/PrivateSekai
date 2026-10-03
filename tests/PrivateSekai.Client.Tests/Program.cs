@@ -82,7 +82,7 @@ MaterialExchangeHttpChecks.WriteMaster(directory);
 EventExchangeHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 LiveHttpChecks.WriteBoostMaster(directory);
-if (args is ["--replay-live-mission", _, var missionMaster, _])
+if (args is ["--replay-live-mission" or "--replay-beginner-repeat", _, var missionMaster, _])
     LiveMissionReplay.ImportMaster(missionMaster, directory);
 if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
@@ -242,6 +242,11 @@ try
     JsonFiles.Write(Path.Combine(directory, "headers.json"), new Dictionary<string, string> { ["Accept"] = "application/octet-stream" });
     var config = new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = 1, RequireRotatingToken = true, HeadersFile = "headers.json" };
     using var client = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+    if (args is ["--replay-beginner-repeat", var beginnerRepeatPath, _, var beginnerRepeatOutput])
+    {
+        await LiveMissionReplay.RunBeginnerRepeat(client, store, beginnerRepeatPath, beginnerRepeatOutput);
+        return;
+    }
     if (args is ["--replay-live-mission", var missionPath, _, var missionOutput])
     {
         await LiveMissionReplay.Run(client, store, missionPath, missionOutput);
@@ -472,7 +477,7 @@ try
     await GachaHttpChecks.Run(client, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);
     await HomeHttpChecks.Run(client, store, directory, Check);
-    await MissionHttpChecks.Run(client, store, directory, Check);
+    await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);
     await BookmarkHttpChecks.Run(client, store, directory, Check);
     await FavoriteHttpChecks.Run(client, store, directory, Check);
