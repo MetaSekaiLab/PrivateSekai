@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using PrivateSekai.Transport;
 using PrivateSekai.Modules.Home;
+using PrivateSekai.Modules.Live;
 using PrivateSekai.Shared.Users;
 
 namespace PrivateSekai.Modules.Accounts;
@@ -13,7 +14,8 @@ public sealed class LoginController(
     UserOperation operations,
     UserSession user,
     AccountTemplates templates,
-    HomeService home) : PrskController
+    HomeService home,
+    BoostService boosts) : PrskController
 {
     [HttpPost("api/user")]
     public IActionResult HandleRegisterUser([FromBody] UserAuthRequest _) =>
@@ -33,6 +35,7 @@ public sealed class LoginController(
     public IActionResult HandleSuiteUser(long userId) =>
         Encoded(operations.Query(ResolveUser(userId), () =>
         {
+            boosts.Normalize();
             home.EnsureShopAreaActionSets();
             return user.BuildSuite();
         }));

@@ -10,6 +10,18 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class LiveController(UserOperation operations, UserSession user, LiveService live) : PrskController
 {
+    [HttpPost("api/user/{userId}/boost-item")]
+    public IActionResult RecoverBoost(long userId, [FromBody] UserBoostItemRequest request)
+    {
+        var status = 200;
+        var encoded = operations.Execute(userId, () =>
+        {
+            status = live.RecoverBoost(request);
+            return status == 200 ? new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() } : null;
+        });
+        return status == 200 ? Encoded(encoded) : StatusCode(status);
+    }
+
     /// <summary>
     /// 开始一次普通单人 Live。客户端在最终确认页提交歌曲、难度、队伍、消耗 boost、是否 Auto 等信息，成功后拿到 `userLiveId` 和演出中需要的技能/切入数据，再进入实际 Live。
     /// </summary>

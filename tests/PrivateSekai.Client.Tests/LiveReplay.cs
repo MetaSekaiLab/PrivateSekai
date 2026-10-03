@@ -10,15 +10,19 @@ using PrivateSekai.Storage;
 
 internal static class LiveReplay
 {
+    private static HashSet<int> rankReleaseIds = [];
     private static readonly string[] Fields = ["userGamedata", "userCards", "userDecks", "userBoost",
         "userMaterials", "userChargedCurrency", "userMusicResults", "userMusicAchievements", "userLiveMissions",
-        "userMissionStatuses", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive"];
+        "userMissionStatuses", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive", "userReleaseConditions"];
 
     public static void ImportMaster(string source, string destination)
     {
         foreach (var table in new[] { "cards", "cardRarities", "musicDifficulties", "playLevelScores",
-            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPasses", "levels", "playerRankRewards", "configs" })
+            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPasses", "levels", "playerRankRewards", "configs", "releaseConditions" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
+        rankReleaseIds = JsonNode.Parse(File.ReadAllText(Path.Combine(source, "releaseConditions.json")))!.AsArray()
+            .Where(c => c?["releaseConditionType"]?.GetValue<string>() == "user_rank")
+            .Select(c => c!["id"]!.GetValue<int>()).ToHashSet();
     }
 
     private static JsonObject Read(string path, string operation)
@@ -74,6 +78,10 @@ internal static class LiveReplay
                 var local = JsonNode.Parse(File.ReadAllText(localPath))!.AsObject();
                 JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official,
                     local));
+                JsonFiles.Write(Path.Combine(output, "rank-release-compare.json"),
+                    ScenarioRunner.Compare(SelectRankReleaseRecord(official), SelectRankReleaseRecord(local)));
+                JsonFiles.Write(Path.Combine(output, "boost-compare.json"),
+                    ScenarioRunner.Compare(SelectBoostRecord(official), SelectBoostRecord(local)));
                 foreach (var record in new[] { official, local })
                 {
                     foreach (var side in new[] { "before", "after" })
@@ -90,6 +98,37 @@ internal static class LiveReplay
             }
         }
     }
+
+    private static JsonObject SelectBoostRecord(JsonObject record)
+    {
+        var selected = record.DeepClone().AsObject();
+        foreach (var side in new[] { "before", "after" })
+            selected[side] = Select(record[side], ["userBoost"]);
+        selected["response"] = new JsonObject
+        {
+            ["updatedResources"] = Select(record["response"]?["updatedResources"], ["userBoost"])
+        };
+        return selected;
+    }
+
+    private static JsonObject SelectRankReleaseRecord(JsonObject record)
+    {
+        var selected = record.DeepClone().AsObject();
+        foreach (var side in new[] { "before", "after" })
+            selected[side] = SelectRankReleases(record[side]);
+        selected["response"] = new JsonObject
+        {
+            ["updatedResources"] = SelectRankReleases(record["response"]?["updatedResources"])
+        };
+        return selected;
+    }
+
+    private static JsonObject? SelectRankReleases(JsonNode? source) => source == null ? null : new()
+    {
+        ["userReleaseConditions"] = source["userReleaseConditions"] is JsonArray conditions
+            ? new JsonArray(conditions.Where(c => rankReleaseIds.Contains(c!["releaseConditionId"]!.GetValue<int>()))
+                .Select(c => c!.DeepClone()).ToArray()) : null
+    };
 
     private static JsonObject SelectExperience(JsonNode? source) => new()
     {

@@ -5,6 +5,15 @@ using PrivateSekai.Storage;
 
 internal static class LiveHttpChecks
 {
+    public static void WriteBoostMaster(string directory)
+    {
+        var path = Path.Combine(directory, "configs.json");
+        var configs = JsonNode.Parse(File.ReadAllText(path))!.AsArray();
+        configs.Add(JsonNode.Parse("""{"configKey":"boost_recovery_max_count","value":"25"}"""));
+        configs.Add(JsonNode.Parse("""{"configKey":"boost_recovery_second","value":"1800"}"""));
+        JsonFiles.Write(path, configs);
+    }
+
     public static void WriteMaster(string directory)
     {
         // 仅用于测试结算链路的虚构小型 master。
@@ -34,7 +43,7 @@ internal static class LiveHttpChecks
         ] };
         ScenarioRunner.Validate(scenario, [config], new HashSet<string>());
         var firstState = store.Read(1)!;
-        firstState.Data.userBoost = new() { current = 3 };
+        firstState.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         firstState.Data.userMusicResults = [];
         firstState.Data.userLiveMissions = [];
         firstState.Data.userLiveCharacterArchiveVoice = new() { characterArchiveVoiceGroupIds = [] };

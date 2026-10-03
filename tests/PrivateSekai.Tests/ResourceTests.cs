@@ -77,7 +77,8 @@ internal static class ResourceTests
             Check.Throws<NotSupportedException>(() => resources.Consume(null, 0, 1), "缺失消耗类型明确失败");
             Check.Throws<NotSupportedException>(() => resources.Grant(Reward("paid_jewel", 1)), "未实现付费水晶授予明确失败");
             Check.Throws<NotSupportedException>(() => resources.Consume("card", 7, 1), "授予型资源不可被通用扣除");
-            Check.Throws<NotSupportedException>(() => resources.Consume("boost_item", 2, 1), "未实现体力道具扣除明确失败");
+            var boostQuantity = session.Data.userBoostItems.Single(i => i.boostItemId == 2).quantity;
+            Check.That(resources.Consume("boost_item", 2, 1) == boostQuantity - 1, "体力道具通过资源服务扣除库存");
             return session.BuildRefresh();
         });
 

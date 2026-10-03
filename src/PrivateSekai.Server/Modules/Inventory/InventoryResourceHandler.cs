@@ -49,12 +49,23 @@ public sealed class InventoryResourceHandler : IResourceHandler
     public int Consume(UserSession user, string type, int id, int quantity, bool paidFirst) =>
         type switch
         {
+            "boost_item" => ConsumeBoostItem(user, id, quantity),
             "event_item" => ConsumeEventItem(user, id, quantity),
             "material" => id > 0 ? ChangeMaterial(user, id, -quantity) : 0,
             "practice_ticket" => id > 0 ? ChangePracticeTicket(user, id, -quantity) : 0,
             "skill_practice_ticket" => id > 0 ? ChangeSkillPracticeTicket(user, id, -quantity) : 0,
             _ => throw new NotSupportedException($"Resource '{type}' cannot be consumed.")
         };
+
+    private static int ConsumeBoostItem(UserSession user, int id, int quantity)
+    {
+        var item = user.Data.userBoostItems?.SingleOrDefault(i => i.boostItemId == id)
+            ?? throw new ArgumentException("Boost item is not owned.");
+        if (quantity <= 0 || item.quantity < quantity) throw new ArgumentException("Insufficient boost items.");
+        item.quantity -= quantity;
+        user.MarkChanged(nameof(SuiteUser.userBoostItems));
+        return item.quantity;
+    }
 
     private static int ConsumeEventItem(UserSession user, int id, int quantity)
     {

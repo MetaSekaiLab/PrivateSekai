@@ -121,7 +121,7 @@ internal static class FeatureChecks
         state.Data.userGamedata.rank = 1;
         state.Data.userCards = [new() { cardId = 1, level = 1 }];
         state.Data.userDecks = [new() { deckId = 1, member1 = 1, leader = 1 }];
-        state.Data.userBoost = new() { current = 3 };
+        state.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         state.Data.userEventBreakTime = new() { lastDecreaseAt = 0 };
         store.Save(3, state);
         using var scope = provider.CreateScope();
@@ -149,6 +149,8 @@ internal static class FeatureChecks
             rolledBack.Data.userMaterials.Length == 0 && rolledBack.Data.userGamedata.coin == 100 &&
             rolledBack.Data.userGamedata.totalExp == 0 && rolledBack.Data.userCards.Single().totalExp == 0,
             "Live 失败恢复会话、体力及奖励");
+        Check.That(!(rolledBack.Data.userReleaseConditions ?? []).Any(c => c.releaseConditionId == 92002),
+            "结算编码失败回滚等级解锁记录");
 
         var cleared = operation.Execute(3, () =>
         {
@@ -166,6 +168,10 @@ internal static class FeatureChecks
         Check.That(result.userExpResult.afterTotalExp == 200 && result.userExpResult.afterLevel == 2 &&
             result.playerRankRewards.Single().quantity == 50 && result.updatedResources.userChargedCurrency.free == 50,
             "演出玩家经验跨级并通过 master 发放等级奖励");
+        var rankCondition = result.updatedResources.userReleaseConditions.Single(c => c.releaseConditionId == 92002);
+        Check.That(rankCondition.createdAt == result.updatedResources.now &&
+            !result.updatedResources.userReleaseConditions.Any(c => c.releaseConditionId is 92003 or 93002),
+            "升级按 master 新增玩家等级解锁，时间取当前事务，不提前解锁或混入其他条件");
         Check.That(result.deckCardExpResults.Single().expResult.afterTotalExp == 300 &&
             result.updatedResources.userCards.Single().level == 3,
             "演出卡牌经验使用卡牌等级上限");
@@ -174,6 +180,9 @@ internal static class FeatureChecks
         Check.That(store.Read(3)!.Data.userGamedata.coin == 105 && store.Read(3)!.Data.userLiveMissions.Single().progress == 3 &&
             store.Read(3)!.Data.userGamedata.totalExp == 200 && store.Read(3)!.Data.userChargedCurrency.free == 50,
             "重复提交结束的 Live 不重复发奖或累计任务");
+        Check.That(store.Read(3)!.Data.userReleaseConditions.Count(c => c.releaseConditionId == 92002) == 1 &&
+            store.Read(3)!.Data.userReleaseConditions.Single(c => c.releaseConditionId == 92002).createdAt == rankCondition.createdAt,
+            "重复结算不重复解锁或改写解锁时间");
         var failedStart = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
             musicId = 7, musicDifficultyId = 71, deckId = 1, boostCount = 1
@@ -192,6 +201,8 @@ internal static class FeatureChecks
         Check.That(failed.userExpResult.beforeTotalExp == 200 && failed.userExpResult.afterTotalExp == 400 &&
             failed.deckCardExpResults.Single().expResult.afterTotalExp == 300,
             "C 档失败仍发经验，满级卡保持上限");
+        Check.That(failed.updatedResources.userReleaseConditions == null,
+            "未跨玩家等级不重复刷新解锁记录");
         Check.That(!failed.fullComboFlg && !failed.fullPerfectFlg && !failed.highScoreFlg &&
             failed.updatedResources.userMusicResults == null &&
             store.Read(3)!.Data.userMusicResults.Single().playResult == "full_perfect" &&
@@ -382,7 +393,8 @@ internal static class FeatureChecks
             ["practiceTickets"] = """[{"id":1,"exp":100}]""",
             ["levels"] = """[{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300},{"levelType":"user","level":1,"totalExp":0},{"levelType":"user","level":2,"totalExp":100},{"levelType":"user","level":3,"totalExp":1000}]""",
             ["playerRankRewards"] = """[{"playerRank":2,"seq":1,"resourceBoxId":1}]""",
-            ["configs"] = """[{"configKey":"rank_up_recover_boost_count","value":"10"}]""",
+            ["releaseConditions"] = """[{"id":92002,"releaseConditionType":"user_rank","releaseConditionTypeLevel":2},{"id":92003,"releaseConditionType":"user_rank","releaseConditionTypeLevel":3},{"id":93002,"releaseConditionType":"card_level","releaseConditionTypeId":1,"releaseConditionTypeLevel":2}]""",
+            ["configs"] = """[{"configKey":"rank_up_recover_boost_count","value":"10"},{"configKey":"boost_recovery_max_count","value":"25"},{"configKey":"boost_recovery_second","value":"1800"}]""",
             ["beginnerMissionV2s"] = """[{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
             ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",

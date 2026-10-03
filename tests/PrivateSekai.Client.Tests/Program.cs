@@ -81,6 +81,7 @@ ChallengeDeckHttpChecks.WriteMaster(directory);
 MaterialExchangeHttpChecks.WriteMaster(directory);
 EventExchangeHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
+LiveHttpChecks.WriteBoostMaster(directory);
 if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
 if (args is ["--replay-story", _, var storyMaster, _])
@@ -95,6 +96,10 @@ if (args is ["--replay-material-exchange" or "--replay-event-exchange", _, var e
     MaterialExchangeReplay.ImportMaster(exchangeMaster, directory);
 if (args is ["--replay-live", _, _, var liveMaster, _])
     LiveReplay.ImportMaster(liveMaster, directory);
+if (args is ["--replay-boost-item", _, var boostMaster, _])
+    BoostReplay.ImportMaster(boostMaster, directory);
+if (args is ["--replay-natural-boost", _, _, var naturalBoostMaster, _])
+    BoostReplay.ImportMaster(naturalBoostMaster, directory);
 if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock" or "--replay-challenge-start", _, var challengeMaster, _])
     ChallengeDeckReplay.ImportMaster(challengeMaster, directory);
 if (args is ["--replay-login-bonus", _, var loginMaster, _])
@@ -132,6 +137,10 @@ if (args is ["--replay-area-shop", var areaCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(AreaShopReplay.Clock(areaCapture));
 if (args is ["--replay-live", _, var liveCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(LiveReplay.Clock(liveCapture));
+if (args is ["--replay-boost-item", var boostClockCapture, _, _])
+    builder.Services.AddSingleton<TimeProvider>(MaterialExchangeReplay.Clock(boostClockCapture));
+if (args is ["--replay-natural-boost", _, var naturalBoostClock, _, _])
+    builder.Services.AddSingleton<TimeProvider>(BoostReplay.NaturalClock(naturalBoostClock));
 if (args is ["--replay-challenge-unlock" or "--replay-challenge-start", var challengeClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(challengeClockCapture));
 if (args is ["--replay-material-exchange" or "--replay-event-exchange", var exchangeClockCapture, _, _])
@@ -208,6 +217,16 @@ try
     JsonFiles.Write(Path.Combine(directory, "headers.json"), new Dictionary<string, string> { ["Accept"] = "application/octet-stream" });
     var config = new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = 1, RequireRotatingToken = true, HeadersFile = "headers.json" };
     using var client = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+    if (args is ["--replay-natural-boost", var naturalBefore, var naturalAfter, _, var naturalOutput])
+    {
+        await BoostReplay.RunNatural(client, store, naturalBefore, naturalAfter, naturalOutput);
+        return;
+    }
+    if (args is ["--replay-boost-item", var boostPath, _, var boostOutput])
+    {
+        await BoostReplay.Run(client, store, boostPath, boostOutput);
+        return;
+    }
     if (args is ["--replay-present", var capturePath, var replayOutput])
     {
         await PresentReplay.Run(client, store, capturePath, replayOutput);

@@ -1683,6 +1683,8 @@ Server 已补卡面和任务联动，Client 支持 `--replay-special-training`�
 - `isInBreakTime`: 是否进入 break time 状态。
 - `customMusicScoreLiveResult`: 自制谱面结果信息。
 
+玩家升级时，已核验 Rank 5→6、6→7 的响应会在完整 `updatedResources.userReleaseConditions` 中新增对应 `user_rank` 条件，旧记录及创建时间保留，新记录 `createdAt` 等于本次响应 `now`，不返回 `userId`。条件由 `releaseConditions.releaseConditionTypeLevel` 对应等级；客户端合并后据此判断设施入口是否解锁。Server 已在升级事务中补充该分支，Client 重放新增玩家等级解锁专项报告，两份样本的 HTTP、基线、响应及增量一致。其他类型条件仍需各自核验；尚未取得 Rank 30 解锁后的技能升级成功样本。
+
 ### 客户端请求时机
 
 目前确认有这些时机：
@@ -2051,6 +2053,23 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 - 无上限样本省略 `exchangeRemaining`；未发生的 `lastExchangedAt`、`refreshedAt` 也省略，不发送零值。
 
 Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchange`，要求明确提供整数消耗组与正整数次数。Server 已接入 normal 商店中无刷新、无限量、无关联或附加奖励的材料换练习券分支；成本和奖励按 master 倍乘，次数累计、材料不足无副作用。未核验分支返回本地 501，不代表官方状态码。首次及再次兑换的相关 HTTP、基线、响应与增量对拍一致；周期刷新、限量、关联兑换及其他奖励仍待核验。示例兑换项须按当前 master 和账号库存确认。
+
+## POST `/api/user/{userId}/boost-item`
+
+- Path：当前 `userId`；无 query。
+- Body：`UserBoostItemRequest.costs` 数组，每项含 `resourceId`、`resourceType=boost_item`、`quantity`，没有 `resourceLevel`。
+- Response：`SuiteUserCommonResponse.updatedResources`；客户端合并道具库存和体力，随后刷新恢复弹窗。
+- 请求时机：在体力恢复弹窗选定道具数量并确认。证据为 `BoostRecoveryDialog.OnClickItemRecoverOK`、`PostUserBoostItemAPI.Execute/OnCallBack` 及官方请求响应。
+- 恢复量来自 `boostItems.recoveryValue`。已核验小道具 1 个恢复 1 点：15→16 时保留 `recoveryAt`，24→25 时将其设为响应 `now`；库存耗尽仍保留数量为 0 的条目。
+- 已到自然上限仍可使用：官方 25→26 正常扣除一个道具，`recoveryAt` 更新为响应时间；自然上限不截断道具恢复。该样本的恢复响应重放一致，但固定重放时间导致满体力的写前查询时间与官方不同，基线及时间增量差异保留。
+
+Server 已实现上述普通道具分支，成本通过资源服务扣除，库存和体力在同一事务提交。Client 支持 `boost-item` 及 `--replay-boost-item` 重放。两份官方样本的 HTTP、相关响应和状态增量一致；基线另有会员字段零值省略差异。满体力后状态回读更新时间不同，专项比较只在后续回读中排除该时间，恢复响应中的时间仍精确比较，完整差异另存。
+
+普通账号的自然恢复已接入完整状态查询、普通 Live 结算及道具恢复。master 指定每 1800 秒恢复 1 点，上限 25；官方样本确认 16→17 时 `recoveryAt` 推进一个周期，剩余计时保留，连续查询不重复增加。Client 支持 `--replay-natural-boost`，该样本的体力及时间字段一致。另有普通 Live 样本确认 20→15 的扣除保留原恢复时间，本地重放一致。
+
+普通 Live 升级样本补充：Rank 7→8，原体力 17，消耗 5、升级补充 10，最终为 22，`recoveryAt` 保持不变。Server 先扣除再补充升级体力，最终未到自然上限时保留计时；该样本与旧 Rank 6→7 样本的体力专项重放一致。Client 的 Live 重放新增 `boost-compare.json`，保留数量和时间的精确比较。
+
+一次跨多个周期、自然恢复恰好满额及其他业务入口仍待核验。会员上限、硬上限溢出暂返回本地 501，不代表官方错误码；还需多道具组合、库存不足的官方样本。宝石恢复尚未实现。示例需要账号已持有对应道具。
 
 ## POST `/api/user/{userId}/card/{cardId}/material` 与 `/skill-practice-ticket`
 

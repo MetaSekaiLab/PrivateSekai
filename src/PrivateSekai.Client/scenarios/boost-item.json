@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    {
+      "operation": "boost-item",
+      "body": { "costs": [{ "resourceId": 1, "resourceType": "boost_item", "quantity": 1 }] }
+    }
+  ]
+}

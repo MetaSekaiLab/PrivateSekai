@@ -17,12 +17,42 @@ namespace PrivateSekai.Modules.Live;
 public sealed class LiveService(
     UserSession user,
     LiveMasterQueries master,
+    BoostService boosts,
     MissionMasterQueries missionMaster,
     MissionService missions,
     CardService cards,
     ResourceMasterQueries resourceMaster,
     ResourceService resources)
 {
+    public int RecoverBoost(UserBoostItemRequest request)
+    {
+        if (request.costs == null || request.costs.Length == 0 ||
+            request.costs.Any(c => c == null || c.resourceType != "boost_item" || c.resourceId <= 0 || c.quantity <= 0))
+            throw new ArgumentException("Invalid boost item costs.");
+        if (user.Data.userColorfulPassV2?.colorfulPassId > 0) return 501;
+        var boost = boosts.Preview();
+        var autoMax = master.GetBoostConfig("boost_recovery_max_count");
+        var costs = request.costs.GroupBy(c => c.resourceId)
+            .Select(g => (Id: g.Key, Quantity: g.Sum(c => c.quantity))).ToArray();
+        var recovered = 0;
+        foreach (var cost in costs)
+        {
+            var item = master.GetBoostItem(cost.Id);
+            if (item.recoveryValue <= 0) throw new InvalidOperationException("Invalid boost item recovery value.");
+            if ((user.Data.userBoostItems?.SingleOrDefault(i => i.boostItemId == cost.Id)?.quantity ?? 0) < cost.Quantity)
+                throw new ArgumentException("Insufficient boost items.");
+            recovered = checked(recovered + checked(item.recoveryValue * cost.Quantity));
+        }
+        var current = checked(boost.current + recovered);
+        if (current > master.GetBoostConfig("boost_max_count")) return 501;
+        foreach (var cost in costs) resources.Consume("boost_item", cost.Id, cost.Quantity);
+        boost.current = current;
+        if (current >= autoMax) boost.recoveryAt = (ulong)user.Now;
+        user.Data.userBoost = boost;
+        user.MarkChanged(nameof(SuiteUser.userBoost));
+        return 200;
+    }
+
     public UserLive StartUserLive(UserLiveRequest request)
     {
         if (request.isAuto && request.boostCount <= 0)
@@ -75,6 +105,8 @@ public sealed class LiveService(
         UserResource[] playerRankRewards = [];
         if (session != null)
         {
+            boosts.Normalize();
+            boosts.Consume(session.BoostCount);
             if (!session.IsAuto)
                 highScoreFlg = UpdateUserMusicResult(session, request, fullCombo, fullPerfect);
             deckCardExpResults = BuildDeckCardExpResults(session.DeckId);
@@ -103,7 +135,6 @@ public sealed class LiveService(
             ApplyLiveRewards(scoreRankRewards);
             ApplyLiveRewards(musicAchievementRewards);
             missions.UpdateLiveMissionProgress(userLivePoint);
-            ConsumeBoost(session.BoostCount);
             if (session.IsAuto)
             {
                 user.Data.userAutoLive ??= new UserAutoLive();
@@ -281,16 +312,6 @@ public sealed class LiveService(
             _ => []
         };
 
-    private void ConsumeBoost(int boostCount)
-    {
-        if (user.Data.userBoost == null || boostCount <= 0)
-            return;
-
-        user.Data.userBoost.current = Math.Max(0, user.Data.userBoost.current - boostCount);
-        user.Data.userBoost.recoveryAt = (ulong)user.Now;
-        user.MarkChanged(nameof(SuiteUser.userBoost));
-    }
-
     private void MergeLiveCharacterArchiveVoiceGroups(IEnumerable<int>? groupIds)
     {
         if (groupIds == null)
@@ -394,6 +415,19 @@ public sealed class LiveService(
         var rewards = new List<UserResource>();
         if (data.rank > result.beforeLevel)
         {
+            var conditions = (user.Data.userReleaseConditions ?? []).ToList();
+            var released = conditions.Select(c => c.releaseConditionId).ToHashSet();
+            foreach (var condition in master.GetPlayerRankReleaseConditions(result.beforeLevel, data.rank))
+                if (released.Add(condition.id))
+                    conditions.Add(new UserReleaseCondition
+                    {
+                        userId = user.UserId, releaseConditionId = condition.id, createdAt = user.Now
+                    });
+            if (conditions.Count != (user.Data.userReleaseConditions?.Length ?? 0))
+            {
+                user.Data.userReleaseConditions = conditions.ToArray();
+                user.MarkChanged(nameof(SuiteUser.userReleaseConditions));
+            }
             foreach (var reward in master.GetPlayerRankRewards(result.beforeLevel, data.rank))
             {
                 var granted = resourceMaster.BuildResourcesFromBox("player_rank_reward", reward.resourceBoxId);
@@ -403,7 +437,8 @@ public sealed class LiveService(
             if (user.Data.userBoost is { } boost)
             {
                 boost.current = checked(boost.current + (data.rank - result.beforeLevel) * master.GetRankUpBoostCount());
-                boost.recoveryAt = (ulong)user.Now;
+                if (boost.current >= master.GetBoostConfig("boost_recovery_max_count"))
+                    boost.recoveryAt = (ulong)user.Now;
                 user.MarkChanged(nameof(SuiteUser.userBoost));
             }
         }

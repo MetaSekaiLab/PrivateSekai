@@ -10,6 +10,12 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class LiveMasterQueries(MasterData master)
 {
+    public MasterBoostItem GetBoostItem(int id) => master.GetTable<MasterBoostItem>("boostItems", item => item.id)
+        .FindById(id) ?? throw new ArgumentException("Unknown boost item.");
+
+    public int GetBoostConfig(string key) => int.Parse(master.GetTable<MasterConfig>("configs").Rows
+        .Single(c => c.configKey == key).value, System.Globalization.CultureInfo.InvariantCulture);
+
     public int GetChallengePlayableCount() => master.GetTable<MasterChallengeLive>("challengeLives").Rows.First().playableCount;
 
     public int GetFirstChallengeUnlockRank()
@@ -58,6 +64,12 @@ public sealed class LiveMasterQueries(MasterData master)
         master.GetTable<MasterPlayerRankReward>("playerRankRewards").Rows
             .Where(r => r.playerRank > before && r.playerRank <= after)
             .OrderBy(r => r.playerRank).ThenBy(r => r.seq).ToArray();
+
+    public MasterReleaseCondition[] GetPlayerRankReleaseConditions(int before, int after) =>
+        master.GetTable<MasterReleaseCondition>("releaseConditions").Rows
+            .Where(c => c.releaseConditionType == "user_rank" &&
+                c.releaseConditionTypeLevel > before && c.releaseConditionTypeLevel <= after)
+            .OrderBy(c => c.id).ToArray();
 
     public int GetRankUpBoostCount() => int.Parse(master.GetTable<MasterConfig>("configs").Rows
         .Single(c => c.configKey == "rank_up_recover_boost_count").value,

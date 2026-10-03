@@ -11,11 +11,12 @@ internal static class Program
         ArchitectureChecks.Run();
         ResourceTests.Run();
         FeatureChecks.Run();
+        BoostRecoveryChecks.Run();
         AreaShopChecks.Run();
         SkillPracticeChecks.Run();
         StoryCollectionChecks.Run();
-        DeckMissionChecks.Run();
         LoginBonusChecks.Run();
+        DeckMissionChecks.Run();
         TransportChecks.Run();
         Console.WriteLine($"通过 {Check.Count} 项检查。");
     }

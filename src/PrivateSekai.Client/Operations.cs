@@ -36,6 +36,7 @@ public static class Operations
         ["topic-read"] = new("PUT", "/api/user/{userId}/topic/{topicId}", null, "updatedResources"),
         ["appeal-read"] = new("PUT", "/api/user/{userId}/appeal", typeof(UserAppealRequest), "updatedResources"),
         ["present-history"] = new("GET", "/api/user/{userId}/present/history", null, "userPresentHistories", false),
+        ["boost-item"] = new("POST", "/api/user/{userId}/boost-item", typeof(UserBoostItemRequest), "updatedResources"),
         ["present-receive"] = new("POST", "/api/user/{userId}/present", typeof(UserPresentAPIRequest), "receivedUserPresents"),
         ["shop-purchase"] = new("POST", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
         ["shop-upgrade"] = new("PUT", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
