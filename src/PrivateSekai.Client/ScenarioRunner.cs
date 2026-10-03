@@ -167,19 +167,27 @@ public sealed class ScenarioRunner
     {
         if (left["operation"]?.GetValue<string>() != right["operation"]?.GetValue<string>())
             throw new InvalidOperationException("两个记录的操作不同。");
-        var leftChanges = Comparison.Diff(Comparison.Normalize(left["before"]), Comparison.Normalize(left["after"]));
-        var rightChanges = Comparison.Diff(Comparison.Normalize(right["before"]), Comparison.Normalize(right["after"]));
+        var leftHttpStatus = ResponseValue(left, "httpStatus", "lastHttpStatus");
+        var rightHttpStatus = ResponseValue(right, "httpStatus", "lastHttpStatus");
+        var hasSnapshots = left["before"] != null && left["after"] != null && right["before"] != null && right["after"] != null;
         var result = new JsonObject
         {
             ["operation"] = left["operation"]?.DeepClone(),
             ["leftStatus"] = left["status"]?.DeepClone(), ["rightStatus"] = right["status"]?.DeepClone(),
-            ["httpStatusDifferences"] = left["httpStatus"] != null && right["httpStatus"] != null
-                ? JsonSerializer.SerializeToNode(Comparison.Diff(left["httpStatus"], right["httpStatus"]), JsonFiles.Options) : null,
+            ["httpStatusDifferences"] = leftHttpStatus != null && rightHttpStatus != null
+                ? JsonSerializer.SerializeToNode(Comparison.Diff(leftHttpStatus, rightHttpStatus), JsonFiles.Options) : null,
             ["baselineDifferences"] = JsonSerializer.SerializeToNode(Comparison.Diff(Comparison.Normalize(left["before"]), Comparison.Normalize(right["before"])), JsonFiles.Options),
-            ["responseDifferences"] = JsonSerializer.SerializeToNode(Comparison.Diff(Comparison.Normalize(left["response"]), Comparison.Normalize(right["response"])), JsonFiles.Options),
-            ["deltaDifferences"] = JsonSerializer.SerializeToNode(Comparison.Diff(Comparison.DeltaView(leftChanges), Comparison.DeltaView(rightChanges)), JsonFiles.Options)
+            ["responseDifferences"] = JsonSerializer.SerializeToNode(Comparison.Diff(
+                Comparison.Normalize(ResponseValue(left, "response", "lastResponse")),
+                Comparison.Normalize(ResponseValue(right, "response", "lastResponse"))), JsonFiles.Options),
+            ["deltaDifferences"] = hasSnapshots ? JsonSerializer.SerializeToNode(Comparison.Diff(
+                Comparison.DeltaView(Comparison.Diff(Comparison.Normalize(left["before"]), Comparison.Normalize(left["after"]))),
+                Comparison.DeltaView(Comparison.Diff(Comparison.Normalize(right["before"]), Comparison.Normalize(right["after"])))), JsonFiles.Options) : null
         };
         result["complete"] = left["status"]?.GetValue<string>() == "completed" && right["status"]?.GetValue<string>() == "completed";
         return result;
     }
+
+    private static JsonNode? ResponseValue(JsonObject record, string field, string fallback) =>
+        record[field] ?? (record["failurePhase"]?.GetValue<string>() == "request" ? record[fallback] : null);
 }

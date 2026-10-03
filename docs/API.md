@@ -2051,3 +2051,15 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 - 无上限样本省略 `exchangeRemaining`；未发生的 `lastExchangedAt`、`refreshedAt` 也省略，不发送零值。
 
 Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchange`，要求明确提供整数消耗组与正整数次数。Server 已接入 normal 商店中无刷新、无限量、无关联或附加奖励的材料换练习券分支；成本和奖励按 master 倍乘，次数累计、材料不足无副作用。未核验分支返回本地 501，不代表官方状态码。首次及再次兑换的相关 HTTP、基线、响应与增量对拍一致；周期刷新、限量、关联兑换及其他奖励仍待核验。示例兑换项须按当前 master 和账号库存确认。
+
+## POST `/api/user/{userId}/card/{cardId}/material` 与 `/skill-practice-ticket`
+
+- Path：当前 `userId`、持有的 `cardId`；无 query。
+- Body：`costs` 数组，包含 `resourceType`、`resourceId`、`resourceLevel`、`quantity`。材料类型为 `material`，技能券为 `skill_practice_ticket`。客户端提交时将 `resourceLevel` 设为 0。
+- Response：`updateExpResult` 用于展示升级前后经验，`updatedResources` 合并用户状态。
+- 请求时机：玩家在技能升级选择页确认投入；证据为 `ScreenLayerSkillPracticeItemSelect.OnExecutePractice` 及两个 `PostUserCardSkillPractice*API.Execute`、`OnCallBack`。
+- master：材料经验来自 `cardSkillCosts`，技能券经验来自 `skillPracticeTickets`；等级阈值按卡牌稀有度查 `levels`，上限查 `cardRarities`。
+
+两个测试账号的材料升级请求均返回 HTTP 409，重新认证回读确认未扣材、技能未变化。第二份样本在持有材料 300 时投入 1 个，本地重放返回 200 并扣除 1 个材料、增加 1 点技能经验，明确存在差异；拒绝条件仍未查明，不据此新增猜测规则。技能券成功升级、满级溢出和角色任务联动也待官方成功样本核验。
+
+Client 检查项目支持 `--replay-skill-practice <请求记录> <回读记录> <master目录> <输出目录>`。调用者须确认回读来自同一账号，且两次记录间未进行其他业务写操作。失败请求的 HTTP 状态和错误响应参与比较，缺失回读时状态增量标为未知，不视为全量删除；回读失败的状态码不覆盖原写请求结果。

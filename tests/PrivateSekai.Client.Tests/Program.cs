@@ -46,6 +46,28 @@ Check(networkFailure["httpRequestError"]!.GetValue<string>() == "SecureConnectio
     !networkFailure.ToJsonString().Contains("sensitive-diagnostic-placeholder"),
     "网络诊断仅记录固定分类和错误码，不记录异常正文");
 var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../obj/fixtures", Guid.NewGuid().ToString("N")));
+var rejectedSkill = JsonNode.Parse("""
+    {"operation":"skill-material","status":"stopped","failurePhase":"request","lastHttpStatus":409,
+     "lastResponse":{"errorCode":""},"before":{"quantity":300}}
+    """)!.AsObject();
+var acceptedSkill = JsonNode.Parse("""
+    {"operation":"skill-material","status":"completed","httpStatus":200,
+     "response":{"updatedResources":{}},"before":{"quantity":300},"after":{"quantity":299}}
+    """)!.AsObject();
+var rejectedComparison = ScenarioRunner.Compare(rejectedSkill, acceptedSkill);
+Check(rejectedComparison["httpStatusDifferences"]!.AsArray().Count == 1 &&
+    !rejectedComparison["complete"]!.GetValue<bool>(), "官方拒绝与本地成功的状态差异不能漏报");
+Check(rejectedComparison["deltaDifferences"] == null, "缺少回读时不把全部状态误报为删除");
+var otherRejection = rejectedSkill.DeepClone().AsObject();
+otherRejection["lastResponse"]!["errorCode"] = "fixture-error";
+Check(ScenarioRunner.Compare(rejectedSkill, otherRejection)["responseDifferences"]!.AsArray().Count == 1,
+    "明确请求失败时比较实际错误响应");
+var failedReadback = acceptedSkill.DeepClone().AsObject();
+failedReadback["status"] = "stopped";
+failedReadback["failurePhase"] = "after-snapshot";
+failedReadback["lastHttpStatus"] = 503;
+Check(ScenarioRunner.Compare(acceptedSkill, failedReadback)["httpStatusDifferences"]!.AsArray().Count == 0,
+    "回读失败的状态码不能覆盖写操作的成功状态码");
 Directory.CreateDirectory(directory);
 CardHttpChecks.WriteMaster(directory);
 ShopHttpChecks.WriteMaster(directory);
@@ -66,6 +88,8 @@ if (args is ["--replay-area-shop", _, var areaMaster, _])
     AreaShopReplay.ImportMaster(areaMaster, directory);
 if (args is ["--replay-card-practice" or "--replay-special-training", _, var practiceMaster, _])
     CardPracticeReplay.ImportMaster(practiceMaster, directory);
+if (args is ["--replay-skill-practice", _, _, var skillMaster, _])
+    CardPracticeReplay.ImportMaster(skillMaster, directory);
 if (args is ["--replay-material-exchange", _, var exchangeMaster, _])
     MaterialExchangeReplay.ImportMaster(exchangeMaster, directory);
 if (args is ["--replay-live", _, _, var liveMaster, _])
@@ -190,6 +214,11 @@ try
     if (args is ["--replay-card-practice" or "--replay-special-training", var practicePath, _, var practiceOutput])
     {
         await CardPracticeReplay.Run(client, store, practicePath, practiceOutput);
+        return;
+    }
+    if (args is ["--replay-skill-practice", var skillPath, var skillReadback, _, var skillOutput])
+    {
+        await CardPracticeReplay.Run(client, store, skillPath, skillOutput, skillReadback);
         return;
     }
     if (args is ["--replay-material-exchange", var exchangePath, _, var exchangeOutput])
