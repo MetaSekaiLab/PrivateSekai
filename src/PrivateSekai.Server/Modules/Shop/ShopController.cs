@@ -11,6 +11,22 @@ namespace PrivateSekai.Modules.Shop;
 
 public sealed class ShopController(UserOperation operations, UserSession user, ShopService shop, MissionMasterQueries missionMaster) : PrskController
 {
+    [HttpPut("api/user/{userId}/event-exchange/{eventExchangeId}")]
+    public IActionResult ExchangeEvent(long userId, int eventExchangeId, [FromQuery] int count)
+    {
+        var status = 200;
+        var encoded = operations.Execute(userId, () =>
+        {
+            var result = shop.ExchangeEvent(eventExchangeId, count);
+            status = result.Status;
+            return status == 200 ? new UserEventExchangeResponse
+            {
+                obtainUserResources = result.Rewards, updatedResources = user.BuildRefresh()
+            } : null;
+        });
+        return status == 200 ? Encoded(encoded) : StatusCode(status);
+    }
+
     [HttpPut("api/user/{userId}/material-exchange/{materialExchangeId}")]
     public IActionResult ExchangeMaterial(long userId, int materialExchangeId, [FromQuery] int costGroupId, [FromQuery] int count = 1)
     {

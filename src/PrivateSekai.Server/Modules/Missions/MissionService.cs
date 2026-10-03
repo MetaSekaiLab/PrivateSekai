@@ -18,6 +18,34 @@ public sealed class MissionService(
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
 
+    public bool RecordEventItemConsumption(int eventId, int quantity)
+    {
+        if (quantity <= 0) throw new ArgumentException("Invalid event item consumption.");
+        var definitions = master.GetEventItemConsumptionMissions(eventId);
+        var records = (user.Data.userEventMissions ?? []).ToList();
+        // 达成时的状态和奖励联动待核验，先检查整组，避免写入部分进度。
+        if (definitions.Any(d => d.eventMissionCategory != "normal" || d.requirement2 != 0 ||
+            checked((records.SingleOrDefault(m => m.eventId == eventId && m.eventMissionId == d.id)?.progress ?? 0) + quantity) >= d.requirement1))
+            return false;
+        foreach (var definition in definitions)
+        {
+            var record = records.SingleOrDefault(m => m.eventId == eventId && m.eventMissionId == definition.id);
+            if (record == null)
+            {
+                record = new UserEventMission { eventId = eventId, eventMissionId = definition.id };
+                records.Add(record);
+            }
+            record.progress += quantity;
+            record.isNewAchieved = false;
+        }
+        if (definitions.Length > 0)
+        {
+            user.Data.userEventMissions = records.ToArray();
+            user.MarkChanged(nameof(SuiteUser.userEventMissions));
+        }
+        return true;
+    }
+
     public UserCharacterMissionV2Status[] RecordAreaItemUpgrade(int areaItemId) =>
         RecordCharacterMissionProgress(master.GetAreaItemCharacterMissions(areaItemId));
 

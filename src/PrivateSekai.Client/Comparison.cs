@@ -47,6 +47,8 @@ public static class Comparison
     {
         ["userCards"] = ["cardId"], ["userMaterials"] = ["materialId"],
         ["userMaterialExchanges"] = ["materialExchangeId"], ["userPracticeTickets"] = ["practiceTicketId"],
+        ["userEventItems"] = ["eventItemId"], ["userEventExchanges"] = ["eventId", "eventExchangeId"],
+        ["userEventMissions"] = ["eventId", "eventMissionId"],
         ["userSkillPracticeTickets"] = ["skillPracticeTicketId"], ["userDecks"] = ["deckId"],
         ["userShops"] = ["shopId"], ["userShopItems"] = ["shopItemId"], ["userAreaItems"] = ["areaItemId"],
         ["userStoryFavorites"] = ["shareNo"], ["userBookmarkedStories"] = ["storyType", "storyId"],

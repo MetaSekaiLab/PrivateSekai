@@ -17,6 +17,33 @@ public sealed class ShopService(
     ResourceMasterQueries resourceMaster,
     ResourceService resourceService)
 {
+    public (int Status, UserResource[] Rewards) ExchangeEvent(int id, int count)
+    {
+        if (count <= 0) throw new ArgumentException("Invalid event exchange count.");
+        var summary = master.GetEventExchangeSummary(id) ?? throw new ArgumentException("Unknown event exchange.");
+        var definition = summary.eventExchanges.Single(e => e.id == id);
+        var record = user.Data.userEventExchanges?.SingleOrDefault(e => e.eventId == summary.eventId && e.eventExchangeId == id);
+        // 售罄、无限量和兑换期外的状态变化尚未核验。
+        if (record == null || record.exchangeStatus != "exchangeable" || definition.exchangeLimit <= 0 ||
+            count >= record.exchangeRemaining || user.Now < summary.startAt || (summary.endAt > 0 && user.Now >= summary.endAt))
+            return (501, []);
+        var cost = definition.eventExchangeCost ?? throw new InvalidOperationException("Missing event exchange cost.");
+        if (cost.resourceType != "event_item" || cost.resourceId <= 0 || cost.resourceQuantity <= 0) return (501, []);
+        var quantity = checked(cost.resourceQuantity * count);
+        if ((user.Data.userEventItems?.SingleOrDefault(i => i.eventItemId == cost.resourceId)?.quantity ?? 0) < quantity)
+            return (409, []);
+        var rewards = resourceMaster.BuildResourcesFromBox("event_exchange", definition.resourceBoxId);
+        if (rewards.Length == 0) throw new InvalidOperationException("Missing event exchange rewards.");
+        if (rewards.Any(r => r.resourceType != "skill_practice_ticket" || r.quantity <= 0)) return (501, []);
+        foreach (var reward in rewards) reward.quantity = checked(reward.quantity * count);
+        if (!missions.RecordEventItemConsumption(summary.eventId, quantity)) return (501, []);
+        resourceService.Consume(cost.resourceType, cost.resourceId, quantity);
+        resourceService.Grant(rewards);
+        record.exchangeRemaining -= count;
+        user.MarkChanged(nameof(SuiteUser.userEventExchanges));
+        return (200, rewards);
+    }
+
     public int ExchangeMaterial(int id, int costGroupId, int count)
     {
         if (count <= 0 || costGroupId < 0) throw new ArgumentException("Invalid material exchange parameters.");

@@ -41,6 +41,8 @@ public static class Operations
         ["shop-upgrade"] = new("PUT", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
         ["material-exchange"] = new("PUT", "/api/user/{userId}/material-exchange/{materialExchangeId}", null, "updatedResources",
             RequiredIntegerQueries: new() { ["costGroupId"] = 0, ["count"] = 1 }),
+        ["event-exchange"] = new("PUT", "/api/user/{userId}/event-exchange/{eventExchangeId}", null, "obtainUserResources",
+            RequiredIntegerQueries: new() { ["count"] = 1 }),
         ["gacha-draw"] = new("PUT", "/api/user/{userId}/gacha/{gachaId}/gachaBehaviorId/{gachaBehaviorId}", null, "obtainPrizes", BooleanQueries: ["isPriorityUsePaidJewel"]),
         ["gacha-exchange"] = new("PUT", "/api/user/{userId}/exchange/gacha-ceil-item", typeof(UserGachaCeilExchangeRequest), "obtainUserResources"),
         ["gacha-wish"] = new("PUT", "/api/user/{userId}/rate-choice-gacha-wish", typeof(UserRateChoiceGachaWishRequest), "updatedResources"),

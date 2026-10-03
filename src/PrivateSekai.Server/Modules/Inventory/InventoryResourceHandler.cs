@@ -11,7 +11,7 @@ namespace PrivateSekai.Modules.Inventory;
 
 public sealed class InventoryResourceHandler : IResourceHandler
 {
-    public IReadOnlyCollection<string> ResourceTypes { get; } = ["material", "practice_ticket", "skill_practice_ticket", "boost_item"];
+    public IReadOnlyCollection<string> ResourceTypes { get; } = ["material", "practice_ticket", "skill_practice_ticket", "boost_item", "event_item"];
 
     public void Grant(UserSession user, UserResource resource)
     {
@@ -49,11 +49,22 @@ public sealed class InventoryResourceHandler : IResourceHandler
     public int Consume(UserSession user, string type, int id, int quantity, bool paidFirst) =>
         type switch
         {
+            "event_item" => ConsumeEventItem(user, id, quantity),
             "material" => id > 0 ? ChangeMaterial(user, id, -quantity) : 0,
             "practice_ticket" => id > 0 ? ChangePracticeTicket(user, id, -quantity) : 0,
             "skill_practice_ticket" => id > 0 ? ChangeSkillPracticeTicket(user, id, -quantity) : 0,
             _ => throw new NotSupportedException($"Resource '{type}' cannot be consumed.")
         };
+
+    private static int ConsumeEventItem(UserSession user, int id, int quantity)
+    {
+        var item = user.Data.userEventItems?.SingleOrDefault(i => i.eventItemId == id)
+            ?? throw new ArgumentException("Event item is not owned.");
+        if (quantity <= 0 || item.quantity < quantity) throw new ArgumentException("Insufficient event items.");
+        item.quantity -= quantity;
+        user.MarkChanged(nameof(SuiteUser.userEventItems));
+        return item.quantity;
+    }
 
     private static int ChangeSkillPracticeTicket(UserSession user, int id, int quantity)
     {

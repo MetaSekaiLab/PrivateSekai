@@ -17,6 +17,9 @@ internal static class UserResponseSerializer
             new IMessagePackFormatter[]
             {
                 new ChallengeStartFormatter(),
+                new EventExchangeFormatter(),
+                new FieldFilterFormatter<UserEventExchange>((s, key) =>
+                    key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0),
                 new FieldFilterFormatter<UserMaterialExchange>((s, key) =>
                     (key == "lastExchangedAt" && s.lastExchangedAt == 0) || (key == "refreshedAt" && s.refreshedAt == 0) ||
                     (key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0 && s.refreshedAt == 0)),
@@ -29,6 +32,21 @@ internal static class UserResponseSerializer
 
     public static byte[] Serialize(object? value) => value == null ? [0xc0] :
         MessagePackSerializer.Serialize(value.GetType(), value, Options);
+
+    internal sealed class EventExchangeFormatter : IMessagePackFormatter<UserEventExchangeResponse?>
+    {
+        public void Serialize(ref MessagePackWriter writer, UserEventExchangeResponse? value, MessagePackSerializerOptions options)
+        {
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) => key == "resourceLevel" && r.resourceLevel == 0) },
+                new[] { options.Resolver }));
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserEventExchangeResponse>()
+                .Serialize(ref writer, value!, scoped);
+        }
+
+        public UserEventExchangeResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserEventExchangeResponse>().Deserialize(ref reader, DumpSerializer.Options);
+    }
 
     internal sealed class ChallengeStartFormatter : IMessagePackFormatter<UserChallengeLiveStartResponse?>
     {

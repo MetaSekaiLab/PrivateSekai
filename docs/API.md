@@ -2062,4 +2062,20 @@ Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchan
 
 两个测试账号的材料升级请求均返回 HTTP 409，重新认证回读确认未扣材、技能未变化。第二份样本在持有材料 300 时投入 1 个，本地重放返回 200 并扣除 1 个材料、增加 1 点技能经验，明确存在差异；拒绝条件仍未查明，不据此新增猜测规则。技能券成功升级、满级溢出和角色任务联动也待官方成功样本核验。
 
+活动兑换取得中级技能券后，对二星卡投入一张也返回 HTTP 409；回读确认券和卡牌未变。本地重放则扣券并将累计技能经验从 0 截到满级阈值 25。这份拒绝样本不能证明官方的溢出处理规则。
+
 Client 检查项目支持 `--replay-skill-practice <请求记录> <回读记录> <master目录> <输出目录>`。调用者须确认回读来自同一账号，且两次记录间未进行其他业务写操作。失败请求的 HTTP 状态和错误响应参与比较，缺失回读时状态增量标为未知，不视为全量删除；回读失败的状态码不覆盖原写请求结果。
+
+## PUT `/api/user/{userId}/event-exchange/{eventExchangeId}`
+
+- Path：当前 `userId`、`eventExchangeSummaries.eventExchanges[].id`，不是活动 ID。
+- Query：`count` 为正整数兑换次数；无 body。
+- Response：`obtainUserResources` 展示兑换所得，`updatedResources` 合并库存、兑换次数及任务状态。技能券奖励样本省略零值 `resourceLevel`。
+- 请求时机与证据：`ScreenLayerEventExchange` 在玩家确认数量后调用 `PutUserEventExchangeAPI`；后者拼接上述路径并发送 PUT，成功后合并资源。
+- master：兑换期、限额及成本来自 `eventExchangeSummaries`；奖励按 `resourceBoxPurpose=event_exchange` 与盒 ID 联合查询。
+
+官方成功样本扣除 5000 活动代币、增加一张中级技能券，剩余兑换次数从 8 减为 7，状态仍为 `exchangeable`。同时新增对应活动的 `consume_event_item` 任务进度 5000，`isNewAchieved=false`；任务阈值来自 master。余额不足的后续请求返回 HTTP 409，重新认证回读确认代币、技能券、兑换记录和活动任务不变。返回列表中的无限量项省略 `exchangeRemaining`，不能补成零。
+
+Server 已接入已存在、兑换期内且兑换后仍有余量的有限技能券兑换，以及尚未达成的普通消费任务进度。售罄、无限量、兑换期外、缺少兑换记录、任务达成与其他奖励暂返回本地 501，不代表官方错误码；目录初始化和活动任务领奖待补。
+
+Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示例 ID 须按当前 master 和账号库存调整。已取得样本的相关 HTTP、基线、响应和状态增量对拍一致；完整背景资源不在此结论范围内。

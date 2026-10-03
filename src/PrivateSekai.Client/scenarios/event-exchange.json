@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "event-exchange", "args": { "eventExchangeId": "4960" }, "query": { "count": "1" } },
+    { "operation": "suite" }
+  ]
+}
