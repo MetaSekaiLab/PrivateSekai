@@ -31,12 +31,15 @@ internal static class MaterialExchangeReplay
             throw new InvalidOperationException("需要成功的材料或活动兑换记录。");
         string[] fields = operation == "material-exchange"
             ? ["userMaterials", "userPracticeTickets", "userMaterialExchanges"]
-            : ["userEventItems", "userSkillPracticeTickets", "userEventExchanges", "userEventMissions"];
+            : ["userEventItems", "userSkillPracticeTickets", "userBoostItems", "userGamedata", "userEventExchanges", "userEventMissions"];
         var state = store.Read(1)!;
         var before = official["before"]!.DeepClone();
         foreach (var field in fields)
-            foreach (var item in before[field]?.AsArray() ?? [])
+        {
+            if (before[field] is JsonObject obj && obj["userId"] != null) obj["userId"] = 1;
+            foreach (var item in before[field] as JsonArray ?? [])
                 if (item?["userId"] != null) item["userId"] = 1;
+        }
         foreach (var member in DumpContract.For(typeof(SuiteUser)).Members.Where(m => fields.Contains((string)m.Key)))
             if (before[(string)member.Key] is { } value)
                 member.Set(state.Data, JsonSerializer.Deserialize(value.ToJsonString(), member.Type, DumpJson.Options));
@@ -58,5 +61,11 @@ internal static class MaterialExchangeReplay
         JsonFiles.Write(Path.Combine(output, operation + "-compare.json"), ScenarioRunner.Compare(official, local));
     }
 
-    private static JsonObject Select(JsonNode? source, string[] fields) => new(fields.Select(field => KeyValuePair.Create(field, source?[field]?.DeepClone())));
+    private static JsonObject Select(JsonNode? source, string[] fields)
+    {
+        var selected = new JsonObject(fields.Select(field => KeyValuePair.Create(field, source?[field]?.DeepClone())));
+        if (selected["userGamedata"] is JsonObject data)
+            selected["userGamedata"] = new JsonObject { ["coin"] = data["coin"]?.DeepClone() };
+        return selected;
+    }
 }

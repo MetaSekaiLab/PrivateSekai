@@ -38,7 +38,9 @@ internal static class UserResponseSerializer
         public void Serialize(ref MessagePackWriter writer, UserEventExchangeResponse? value, MessagePackSerializerOptions options)
         {
             var scoped = options.WithResolver(CompositeResolver.Create(
-                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) => key == "resourceLevel" && r.resourceLevel == 0) },
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) =>
+                    (key == "resourceLevel" && r.resourceLevel == 0) ||
+                    (key == "resourceId" && r.resourceType == "coin" && r.resourceId == 0)) },
                 new[] { options.Resolver }));
             DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserEventExchangeResponse>()
                 .Serialize(ref writer, value!, scoped);

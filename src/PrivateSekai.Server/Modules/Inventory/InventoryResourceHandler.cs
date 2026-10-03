@@ -37,7 +37,7 @@ public sealed class InventoryResourceHandler : IResourceHandler
                     item = new UserBoostItem { userId = user.UserId, boostItemId = resource.resourceId };
                     items.Add(item);
                 }
-                item.quantity += resource.quantity;
+                item.quantity = checked(item.quantity + resource.quantity);
                 user.Data.userBoostItems = items.OrderBy(i => i.boostItemId).ToArray();
                 user.MarkChanged(nameof(SuiteUser.userBoostItems));
                 break;
