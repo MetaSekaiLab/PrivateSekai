@@ -23,6 +23,23 @@ public sealed class LiveMasterQueries(MasterData master)
             .SingleOrDefault(s => s.characterId == characterId && s.rank == rank)
         ?? throw new NotSupportedException("Challenge stage is missing or enters unverified EX stages.");
 
+    public MasterChallengeLiveHighScoreReward[] GetChallengeHighScoreRewards(int characterId, int score) =>
+        master.GetTable<MasterChallengeLiveHighScoreReward>("challengeLiveHighScoreRewards").Rows
+            .Where(r => r.characterId == characterId && r.highScore <= score)
+            .OrderBy(r => r.highScore).ToArray();
+
+    public MasterChallengeLivePlayDayRewardPeriod GetChallengePlayDayPeriod(long timestamp) =>
+        master.GetTable<MasterChallengeLivePlayDayRewardPeriod>("challengeLivePlayDayRewardPeriods").Rows
+            .Where(p => p.startAt < timestamp && timestamp < p.endAt)
+            .OrderBy(p => p.priority).FirstOrDefault()
+        ?? throw new InvalidOperationException("No active challenge play-day reward period.");
+
+    public int GetDayChangeHour() => int.Parse(master.GetTable<MasterConfig>("configs").Rows
+        .Single(c => c.configKey == "date_change_hour").value, System.Globalization.CultureInfo.InvariantCulture);
+
+    public string GetChallengeResetDay() => master.GetTable<MasterConfig>("configs").Rows
+        .Single(c => c.configKey == "challenge_live_reset_play_days_day_of_week").value;
+
     public int GetFirstChallengeUnlockRank()
     {
         var behavior = master.GetTable<MasterOneTimeBehavior>("oneTimeBehaviors").Rows

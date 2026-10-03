@@ -2013,15 +2013,19 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 - Body：`score`、各判定计数、`maxCombo`、`life`、`tapCount`、`continueCount`、`musicCategoryName`、`isMirrored`。模型中的 fast／late／flick 计数标记为 IgnoreMember，不发送。
 - 主要响应：`scoreRank`、成绩标志、玩家／卡牌经验、`userChallengeLiveStageResult`、`userChallengeLiveHighScoreResult`、各类奖励和出勤状态。成功样本的参与状态更新为 `cleared`、`playCount=1`，新增 `playEndAt`。
 - 评分使用 `playLevelScores.liveType=challenge_live`，不能复用普通 solo 阈值。
-- 高分奖励预览从当前角色的 `challengeLiveHighScoreRewards` 读取门槛，按 `highScore` 升序展示；列表的已领标记通过用户记录的 `challengeLiveHighScoreRewardId` 匹配 master `id`。结算响应 `userChallengeLiveHighScoreResult.rewards` 中对应字段名为 `challengeLiveHighScoreId`，资源列表为 `userResources`，不能与存档字段混用。尚需成功达到奖励门槛的样本核验发放和状态。
+- 高分奖励预览从当前角色的 `challengeLiveHighScoreRewards` 读取门槛，按 `highScore` 升序展示；列表的已领标记通过用户记录的 `challengeLiveHighScoreRewardId` 匹配 master `id`。结算响应 `userChallengeLiveHighScoreResult.rewards` 中对应字段名为 `challengeLiveHighScoreId`，资源列表为 `userResources`，不能与存档字段混用。角色 21 首次达到 100000 分的官方样本返回奖励条目 421、水晶 100，用户记录的 `challengeLiveHighScoreStatus=complete`；资源盒用途为 `challenge_live_high_score`。
 - `ChallengeLiveUtility` 按各阶段所需点数累加和定位当前阶段，达到门槛即进入下一阶段。普通阶段样本验证了跨级和剩余点数；EX 阶段仍需独立核验。
 - 两次 C 档样本的 `userLivePoint.addNormalProgress=30`、`addDailyBonusProgress=0`，与 `configs.obtain_live_point_for_challenge_live` 一致；`livePointBonusRemaining=3`。其中一份样本的 `userLiveMissions.progress` 从 150 增至 180，`paidProgress` 仍为 0。两份样本的 `userBoost` 均未变化；其他评分、付费状态和跨日情形仍待核验。
 
-当前结算样本使用模拟输入。三次 C 档样本中，7999 分获得 200 点，8000 与 10000 分获得 201 点；玩家经验均增加 4000。双卡样本的两张卡各增加 12000 经验，响应 index 为 1、2，与领队、支援位对应。部分评分奖励材料 ID 不同，发放规则仍待核验。完整点数公式、其他评分经验、奖励抽取、跨日和自动挑战尚未核验，不能把单次返回值用作固定公式。
+当前结算样本使用模拟输入。四次 C 档样本中，7999 分获得 200 点，8000 与 10000 分获得 201 点，100000 分获得 212 点；玩家经验均增加 4000。双卡样本的两张卡各增加 12000 经验，响应 index 为 1、2，与领队、支援位对应。部分评分奖励材料 ID 不同，发放规则仍待核验。完整点数公式、其他评分经验、奖励抽取、跨日和自动挑战尚未核验，不能把单次返回值用作固定公式。
 
 普通阶段及角色升级业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp`。角色等级按 `levels.levelType=character` 的累计门槛计算，更新 `userCharacters` 的等级、总经验和余经验；跨越的等级按 `characterRanks.rewardResourceBoxIds` 与 `character_rank_reward` 用途发奖。EX、角色满级及含额外解锁奖励的等级暂不支持。
 
-Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 使用官方响应的 `addPoint` 重放阶段业务。三份样本的阶段记录、角色状态及解码后的完整 `userChallengeLiveStageResult` 一致，涵盖角色 1 和 21 从等级 1 升至 3 的经验与奖励；该检查不覆盖点数公式、网络字段省略规则或完整 HTTP 结算。样本新增的释放条件来自活动积分，不属于角色升级。
+Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 使用官方响应的 `addPoint` 重放阶段业务。四份样本的阶段记录、角色状态及解码后的完整 `userChallengeLiveStageResult` 一致，涵盖角色 1 和 21 从等级 1 升至 3 的经验与奖励；该检查不覆盖点数公式、网络字段省略规则或完整 HTTP 结算。样本新增的释放条件来自活动积分，不属于角色升级。
+
+高分业务已实现：保存角色最高分，按 master 门槛发放未记录的奖励，保存 `complete` 记录。四份样本经 `--replay-challenge-high-score` 重放，覆盖未达门槛和首次达到单个门槛，解码后响应、最高分及已领记录一致。一次跨越多门槛、较低成绩和重复成绩只有本地检查，仍需官方样本。
+
+首次出勤业务已实现：写前没有 `userChallengeLivePlayDay` 时，记录 `playDays=1`、状态 `received` 和开局时间，按 `challenge_live_play_day_reward` 资源盒发奖。客户端奖励期筛选为 `startAt < 时间 < endAt`，按 `priority` 升序取首项；使用 UTC+9、master 的 `date_change_hour` 和周一重置规则计算 `playDaysResetAt`。四份首次样本经 `--replay-challenge-play-day` 业务重放一致。后续出勤、跨日切／奖励期结算、其他周重置配置和选择奖励暂不支持，尚未据此接通完整结算路由。
 
 ## POST `/api/user/{userId}/challenge-live/receive-select-reward/{resourceId}`
 

@@ -106,6 +106,10 @@ if (args is ["--replay-login-bonus", _, var loginMaster, _])
     LoginBonusReplay.ImportMaster(loginMaster, directory);
 if (args is ["--replay-challenge-stage", _, var stageMaster, _])
     ChallengeStageReplay.ImportMaster(stageMaster, directory);
+if (args is ["--replay-challenge-play-day", _, var dayMaster, _])
+    ChallengePlayDayReplay.ImportMaster(dayMaster, directory);
+if (args is ["--replay-challenge-high-score", _, var highScoreMaster, _])
+    ChallengeHighScoreReplay.ImportMaster(highScoreMaster, directory);
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Loopback, 0));
@@ -145,11 +149,23 @@ if (args is ["--replay-natural-boost", _, var naturalBoostClock, _, _])
     builder.Services.AddSingleton<TimeProvider>(BoostReplay.NaturalClock(naturalBoostClock));
 if (args is ["--replay-challenge-unlock" or "--replay-challenge-start", var challengeClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(challengeClockCapture));
+if (args is ["--replay-challenge-play-day", var dayCaptureClock, _, _])
+    builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(dayCaptureClock));
 if (args is ["--replay-material-exchange" or "--replay-event-exchange", var exchangeClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(MaterialExchangeReplay.Clock(exchangeClockCapture));
 builder.Services.AddControllers().AddApplicationPart(typeof(DeckController).Assembly)
     .ConfigureApplicationPartManager(manager => manager.FeatureProviders.Add(new TestedControllers()));
 await using var app = builder.Build();
+if (args is ["--replay-challenge-high-score", var highScoreCapture, _, var highScoreOutput])
+{
+    ChallengeHighScoreReplay.Run(app.Services, store, highScoreCapture, highScoreOutput);
+    return;
+}
+if (args is ["--replay-challenge-play-day", var dayCapture, _, var dayOutput])
+{
+    ChallengePlayDayReplay.Run(app.Services, store, dayCapture, dayOutput);
+    return;
+}
 if (args is ["--replay-challenge-stage", var stageCapture, _, var stageOutput])
 {
     ChallengeStageReplay.Run(app.Services, store, stageCapture, stageOutput);

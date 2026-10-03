@@ -13,6 +13,8 @@ internal static class Program
         FeatureChecks.Run();
         BoostRecoveryChecks.Run();
         ChallengeStageChecks.Run();
+        ChallengePlayDayChecks.Run();
+        ChallengeHighScoreChecks.Run();
         AreaShopChecks.Run();
         SkillPracticeChecks.Run();
         StoryCollectionChecks.Run();

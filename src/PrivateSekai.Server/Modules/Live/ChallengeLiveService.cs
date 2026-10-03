@@ -16,6 +16,74 @@ public sealed class ChallengeLiveService(
     ResourceMasterQueries resourceMaster,
     ResourceService resources)
 {
+    public UserChallengeLiveHighScoreResult UpdateHighScore(int characterId, int score)
+    {
+        if (score < 0) throw new ArgumentOutOfRangeException(nameof(score));
+        var results = (user.Data.userChallengeLiveSoloResults ?? []).ToList();
+        var previous = results.SingleOrDefault(r => r.characterId == characterId);
+        var before = previous?.highScore ?? 0;
+        var after = Math.Max(before, score);
+        var history = (user.Data.userChallengeLiveSoloHighScoreRewards ?? []).ToList();
+        var owned = history.Where(r => r.characterId == characterId).ToArray();
+        if (owned.Any(r => r.challengeLiveHighScoreStatus != "complete"))
+            throw new NotSupportedException("Unknown challenge high-score reward status.");
+        var ids = owned.Select(r => r.challengeLiveHighScoreRewardId).ToHashSet();
+        var granted = new List<UserGrantedChallengeLiveHighScoreReward>();
+        foreach (var row in master.GetChallengeHighScoreRewards(characterId, after).Where(r => !ids.Contains(r.id)))
+        {
+            var items = resourceMaster.BuildResourcesFromBox("challenge_live_high_score", row.resourceBoxId);
+            if (items.Length == 0) throw new InvalidOperationException("Missing challenge high-score reward.");
+            resources.Grant(items);
+            granted.Add(new UserGrantedChallengeLiveHighScoreReward { challengeLiveHighScoreId = row.id, userResources = items });
+            history.Add(new UserChallengeLiveHighScoreReward
+            {
+                characterId = characterId, challengeLiveHighScoreRewardId = row.id, challengeLiveHighScoreStatus = "complete"
+            });
+        }
+        if (previous == null)
+            results.Add(new UserChallengeLiveSoloResult { characterId = characterId, highScore = after });
+        else
+            previous.highScore = after;
+        user.Data.userChallengeLiveSoloResults = results.ToArray();
+        user.Data.userChallengeLiveSoloHighScoreRewards = history.ToArray();
+        user.MarkChanged([nameof(SuiteUser.userChallengeLiveSoloResults), nameof(SuiteUser.userChallengeLiveSoloHighScoreRewards)]);
+        return new UserChallengeLiveHighScoreResult { beforeHighScore = before, afterHighScore = after, rewards = granted.ToArray() };
+    }
+
+    public UserResource[] RecordFirstPlayDay(long playStartAt)
+    {
+        if (user.Data.userChallengeLivePlayDay != null)
+            throw new NotSupportedException("Subsequent challenge attendance is not verified.");
+        if (playStartAt <= 0 || playStartAt > user.Now)
+            throw new ArgumentOutOfRangeException(nameof(playStartAt));
+        var hour = master.GetDayChangeHour();
+        if (hour is < 0 or > 23 || master.GetChallengeResetDay() != "MONDAY")
+            throw new NotSupportedException("Unsupported challenge reset schedule.");
+        // 客户端 SaveSystemData 固定采用 UTC+9，不使用宿主时区。
+        var offset = TimeSpan.FromHours(9);
+        var startDay = DateTimeOffset.FromUnixTimeMilliseconds(playStartAt).ToOffset(offset).AddHours(-hour).Date;
+        var clearDay = DateTimeOffset.FromUnixTimeMilliseconds(user.Now).ToOffset(offset).AddHours(-hour).Date;
+        var period = master.GetChallengePlayDayPeriod(playStartAt);
+        if (startDay != clearDay || master.GetChallengePlayDayPeriod(user.Now).id != period.id)
+            throw new NotSupportedException("Challenge clear across a daily or reward-period boundary is not verified.");
+        var choices = (period.challengeLivePlayDayRewards ?? []).Where(r => r.playDays == 1).ToArray();
+        if (choices.Length != 1)
+            throw new NotSupportedException("Challenge reward selection is not verified.");
+        var rewards = resourceMaster.BuildResourcesFromBox("challenge_live_play_day_reward", choices[0].resourceBoxId);
+        if (rewards.Length == 0) throw new InvalidOperationException("Missing challenge play-day reward.");
+        var days = ((int)DayOfWeek.Monday - (int)startDay.DayOfWeek + 7) % 7;
+        if (days == 0) days = 7;
+        var reset = new DateTimeOffset(startDay.AddDays(days).AddHours(hour), offset).ToUnixTimeMilliseconds();
+        resources.Grant(rewards);
+        user.Data.userChallengeLivePlayDay = new UserChallengeLivePlayDay
+        {
+            playDays = 1, challengeLivePlayDayRewardStatus = "received",
+            playDaysResetAt = reset, lastPlayStartAt = playStartAt
+        };
+        user.MarkChanged(nameof(SuiteUser.userChallengeLivePlayDay));
+        return rewards;
+    }
+
     // addPoint 由结算提供；这里不推断分数、活动或会员的点数倍率。
     public UserChallengeLiveStageResult AdvanceStage(int characterId, int addPoint)
     {
