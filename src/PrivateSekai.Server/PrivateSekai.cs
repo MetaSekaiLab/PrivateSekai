@@ -62,8 +62,9 @@ using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     var clock = services.GetRequiredService<TimeProvider>();
-    var template = services.GetRequiredService<AccountTemplates>().CreateUser(0, clock.GetUtcNow().ToUnixTimeMilliseconds());
-    services.GetRequiredService<IUserStore>().Save(0, template);
+    var store = services.GetRequiredService<IUserStore>();
+    if (store.Read(0) == null)
+        store.Save(0, services.GetRequiredService<AccountTemplates>().CreateUser(0, clock.GetUtcNow().ToUnixTimeMilliseconds()));
     services.GetRequiredService<ResourceService>();
     services.GetRequiredService<UserOperation>().Execute(0, () =>
     {

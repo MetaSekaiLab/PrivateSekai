@@ -24,6 +24,7 @@ public static class ServerConfig
     public static string SuiteMasterFilePath { get; private set; } = null!;
     public static string SekaiMasterDbDiffPath { get; private set; } = null!;
     public static MasterCacheConfig MasterCache { get; private set; } = new();
+    public static string UserDatabasePath { get; private set; } = "data/userdata/users.db";
 
     public static void Load(IConfiguration config, string contentRootPath)
     {
@@ -47,6 +48,7 @@ public static class ServerConfig
         TemplatePath          = ResolvePath(Require(paths, "Template"), contentRootPath);
         SuiteMasterFilePath   = ResolvePath(Require(paths, "SuiteMasterFile"), contentRootPath);
         SekaiMasterDbDiffPath = ResolvePath(Require(paths, "SekaiMasterDbDiff"), contentRootPath);
+        UserDatabasePath = ResolvePath(paths["UserDatabase"] ?? "data/userdata/users.db", contentRootPath);
 
         MasterCache = s.GetSection("MasterCache").Get<MasterCacheConfig>() ?? new MasterCacheConfig();
     }
@@ -69,7 +71,7 @@ public static class ServerConfig
         var directory = new DirectoryInfo(startPath);
         while (directory != null)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, ".git")))
+            if (Directory.Exists(Path.Combine(directory.FullName, ".git")) || File.Exists(Path.Combine(directory.FullName, ".git")))
             {
                 return directory.FullName;
             }

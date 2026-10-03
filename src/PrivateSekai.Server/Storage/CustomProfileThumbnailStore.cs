@@ -1,13 +1,47 @@
 using System;
-using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using Microsoft.Data.Sqlite;
 
 namespace PrivateSekai.Storage;
 
-public sealed class CustomProfileThumbnailStore
+public sealed class CustomProfileThumbnailStore : IDisposable
 {
-    private readonly ConcurrentDictionary<string, ThumbnailEntry> Thumbnails = new();
+    private readonly object gate = new();
+    private readonly SqliteConnection connection;
+
+    public CustomProfileThumbnailStore() : this(":memory:") { }
+
+    public CustomProfileThumbnailStore(string path)
+    {
+        if (path != ":memory:")
+        {
+            path = Path.GetFullPath(path);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        }
+        connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, Pooling = false
+        }.ToString());
+        try
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                PRAGMA journal_mode=WAL;
+                PRAGMA synchronous=FULL;
+                CREATE TABLE IF NOT EXISTS custom_profile_thumbnails(
+                    path TEXT PRIMARY KEY, content_type TEXT NOT NULL, payload BLOB NOT NULL);
+                """;
+            command.ExecuteNonQuery();
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
+    }
 
     public string SaveThumbnail(string? thumbnail, string? existingThumbnailPath = null)
     {
@@ -26,7 +60,15 @@ public sealed class CustomProfileThumbnailStore
             return reusedPath;
 
         var thumbnailPath = $"{hash}/{Guid.NewGuid()}";
-        Thumbnails[thumbnailPath] = new ThumbnailEntry(bytes, DetectContentType(bytes));
+        lock (gate)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO custom_profile_thumbnails VALUES($path, $type, $payload)";
+            command.Parameters.AddWithValue("$path", thumbnailPath);
+            command.Parameters.AddWithValue("$type", DetectContentType(bytes));
+            command.Parameters.AddWithValue("$payload", bytes);
+            command.ExecuteNonQuery();
+        }
 
         return thumbnailPath;
     }
@@ -43,12 +85,17 @@ public sealed class CustomProfileThumbnailStore
         if (!IsValidHash(hash) || !Guid.TryParse(thumbnailId, out _))
             return false;
 
-        if (!Thumbnails.TryGetValue($"{hash}/{thumbnailId}", out var thumbnail))
-            return false;
-
-        bytes = thumbnail.Bytes.ToArray();
-        contentType = thumbnail.ContentType;
-        return true;
+        lock (gate)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT payload, content_type FROM custom_profile_thumbnails WHERE path=$path";
+            command.Parameters.AddWithValue("$path", $"{hash}/{thumbnailId}");
+            using var reader = command.ExecuteReader();
+            if (!reader.Read()) return false;
+            bytes = (byte[])reader.GetValue(0);
+            contentType = reader.GetString(1);
+            return true;
+        }
     }
 
     private bool TryReuseExistingPath(string? existingThumbnailPath, string hash, out string path)
@@ -61,8 +108,13 @@ public sealed class CustomProfileThumbnailStore
         if (!string.Equals(parts[0], hash, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        if (!Thumbnails.ContainsKey(existingThumbnailPath))
-            return false;
+        lock (gate)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT 1 FROM custom_profile_thumbnails WHERE path=$path";
+            command.Parameters.AddWithValue("$path", existingThumbnailPath);
+            if (command.ExecuteScalar() == null) return false;
+        }
 
         path = existingThumbnailPath;
         return true;
@@ -138,5 +190,8 @@ public sealed class CustomProfileThumbnailStore
         return "application/octet-stream";
     }
 
-    private sealed record ThumbnailEntry(byte[] Bytes, string ContentType);
+    public void Dispose()
+    {
+        lock (gate) connection.Dispose();
+    }
 }

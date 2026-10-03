@@ -44,7 +44,7 @@ internal static class ArchitectureChecks
         name.StartsWith("Microsoft.AspNetCore.Http.", StringComparison.Ordinal) ||
         name.StartsWith("Microsoft.AspNetCore.Mvc.", StringComparison.Ordinal) ||
         name is "PrivateSekai.Shared.Users.UserOperation" or "PrivateSekai.Shared.Users.IUserStore" or
-            "PrivateSekai.Storage.MemoryUserStore" or "System.IServiceProvider";
+            "PrivateSekai.Storage.MemoryUserStore" or "PrivateSekai.Storage.SqliteUserStore" or "System.IServiceProvider";
 
     private static bool IsBusinessService(string name) =>
         name.StartsWith("PrivateSekai.", StringComparison.Ordinal) && name.EndsWith("Service", StringComparison.Ordinal);

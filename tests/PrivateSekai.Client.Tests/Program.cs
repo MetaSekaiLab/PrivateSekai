@@ -118,6 +118,7 @@ store.Save(1, new UserState { Data = new SuiteUser
     userMaterials = [], userPresents = [new() { presentId = "fixture-present", resourceType = "material", resourceId = 1, resourceQuantity = 7 }], refreshableTypes = []
 } });
 builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
+    .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
 if (args is ["--replay-present", var replayCapture, _])
     builder.Services.AddSingleton<TimeProvider>(PresentReplay.Clock(replayCapture));

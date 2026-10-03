@@ -28,10 +28,10 @@ public static class ServerServices
     public static IServiceCollection AddPrivateSekai(this IServiceCollection services)
     {
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddSingleton<IUserStore, MemoryUserStore>();
+        services.AddSingleton<IUserStore>(_ => new SqliteUserStore(ServerConfig.UserDatabasePath));
         services.AddSingleton<UserLocks>();
         services.AddSingleton<AccountTemplates>();
-        services.AddSingleton<CustomProfileThumbnailStore>();
+        services.AddSingleton(_ => new CustomProfileThumbnailStore(ServerConfig.UserDatabasePath));
         services.AddScoped<UserSession>();
         services.AddScoped<UserOperation>();
         services.AddScoped<ResourceService>();

@@ -41,6 +41,7 @@ internal static class FeatureChecks
             var master = new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
             var store = new MemoryUserStore();
             using var provider = new ServiceCollection().AddPrivateSekai()
+                .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
                 .AddSingleton(master).AddSingleton<IUserStore>(store)
                 .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
             ShopPurchase(provider, store);

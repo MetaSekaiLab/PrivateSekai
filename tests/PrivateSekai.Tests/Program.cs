@@ -7,6 +7,7 @@ internal static class Program
     public static void Main()
     {
         UserOperationChecks.Run();
+        SqliteStoreChecks.Run();
         ArchitectureChecks.Run();
         ResourceTests.Run();
         FeatureChecks.Run();

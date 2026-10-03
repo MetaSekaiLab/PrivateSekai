@@ -50,6 +50,7 @@ internal static class SkillPracticeChecks
             var master = new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
             var store = new MemoryUserStore();
             using var provider = new ServiceCollection().AddPrivateSekai()
+                .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
                 .AddSingleton(master).AddSingleton<IUserStore>(store).BuildServiceProvider();
             using var scope = provider.CreateScope();
             var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();

@@ -46,6 +46,7 @@ internal static class AreaShopChecks
                 """);
             var store = new MemoryUserStore();
             using var provider = new ServiceCollection().AddPrivateSekai()
+                .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
                 .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory))
                 .AddSingleton<IUserStore>(store).BuildServiceProvider();
             using var scope = provider.CreateScope();
