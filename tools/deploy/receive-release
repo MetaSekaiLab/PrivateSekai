@@ -1,0 +1,95 @@
+#!/usr/bin/python3
+import fcntl
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+
+def healthy(url):
+    for _ in range(30):
+        try:
+            with urllib.request.urlopen(url, timeout=2) as response:
+                if response.status == 200:
+                    return True
+        except (OSError, urllib.error.URLError):
+            pass
+        time.sleep(1)
+    return False
+
+
+def activate(root, release):
+    pending = root / 'next'
+    pending.unlink(missing_ok=True)
+    pending.symlink_to(release)
+    pending.replace(root / 'current')
+
+
+def deploy(config, revision):
+    root = Path(config['root'])
+    with (root / 'deploy.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        previous = (root / 'current').resolve(strict=True)
+        with tempfile.TemporaryDirectory(prefix='upload-', dir=root) as temporary:
+            package = Path(temporary) / 'release.tar.gz'
+            with package.open('wb') as output:
+                total = 0
+                while chunk := sys.stdin.buffer.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > 256 * 1024 * 1024:
+                        raise ValueError('Release archive exceeds size limit.')
+                    output.write(chunk)
+            unpacked = Path(temporary) / 'release'
+            unpacked.mkdir(mode=0o750)
+            with tarfile.open(package, 'r:gz') as archive:
+                members = archive.getmembers()
+                if sum(item.size for item in members) > 512 * 1024 * 1024:
+                    raise ValueError('Extracted release exceeds size limit.')
+                for item in members:
+                    path = PurePosixPath(item.name)
+                    if path.is_absolute() or '..' in path.parts or not (item.isfile() or item.isdir()):
+                        raise ValueError('Invalid release archive entry.')
+                    if path.parts and (path.parts[0] == 'data' or
+                            (len(path.parts) == 1 and path.name.startswith('appsettings') and path.suffix == '.json')):
+                        raise ValueError('Release must not contain runtime configuration or data.')
+                archive.extractall(unpacked, members=members, filter='data')
+            for name in ('PrivateSekai.Server.dll', 'PrivateSekai.Server.runtimeconfig.json',
+                         'PrivateSekai.Server.deps.json', 'Assembly-CSharp.dll'):
+                if not (unpacked / name).is_file():
+                    raise ValueError('Incomplete release.')
+            if (unpacked / 'revision.txt').read_text().strip() != revision:
+                raise ValueError('Release revision mismatch.')
+            for path in unpacked.rglob('*'):
+                path.chmod(0o750 if path.is_dir() else 0o640)
+            (unpacked / 'appsettings.json').symlink_to(config['settings'])
+            (unpacked / 'data').symlink_to(config['data'])
+            release = root / 'releases' / f'{revision}-{time.time_ns()}'
+            shutil.move(unpacked, release)
+        restart = ['sudo', '-n', '/usr/bin/systemctl', 'restart', config['service']]
+        activate(root, release)
+        restarted = subprocess.run(restart, check=False).returncode == 0
+        if restarted and healthy(config['health_url']):
+            print(f'Deployed {revision}', flush=True)
+            return
+        activate(root, previous)
+        subprocess.run(restart, check=True)
+        if not healthy(config['health_url']):
+            raise RuntimeError('Deployment and previous release health checks failed.')
+        raise RuntimeError('Deployment failed; previous program release restored.')
+
+
+if __name__ == '__main__':
+    command = re.fullmatch(r'deploy ([0-9a-f]{40})', os.environ.get('SSH_ORIGINAL_COMMAND', ''))
+    if not command:
+        sys.exit('Only release deployment is allowed.')
+    os.umask(0o027)
+    with open(sys.argv[1]) as source:
+        deploy(json.load(source), command.group(1))

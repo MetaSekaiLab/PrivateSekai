@@ -1,0 +1,77 @@
+#!/usr/bin/python3
+import importlib.machinery
+import importlib.util
+import io
+from pathlib import Path
+import tarfile
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+loader = importlib.machinery.SourceFileLoader('receiver', str(Path(__file__).with_name('receive-release')))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+receiver = importlib.util.module_from_spec(spec)
+loader.exec_module(receiver)
+
+
+class DeploymentChecks(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.old = self.root / 'old'
+        self.old.mkdir()
+        (self.root / 'current').symlink_to(self.old)
+        (self.root / 'releases').mkdir()
+        self.revision = 'a' * 40
+        self.config = {'root': str(self.root), 'settings': str(self.root / 'config.json'),
+                       'data': str(self.root / 'data'), 'service': 'fixture', 'health_url': 'unused'}
+
+    def archive(self, extra=None):
+        files = {name: b'fixture' for name in ('PrivateSekai.Server.dll', 'PrivateSekai.Server.deps.json',
+                 'PrivateSekai.Server.runtimeconfig.json', 'Assembly-CSharp.dll')}
+        files['revision.txt'] = self.revision.encode()
+        files.update(extra or {})
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode='w:gz') as archive:
+            for name, data in files.items():
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+        return SimpleNamespace(buffer=io.BytesIO(stream.getvalue()))
+
+    def test_success(self):
+        with patch.object(receiver.sys, 'stdin', self.archive()), \
+             patch.object(receiver.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as restart, \
+             patch.object(receiver, 'healthy', return_value=True):
+            receiver.deploy(self.config, self.revision)
+        current = (self.root / 'current').resolve()
+        self.assertNotEqual(current, self.old)
+        self.assertEqual((current / 'revision.txt').read_text(), self.revision)
+        self.assertEqual((current / 'data').readlink(), Path(self.config['data']))
+        self.assertTrue(self.old.exists())
+        restart.assert_called_once()
+
+    def test_failed_health_restores_previous_program(self):
+        with patch.object(receiver.sys, 'stdin', self.archive()), \
+             patch.object(receiver.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as restart, \
+             patch.object(receiver, 'healthy', side_effect=[False, True]):
+            with self.assertRaisesRegex(RuntimeError, 'previous program release restored'):
+                receiver.deploy(self.config, self.revision)
+        self.assertEqual((self.root / 'current').resolve(), self.old)
+        self.assertEqual(restart.call_count, 2)
+
+    def test_invalid_packages_do_not_activate(self):
+        for extra in ({'../outside': b'x'}, {'/outside': b'x'}, {'data/users.db': b'x'},
+                      {'appsettings.json': b'x'}, {'revision.txt': b'wrong'}):
+            with self.subTest(extra=extra), patch.object(receiver.sys, 'stdin', self.archive(extra)), \
+                 patch.object(receiver.subprocess, 'run') as restart:
+                with self.assertRaises(ValueError):
+                    receiver.deploy(self.config, self.revision)
+                restart.assert_not_called()
+                self.assertEqual((self.root / 'current').resolve(), self.old)
+
+
+if __name__ == '__main__':
+    unittest.main()

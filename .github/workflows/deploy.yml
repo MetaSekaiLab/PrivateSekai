@@ -1,0 +1,83 @@
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GameDumpDirectory: ${{ github.workspace }}/.ci-deps/DummyDll
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Read dependency revision
+        id: deps
+        shell: bash
+        run: |
+          ref=$(tr -d '\r\n' < .github/deps.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Checkout private dependencies
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ${{ vars.DEPS_REPOSITORY }}
+          ref: ${{ steps.deps.outputs.ref }}
+          ssh-key: ${{ secrets.DEPS_SSH_KEY }}
+          persist-credentials: false
+          path: .ci-deps
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build and test
+        shell: bash
+        run: |
+          python3 tools/deploy/check-receiver
+          dotnet build src/PrivateSekai.Server -c Release
+          dotnet run --project tests/PrivateSekai.Tests -c Release
+          dotnet run --project tests/PrivateSekai.Client.Tests -c Release
+          dotnet run --project tools/ProtocolChecks -c Release -- . "$GameDumpDirectory"
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish src/PrivateSekai.Server -c Release -r linux-x64 --self-contained false -o "$RUNNER_TEMP/publish"
+          find "$RUNNER_TEMP/publish" -maxdepth 1 -type f -name 'appsettings*.json' -delete
+          printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/publish/revision.txt"
+          tar -czf "$RUNNER_TEMP/release.tar.gz" -C "$RUNNER_TEMP/publish" .
+      - name: Deploy
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          latest=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [[ "$latest" != "$GITHUB_SHA" ]]; then
+            echo 'A newer main revision exists; skip deployment.'
+            exit 0
+          fi
+          umask 077
+          key="$RUNNER_TEMP/deploy-key"
+          hosts="$RUNNER_TEMP/deploy-known-hosts"
+          trap 'rm -f "$key" "$hosts"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$hosts"
+          unset DEPLOY_KEY DEPLOY_KNOWN_HOSTS
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$hosts" -o ConnectTimeout=20 \
+            -i "$key" -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "deploy $GITHUB_SHA" < "$RUNNER_TEMP/release.tar.gz"
