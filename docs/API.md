@@ -2115,6 +2115,18 @@ Server 已接入兑换期内、已存在记录的技能券、体力道具和金�
 
 Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示例 ID 须按当前 master 和账号库存调整。已取得成功样本的相关 HTTP、基线、响应和状态增量对拍一致；金币比较覆盖 `userGamedata.coin`，完整背景资源不在此结论范围内。
 
+## PUT `/api/user/{userId}/character-costume-3d/character/{characterId}/unit/{unit}`
+
+- Path：当前 `userId`、角色 `characterId`、组合 `unit`。客户端把组合枚举名转大写后拼入路径。
+- Body：`UserCharacterCostume3DRequest`，包含 `headCostume3dId`、`bodyCostume3dId`、`hairCostume3dId` 三个整数。
+- Response：`SuiteUserCommonResponse.updatedResources`。客户端成功回调调用 `UserDataManager.UpdateAll` 合并状态。
+- 官方首次更换样本：返回完整 `userCharacterCostume3ds`，其中组合名为小写；只修改对应角色与组合的穿戴。新手任务 `change_any_character_costume` 达成，当次进度响应 `isNewAchieved=true`，Suite 回读为 false。未刷新服装持有列表，未发现角色任务变化。
+- 官方 Suite 中，`userCostume3dStatuses` 的 `forbidden` 和 `sale` 状态省略未设置的 `obtainedAt`；`available` 的已有取得时间保留。
+
+Server 已接入已有穿戴槽位保存、角色与部位匹配、持有检查及新手任务联动；当前支持 master 明确绑定该角色的服装。Client 提供 `character-costume-save` 和 `--replay-costume`。一次身体服装更换样本在穿戴、持有列表、新手进度与任务状态范围 HTTP 对拍无差异；跨角色共用服装、重复保存、发型或配饰切换及无效请求的官方响应仍待核验。
+
+证据：`PutUserCharacterCostume3DAPI` 构造、Execute 与回调，请求和穿戴模型契约、`costume3ds`、`beginnerMissionV2s`，以及官方更换和 Suite 回读样本。
+
 ### 音乐商店购买
 
 `POST /api/user/{userId}/shop/{shopId}/item/{shopItemId}`，无 body。客户端 `MusicShopDetailDialog.OnClickOK` 调用 `PostUserShopAPI`，成功后合并刷新数据并进入购买结果展示。

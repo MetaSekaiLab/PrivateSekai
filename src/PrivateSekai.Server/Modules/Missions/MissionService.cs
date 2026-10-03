@@ -123,6 +123,8 @@ public sealed class MissionService(
 
     public void RecordMusicPurchase() => RecordLimitedBeginnerProgress(master.GetMusicPurchaseMissions());
 
+    public void RecordCostumeChange() => RecordLimitedBeginnerProgress(master.GetCostumeChangeMissions());
+
     private void RecordLimitedBeginnerProgress(IEnumerable<MasterBeginnerMissionV2> definitions)
     {
         foreach (var definition in definitions)

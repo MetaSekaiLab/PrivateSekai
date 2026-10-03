@@ -36,6 +36,7 @@ internal static class UserResponseSerializer
                     s.missionType is "beginner_mission_v2" or "live_mission"),
                 new FieldFilterFormatter<UserLiveMission>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserShopItem>((s, key) => key == "level" && s.level == 0),
+                new FieldFilterFormatter<UserCostume3DStatus>((s, key) => key == "obtainedAt" && s.obtainedAt == 0 && s.status is "forbidden" or "sale"),
                 new FieldFilterFormatter<UserChallengeLivePlayStatus>((s, key) => key == "playEndAt" && s.liveStatus == "start")
             },
             new[] { DumpSerializer.Options.Resolver }));

@@ -74,6 +74,7 @@ ShopHttpChecks.WriteMaster(directory);
 GachaHttpChecks.WriteMaster(directory);
 LiveHttpChecks.WriteMaster(directory);
 MissionHttpChecks.WriteMaster(directory);
+CostumeHttpChecks.WriteMaster(directory);
 StoryHttpChecks.WriteMaster(directory);
 BookmarkHttpChecks.WriteMaster(directory);
 FavoriteHttpChecks.WriteMaster(directory);
@@ -82,6 +83,8 @@ MaterialExchangeHttpChecks.WriteMaster(directory);
 EventExchangeHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 LiveHttpChecks.WriteBoostMaster(directory);
+if (args is ["--replay-costume", _, var costumeMaster, _])
+    CostumeReplay.ImportMaster(costumeMaster, directory);
 if (args is ["--replay-live-mission" or "--replay-beginner-mission" or "--replay-beginner-repeat", _, var missionMaster, _])
     LiveMissionReplay.ImportMaster(missionMaster, directory);
 if (args is ["--replay-favorites", _, var favoriteMaster, _])
@@ -242,6 +245,11 @@ try
     JsonFiles.Write(Path.Combine(directory, "headers.json"), new Dictionary<string, string> { ["Accept"] = "application/octet-stream" });
     var config = new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = 1, RequireRotatingToken = true, HeadersFile = "headers.json" };
     using var client = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+    if (args is ["--replay-costume", var costumePath, _, var costumeOutput])
+    {
+        await CostumeReplay.Run(client, store, costumePath, costumeOutput);
+        return;
+    }
     if (args is ["--replay-beginner-repeat", var beginnerRepeatPath, _, var beginnerRepeatOutput])
     {
         await LiveMissionReplay.RunBeginnerRepeat(client, store, beginnerRepeatPath, beginnerRepeatOutput);
@@ -482,6 +490,7 @@ try
     await BookmarkHttpChecks.Run(client, store, directory, Check);
     await FavoriteHttpChecks.Run(client, store, directory, Check);
     await ProfileHttpChecks.Run(client, store, directory, Check);
+    await CostumeHttpChecks.Run(client, store, app.Services, directory, Check);
     await CustomProfileHttpChecks.Run(client, store, directory, Check);
     Check(imageRequests == 2 && !privateImageHeaders, "图片请求不发送 API 凭证且不消耗轮换 token");
     Fails(() => ThumbnailDownload.ValidatePath("https://example.invalid/image/custom-profile-card/thumbnail/a/b"), "图片拒绝外部 URL");

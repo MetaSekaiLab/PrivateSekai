@@ -49,7 +49,7 @@ internal static class TransportChecks
         var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
         using var thumbnails = new CustomProfileThumbnailStore();
         var controller = new ProfileController(operation, session,
-            new ProfileService(session, thumbnails));
+            new ProfileService(session, thumbnails), null!);
         var context = CreateContext(mvc, new PrskDecryptRequestAttribute(), new PrskEncryptResponseAttribute());
         controller.ControllerContext = new ControllerContext { HttpContext = context };
         using var originalBody = new MemoryStream();

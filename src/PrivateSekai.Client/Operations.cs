@@ -39,6 +39,7 @@ public static class Operations
         ["boost-item"] = new("POST", "/api/user/{userId}/boost-item", typeof(UserBoostItemRequest), "updatedResources"),
         ["present-receive"] = new("POST", "/api/user/{userId}/present", typeof(UserPresentAPIRequest), "receivedUserPresents"),
         ["shop-purchase"] = new("POST", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
+        ["character-costume-save"] = new("PUT", "/api/user/{userId}/character-costume-3d/character/{characterId}/unit/{unit}", typeof(UserCharacterCostume3DRequest), "updatedResources"),
         ["shop-upgrade"] = new("PUT", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
         ["material-exchange"] = new("PUT", "/api/user/{userId}/material-exchange/{materialExchangeId}", null, "updatedResources",
             RequiredIntegerQueries: new() { ["costGroupId"] = 0, ["count"] = 1 }),
@@ -104,6 +105,11 @@ public static class Operations
             {
                 if (!Enum.GetNames<StoryType>().Contains(pair.Value, StringComparer.Ordinal))
                     throw new InvalidOperationException("无效剧情类型。");
+            }
+            else if (pair.Key == "unit")
+            {
+                if (!Enum.GetNames<UnitType>().Any(u => u.ToUpperInvariant() == pair.Value))
+                    throw new InvalidOperationException("组合路径参数须使用客户端枚举的大写名称。");
             }
             else if (pair.Key is "userLiveId" or "userChallengeLiveId" or "inheritId")
             {
