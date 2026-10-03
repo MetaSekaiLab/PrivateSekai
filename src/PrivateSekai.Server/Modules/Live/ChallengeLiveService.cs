@@ -24,6 +24,25 @@ public sealed class ChallengeLiveService(
     MissionService missions,
     MissionMasterQueries missionMaster)
 {
+    public bool CompletePlay(string sessionId, UserChallengeLiveClearRequest clear)
+    {
+        if (!user.Private.ChallengeLiveSessions.TryGetValue(sessionId, out var start)) return false;
+        var status = user.Data.userChallengeLivePlayStatuses?.SingleOrDefault(s => s.userChallengeLiveId == sessionId);
+        if (status == null || status.liveStatus != "start") return false;
+        if (status.characterId != start.characterId || status.musicId != start.musicId ||
+            status.musicDifficultyId != start.musicDifficultyId || status.musicVoiceId != start.musicVocalId)
+            throw new InvalidOperationException("Challenge session does not match the play status.");
+        if (start.isAuto || status.isAuto || clear.life <= 0 || status.playCount != 0 || status.playStartAt > user.Now)
+            throw new NotSupportedException("Challenge completion mode is not verified.");
+        missions.RecordCharacterLiveClear(start.characterId);
+        status.liveStatus = "cleared";
+        status.playCount = 1;
+        status.playEndAt = user.Now;
+        user.Private.ChallengeLiveSessions.Remove(sessionId);
+        user.MarkChanged(nameof(SuiteUser.userChallengeLivePlayStatuses));
+        return true;
+    }
+
     public void UpdateMissions(UserChallengeLiveStartRequest start, UserChallengeLiveClearRequest clear)
     {
         var liveMissionPeriodId = missionMaster.GetLiveMissionPeriodId(user.Now);

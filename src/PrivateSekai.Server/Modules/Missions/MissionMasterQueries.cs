@@ -13,6 +13,9 @@ public sealed class MissionMasterQueries(MasterData master)
         master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
             .Where(m => m.characterId == characterId).ToArray();
 
+    public MasterCharacterMissionV2[] GetCharacterLiveMissions(int characterId) =>
+        GetCharacterMissions(characterId).Where(m => m.characterMissionType == "play_live").ToArray();
+
     public MasterEventMission[] GetEventItemConsumptionMissions(int eventId) =>
         master.GetTable<MasterEventMission>("eventMissions").Rows
             .Where(m => m.eventId == eventId && m.eventMissionType == "consume_event_item").ToArray();

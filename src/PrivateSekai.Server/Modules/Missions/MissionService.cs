@@ -163,6 +163,13 @@ public sealed class MissionService(
 
     public void RecordChallengeLiveClear() => RecordLimitedBeginnerProgress(master.GetChallengeLiveClearMissions());
 
+    public void RecordCharacterLiveClear(int characterId)
+    {
+        RecordCharacterMissionProgress(master.GetCharacterLiveMissions(characterId));
+        user.Data.userCharacterMissions = (user.Data.userCharacterMissions ?? [])
+            .OrderBy(m => m.characterMissionType, StringComparer.Ordinal).ThenBy(m => m.characterId).ToArray();
+    }
+
     public void RecordMusicPurchase() => RecordLimitedBeginnerProgress(master.GetMusicPurchaseMissions());
 
     public void RecordCostumeChange() => RecordBeginnerMissionProgress(master.GetCostumeChangeMissions());

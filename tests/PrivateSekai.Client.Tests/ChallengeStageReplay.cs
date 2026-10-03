@@ -14,7 +14,7 @@ internal static class ChallengeStageReplay
 {
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores", "configs", "liveMissions", "liveMissionPeriods", "beginnerMissionV2s" })
+        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores", "configs", "liveMissions", "liveMissionPeriods", "beginnerMissionV2s", "characterMissionV2s", "characterMissionV2ParameterGroups" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -44,6 +44,18 @@ internal static class ChallengeStageReplay
         state.Data.userBeginnerMissionV2s = official["before"]!["userBeginnerMissionV2s"]!.Deserialize<UserBeginnerMissionV2[]>(DumpJson.Options);
         foreach (var mission in state.Data.userLiveMissions ?? []) mission.userId = 1;
         foreach (var status in state.Data.userMissionStatuses ?? []) status.userId = 1;
+        state.Data.userChallengeLivePlayStatuses = official["before"]!["userChallengeLivePlayStatuses"]!.Deserialize<UserChallengeLivePlayStatus[]>(DumpJson.Options);
+        state.Data.userCharacterMissions = official["before"]!["userCharacterMissionV2s"]!.Deserialize<UserCharacterMissionV2[]>(DumpJson.Options);
+        state.Data.userCharacterLiveUsageCounts = official["before"]!["userCharacterLiveUsageCounts"]!.Deserialize<UserCharacterLiveUsageCount[]>(DumpJson.Options);
+        var characterStatuses = official["before"]!["userCharacterMissionV2Statuses"]!.DeepClone();
+        foreach (var status in characterStatuses.AsArray()) status!["userId"] = 1;
+        state.Data.userCharacterMissionStatuses = characterStatuses.Deserialize<UserCharacterMissionV2Status[]>(DumpJson.Options);
+        state.Private.ChallengeLiveSessions[sessionId] = new UserChallengeLiveStartRequest
+        {
+            characterId = characterId, musicId = playStatus["musicId"]!.GetValue<int>(),
+            musicDifficultyId = playStatus["musicDifficultyId"]!.GetValue<int>(),
+            musicVocalId = playStatus["musicVocalId"]!.GetValue<int>(), isAuto = playStatus["isAuto"]!.GetValue<bool>()
+        };
         store.Save(1, state);
         using var scope = provider.CreateScope();
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
@@ -64,6 +76,7 @@ internal static class ChallengeStageReplay
         {
             var result = service.AdvanceStage(start, clear);
             service.UpdateMissions(start, clear);
+            if (!service.CompletePlay(sessionId, clear)) throw new InvalidOperationException("挑战会话未完成。");
             actual = JsonSerializer.SerializeToNode(result, DumpJson.Options)!.AsObject();
             return user.BuildRefresh();
         });
@@ -77,6 +90,20 @@ internal static class ChallengeStageReplay
                 JsonSerializer.Deserialize<UserCharacter[]>(official["after"]!["userCharacters"]!.ToJsonString(), DumpJson.Options), DumpJson.Options),
             JsonSerializer.SerializeToNode(store.Read(1)!.Data.userCharacters, DumpJson.Options));
         var saved = store.Read(1)!.Data;
+        var playDifferences = Comparison.Diff(JsonSerializer.SerializeToNode(
+            official["after"]!["userChallengeLivePlayStatuses"]!.Deserialize<UserChallengeLivePlayStatus[]>(DumpJson.Options), DumpJson.Options),
+            JsonSerializer.SerializeToNode(saved.userChallengeLivePlayStatuses, DumpJson.Options));
+        var expectedCharacterStatuses = official["after"]!["userCharacterMissionV2Statuses"]!.DeepClone();
+        foreach (var status in expectedCharacterStatuses.AsArray()) status!["userId"] = 1;
+        var characterMissionDifferences = Comparison.Diff(JsonSerializer.SerializeToNode(new
+        {
+            progress = official["after"]!["userCharacterMissionV2s"]!.Deserialize<UserCharacterMissionV2[]>(DumpJson.Options),
+            statuses = expectedCharacterStatuses.Deserialize<UserCharacterMissionV2Status[]>(DumpJson.Options),
+            usage = official["after"]!["userCharacterLiveUsageCounts"]!.Deserialize<UserCharacterLiveUsageCount[]>(DumpJson.Options)
+        }, DumpJson.Options), JsonSerializer.SerializeToNode(new
+        {
+            progress = saved.userCharacterMissions, statuses = saved.userCharacterMissionStatuses, usage = saved.userCharacterLiveUsageCounts
+        }, DumpJson.Options));
         var expectedMissions = new
         {
             live = official["after"]!["userLiveMissions"]!.Deserialize<UserLiveMission[]>(DumpJson.Options),
@@ -91,14 +118,25 @@ internal static class ChallengeStageReplay
             JsonSerializer.SerializeToNode(actualMissions, DumpJson.Options));
         JsonFiles.Write(Path.Combine(output, "challenge-stage-compare.json"), new
         {
-            scope = "评分、普通挑战点数、阶段、角色升级和任务业务重放；按结算时间查询周期，不验证跨期演出或完整 HTTP 结算",
+            scope = "评分、点数、阶段、角色升级、任务及完成状态业务重放；按结算时间查询周期，不验证跨期演出或完整 HTTP 结算",
             scoreRank,
             expected = projected, actual,
-            resultDifferences = differences, stageDifferences, characterDifferences, missionDifferences,
+            resultDifferences = differences, stageDifferences, characterDifferences, missionDifferences, playDifferences, characterMissionDifferences,
             actualStages = after
         });
-        if (differences.Count != 0 || stageDifferences.Count != 0 || characterDifferences.Count != 0 || missionDifferences.Count != 0)
+        if (differences.Count != 0 || stageDifferences.Count != 0 || characterDifferences.Count != 0 || missionDifferences.Count != 0 ||
+            playDifferences.Count != 0 || characterMissionDifferences.Count != 0)
             throw new InvalidOperationException("挑战阶段与官方样本存在差异，见重放报告。");
+        if (store.Read(1)!.Private.ChallengeLiveSessions.ContainsKey(sessionId))
+            throw new InvalidOperationException("已完成的私有挑战会话未清理。");
+        var persisted = JsonSerializer.Serialize(saved, DumpJson.Options);
+        operations.Execute(1, () =>
+        {
+            if (service.CompletePlay(sessionId, clear)) throw new InvalidOperationException("重复挑战结算未拒绝。");
+            return null;
+        });
+        if (JsonSerializer.Serialize(store.Read(1)!.Data, DumpJson.Options) != persisted)
+            throw new InvalidOperationException("重复挑战结算改变用户状态。");
         Console.WriteLine("挑战阶段业务重放通过；不代表完整结算接口通过。");
     }
 }

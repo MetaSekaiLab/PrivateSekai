@@ -2071,6 +2071,10 @@ Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 从请
 
 该回放同时比较 `userLiveMissions`、`userBeginnerMissionV2s`、`userMissionStatuses` 的完整业务状态，五份样本一致。回放时间固定为官方结算响应的 `updatedResources.now`，周期独立查询 master；D／C 档样本通过。用户 ID 映射为本地测试账号，不据此验证网络字段省略规则。后续挑战不重复推进已达成新手任务，以及编码失败回滚两类任务，另有本地检查。
 
+成功挑战的完成状态已接入业务层：核对私有会话与参与状态后，将 `liveStatus` 从 `start` 改为 `cleared`、`playCount` 从 0 改为 1，并记录 `playEndAt`，保留开局时间和曲目字段。对应角色的 `play_live` 任务进度增加 1，首次新增时按任务类型、角色 ID 排序；`userCharacterLiveUsageCounts` 不增加队长或成员次数。五份官方样本的完成状态、角色任务及使用次数回放一致，覆盖首次新增和已有进度递增；角色任务跨门槛仍待官方样本。
+
+完成后移除本地私有会话，同一会话不能再次完成。该防重复策略及编码失败时恢复会话、次数和角色任务有本地检查，不代表官方重复成功结算的状态码已核验；完整结算入口仍未接入，发奖与会话完成必须放在同一次用户操作中。
+
 高分业务已实现：保存角色最高分，按 master 门槛发放未记录的奖励，保存 `complete` 记录。四份样本经 `--replay-challenge-high-score` 重放，覆盖未达门槛和首次达到单个门槛，解码后响应、最高分及已领记录一致。一次跨越多门槛、较低成绩和重复成绩只有本地检查，仍需官方样本。
 
 首次出勤业务已实现：写前没有 `userChallengeLivePlayDay` 时，记录 `playDays=1`、状态 `received` 和开局时间，按 `challenge_live_play_day_reward` 资源盒发奖。客户端奖励期筛选为 `startAt < 时间 < endAt`，按 `priority` 升序取首项；使用 UTC+9、master 的 `date_change_hour` 和周一重置规则计算 `playDaysResetAt`。四份首次样本经 `--replay-challenge-play-day` 业务重放一致。后续出勤、跨日切／奖励期结算、其他周重置配置和选择奖励暂不支持，尚未据此接通完整结算路由。

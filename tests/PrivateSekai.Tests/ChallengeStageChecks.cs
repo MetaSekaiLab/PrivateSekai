@@ -38,6 +38,12 @@ internal static class ChallengeStageChecks
         File.WriteAllText(Path.Combine(directory, "liveMissions.json"), """
             [{"id":81,"liveMissionPeriodId":9,"liveMissionType":"free","requirement":30}]
             """);
+        File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"), """
+            [{"id":91,"characterId":1,"characterMissionType":"play_live","parameterGroupId":1}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "characterMissionV2ParameterGroups.json"), """
+            [{"id":1,"seq":1,"requirement":10}]
+            """);
         File.WriteAllText(Path.Combine(directory, "musicDifficulties.json"), """
             [{"id":1,"playLevel":5},{"id":2,"playLevel":6}]
             """);
@@ -103,6 +109,43 @@ internal static class ChallengeStageChecks
             challenges.AdvanceStage(1, point);
             return user.BuildRefresh();
         });
+        Reset();
+        var playing = store.Read(1)!;
+        playing.Private.ChallengeLiveSessions["session"] = new UserChallengeLiveStartRequest { characterId = 1, musicId = 1 };
+        playing.Data.userChallengeLivePlayStatuses = [new() { userChallengeLiveId = "session", characterId = 1,
+            musicId = 1, liveStatus = "start", playStartAt = 1 }];
+        store.Save(1, playing);
+        Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+        {
+            challenges.CompletePlay("session", new UserChallengeLiveClearRequest { life = 1000 });
+            return new BrokenResponse();
+        }), "挑战完成状态编码失败");
+        Check.That(store.Read(1)!.Private.ChallengeLiveSessions.ContainsKey("session") &&
+            store.Read(1)!.Data.userChallengeLivePlayStatuses.Single().liveStatus == "start" &&
+            store.Read(1)!.Data.userCharacterMissions?.Any() != true,
+            "编码失败回滚会话移除、次数与角色任务");
+        operations.Execute(1, () =>
+        {
+            Check.That(!challenges.CompletePlay("stale", new UserChallengeLiveClearRequest { life = 1000 }),
+                "未知挑战会话不完成演出");
+            Check.That(challenges.CompletePlay("session", new UserChallengeLiveClearRequest { life = 1000 }),
+                "完成当前挑战会话");
+            return user.BuildRefresh();
+        });
+        var completed = store.Read(1)!;
+        Check.That(completed.Private.ChallengeLiveSessions.Count == 0 &&
+            completed.Data.userChallengeLivePlayStatuses.Single().playCount == 1 &&
+            completed.Data.userChallengeLivePlayStatuses.Single().liveStatus == "cleared" &&
+            completed.Data.userChallengeLivePlayStatuses.Single().playEndAt > 1 &&
+            completed.Data.userCharacterMissions.Single().progress == 1,
+            "成功挑战记次数和结束时间并增加一次角色任务进度");
+        operations.Execute(1, () =>
+        {
+            Check.That(!challenges.CompletePlay("session", new UserChallengeLiveClearRequest { life = 1000 }),
+                "重复完成不再计次");
+            return user.BuildRefresh();
+        });
+        Check.That(store.Read(1)!.Data.userCharacterMissions.Single().progress == 1, "重复完成不增加角色任务");
         Reset();
         void UpdateMissions() => challenges.UpdateMissions(new UserChallengeLiveStartRequest { characterId = 1 },
             new UserChallengeLiveClearRequest { life = 1000 });
