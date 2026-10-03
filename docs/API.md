@@ -2013,6 +2013,7 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 - Body：`score`、各判定计数、`maxCombo`、`life`、`tapCount`、`continueCount`、`musicCategoryName`、`isMirrored`。模型中的 fast／late／flick 计数标记为 IgnoreMember，不发送。
 - 主要响应：`scoreRank`、成绩标志、玩家／卡牌经验、`userChallengeLiveStageResult`、`userChallengeLiveHighScoreResult`、各类奖励和出勤状态。成功样本的参与状态更新为 `cleared`、`playCount=1`，新增 `playEndAt`。
 - 评分使用 `playLevelScores.liveType=challenge_live`，不能复用普通 solo 阈值。
+- 高分奖励预览从当前角色的 `challengeLiveHighScoreRewards` 读取门槛，按 `highScore` 升序展示；列表的已领标记通过用户记录的 `challengeLiveHighScoreRewardId` 匹配 master `id`。结算响应 `userChallengeLiveHighScoreResult.rewards` 中对应字段名为 `challengeLiveHighScoreId`，资源列表为 `userResources`，不能与存档字段混用。尚需成功达到奖励门槛的样本核验发放和状态。
 - `ChallengeLiveUtility` 按各阶段所需点数累加和定位当前阶段，达到门槛即进入下一阶段。普通阶段样本验证了跨级和剩余点数；EX 阶段仍需独立核验。
 - 两次 C 档样本的 `userLivePoint.addNormalProgress=30`、`addDailyBonusProgress=0`，与 `configs.obtain_live_point_for_challenge_live` 一致；`livePointBonusRemaining=3`。其中一份样本的 `userLiveMissions.progress` 从 150 增至 180，`paidProgress` 仍为 0。两份样本的 `userBoost` 均未变化；其他评分、付费状态和跨日情形仍待核验。
 
