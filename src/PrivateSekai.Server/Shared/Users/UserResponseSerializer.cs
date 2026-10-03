@@ -19,6 +19,7 @@ internal static class UserResponseSerializer
                 new ChallengeStartFormatter(),
                 new EventExchangeFormatter(),
                 new MissionReceiveFormatter(),
+                new CostumeShopFormatter(),
                 new FieldFilterFormatter<UserEventExchange>((s, key) =>
                     key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0),
                 new FieldFilterFormatter<UserMaterialExchange>((s, key) =>
@@ -76,6 +77,22 @@ internal static class UserResponseSerializer
 
         public UserMissionReceiveResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
             DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserMissionReceiveResponse>().Deserialize(ref reader, DumpSerializer.Options);
+    }
+
+    internal sealed class CostumeShopFormatter : IMessagePackFormatter<UserCostume3DShopResponse?>
+    {
+        public void Serialize(ref MessagePackWriter writer, UserCostume3DShopResponse? value, MessagePackSerializerOptions options)
+        {
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) =>
+                    r.resourceType == "material" && key == "resourceLevel" && r.resourceLevel == 0) },
+                new[] { options.Resolver }));
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserCostume3DShopResponse>()
+                .Serialize(ref writer, value!, scoped);
+        }
+
+        public UserCostume3DShopResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserCostume3DShopResponse>().Deserialize(ref reader, DumpSerializer.Options);
     }
 
     internal sealed class ChallengeStartFormatter : IMessagePackFormatter<UserChallengeLiveStartResponse?>

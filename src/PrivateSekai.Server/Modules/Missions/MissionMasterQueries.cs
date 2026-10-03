@@ -52,6 +52,18 @@ public sealed class MissionMasterQueries(MasterData master)
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "change_any_character_costume").ToArray();
 
+    public MasterBeginnerMissionV2[] GetCostumeCraftMissions() =>
+        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
+            .Where(m => m.beginnerMissionV2Type == "make_any_costume").ToArray();
+
+    public MasterCharacterMissionV2[] GetCostumeCollectionMissions(int characterId) =>
+        master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
+            .Where(m => m.characterId == characterId && m.characterMissionType == "collect_costume_3d").ToArray();
+
+    public MasterHonorMission[] GetCostumeHonorMissions() =>
+        master.GetTable<MasterHonorMission>("honorMissions", m => m.id).Rows
+            .Where(m => m.honorMissionType == "collect_costume_3d").ToArray();
+
     public MasterBeginnerMissionV2[] GetBeginnerCompletionMissions() =>
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "achieve_all_missions").ToArray();

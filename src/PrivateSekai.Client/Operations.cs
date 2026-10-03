@@ -40,6 +40,7 @@ public static class Operations
         ["present-receive"] = new("POST", "/api/user/{userId}/present", typeof(UserPresentAPIRequest), "receivedUserPresents"),
         ["shop-purchase"] = new("POST", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
         ["character-costume-save"] = new("PUT", "/api/user/{userId}/character-costume-3d/character/{characterId}/unit/{unit}", typeof(UserCharacterCostume3DRequest), "updatedResources"),
+        ["costume-craft"] = new("POST", "/api/user/{userId}/costume-3d-shop/{shopItemId}", null, "updatedResources"),
         ["shop-upgrade"] = new("PUT", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
         ["material-exchange"] = new("PUT", "/api/user/{userId}/material-exchange/{materialExchangeId}", null, "updatedResources",
             RequiredIntegerQueries: new() { ["costGroupId"] = 0, ["count"] = 1 }),

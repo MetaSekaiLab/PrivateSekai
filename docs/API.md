@@ -2129,6 +2129,18 @@ Server 已接入已有穿戴槽位保存、角色与部位匹配、持有检查�
 
 证据：`PutUserCharacterCostume3DAPI` 构造、Execute 与回调，请求和穿戴模型契约、`costume3ds`、`beginnerMissionV2s`，以及官方更换和 Suite 回读样本。
 
+## POST `/api/user/{userId}/costume-3d-shop/{shopItemId}`
+
+- Path：当前 `userId` 与服装商店商品 `shopItemId`；无 query 和 body。客户端确认制作后发送请求。
+- Response：`UserCostume3DShopResponse`，包含 `consumedCosts`、`obtainedResources` 和 `updatedResources`，用于显示制作结果并刷新用户数据。
+- 官方身体服装制作样本：按 `costume3dShopItems.costs` 扣除材料，发放所选身体服装；已有 `sale` 记录转为 `available` 并写入 `obtainedAt`，商品转为 `sold_out`，未自动更换穿戴。
+- 同步推进 `make_any_costume`、对应角色的 `collect_costume_3d` 和荣誉收集进度。新手 `isNewAchieved` 和角色 `achievedMissions` 为当次响应提示，不持久化。
+- 材料消耗省略零值 `resourceLevel`，服装奖励保留 `resourceLevel=0`。
+
+Server 当前接入普通身体服装制作，Client 提供 `costume-craft` 和 `--replay-costume-craft`。已取得样本的材料、服装、商店及三类任务字段 HTTP 对拍一致。含头饰的组合商品、荣誉任务达到门槛后的变化，以及失败请求的官方错误码仍待核验；需要对应制作响应和前后 Suite。未核验的组合商品及荣誉达成暂不执行，事务失败不保留扣材。
+
+证据：`PostUserCostume3DShopAPI`、`UserCostume3DShopResponse`、服装商店和任务 master，以及官方制作与 Suite 回读样本。
+
 ### 音乐商店购买
 
 `POST /api/user/{userId}/shop/{shopId}/item/{shopItemId}`，无 body。客户端 `MusicShopDetailDialog.OnClickOK` 调用 `PostUserShopAPI`，成功后合并刷新数据并进入购买结果展示。

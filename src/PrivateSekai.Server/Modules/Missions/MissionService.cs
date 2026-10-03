@@ -125,6 +125,26 @@ public sealed class MissionService(
 
     public void RecordCostumeChange() => RecordBeginnerMissionProgress(master.GetCostumeChangeMissions());
 
+    public UserCharacterMissionV2Status[] RecordCostumeCraft(int characterId)
+    {
+        var honors = (user.Data.userHonorMissions ?? []).ToList();
+        var honor = honors.SingleOrDefault(m => m.honorMissionType == "collect_costume_3d");
+        var progress = checked((honor?.progress ?? 0) + 1);
+        if (master.GetCostumeHonorMissions().Any(m => progress >= m.requirement))
+            throw new NotSupportedException("Costume honor achievement is not verified.");
+        if (honor == null)
+        {
+            honor = new UserHonorMission { honorMissionType = "collect_costume_3d", achievedMissionIds = [] };
+            var index = honors.FindIndex(m => string.CompareOrdinal(m.honorMissionType, honor.honorMissionType) > 0);
+            honors.Insert(index < 0 ? honors.Count : index, honor);
+        }
+        honor.progress = progress;
+        user.Data.userHonorMissions = honors.ToArray();
+        user.MarkChanged(nameof(SuiteUser.userHonorMissions));
+        RecordBeginnerMissionProgress(master.GetCostumeCraftMissions());
+        return RecordCharacterMissionProgress(master.GetCostumeCollectionMissions(characterId));
+    }
+
     private void RecordLimitedBeginnerProgress(IEnumerable<MasterBeginnerMissionV2> definitions)
     {
         foreach (var definition in definitions)

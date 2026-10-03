@@ -9,4 +9,7 @@ public sealed class CostumeMasterQueries(MasterData master)
 {
     public MasterCostume3D? GetCostume(int id) =>
         master.GetTable<MasterCostume3D>("costume3ds", c => c.id).FindById(id);
+
+    public MasterCostume3DShopItem? GetShopItem(int id) =>
+        master.GetTable<MasterCostume3DShopItem>("costume3dShopItems", c => c.id).FindById(id);
 }

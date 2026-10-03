@@ -10,6 +10,33 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileController(UserOperation operations, UserSession user, ProfileService profiles, CostumeService costumes) : PrskController
 {
+    [HttpPost("api/user/{userId}/costume-3d-shop/{shopItemId}")]
+    public IActionResult CraftCostume(long userId, int shopItemId) => Encoded(operations.Execute(userId, () =>
+    {
+        var previous = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "beginner_mission_v2" &&
+            s.missionStatus is "achieved" or "received").Select(s => s.missionId).ToHashSet();
+        var result = costumes.Craft(shopItemId);
+        var refresh = user.BuildRefresh();
+        if (refresh.userBeginnerMissionV2s != null)
+        {
+            var achieved = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "beginner_mission_v2" &&
+                s.missionStatus == "achieved" && !previous.Contains(s.missionId)).Select(s => s.missionId).ToHashSet();
+            refresh.userBeginnerMissionV2s = refresh.userBeginnerMissionV2s.Select(m => new UserBeginnerMissionV2
+            {
+                beginnerMissionV2Id = m.beginnerMissionV2Id, progress = m.progress,
+                isNewAchieved = achieved.Contains(m.beginnerMissionV2Id)
+            }).ToArray();
+        }
+        if (refresh.userCharacterMissions != null)
+            refresh.userCharacterMissions = refresh.userCharacterMissions.Select(m => new UserCharacterMissionV2
+            {
+                userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType, progress = m.progress,
+                achievedMissions = m.characterMissionType == "collect_costume_3d"
+                    ? result.Achieved.Where(s => s.characterId == m.characterId).ToArray() : m.achievedMissions
+            }).ToArray();
+        return new UserCostume3DShopResponse { consumedCosts = result.Costs, obtainedResources = result.Rewards, updatedResources = refresh };
+    }));
+
     [HttpPut("api/user/{userId}/character-costume-3d/character/{characterId}/unit/{unit}")]
     public IActionResult SaveCostume(long userId, int characterId, string unit, [FromBody] UserCharacterCostume3DRequest request) =>
         Encoded(operations.Execute(userId, () =>

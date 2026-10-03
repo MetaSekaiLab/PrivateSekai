@@ -9,11 +9,12 @@ using PrivateSekai.Storage;
 
 internal static class CostumeReplay
 {
-    private static readonly string[] Fields = ["userCharacterCostume3ds", "userCostume3dStatuses", "userBeginnerMissionV2s", "userMissionStatuses"];
+    private static readonly string[] Fields = ["userCharacterCostume3ds", "userCostume3dStatuses", "userCostume3dShopItems", "userMaterials",
+        "userBeginnerMissionV2s", "userMissionStatuses", "userCharacterMissionV2s", "userCharacterMissionV2Statuses", "userHonorMissions"];
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "costume3ds", "beginnerMissionV2s" })
+        foreach (var table in new[] { "costume3ds", "costume3dShopItems", "beginnerMissionV2s", "characterMissionV2s", "characterMissionV2ParameterGroups", "honorMissions" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -22,17 +23,20 @@ internal static class CostumeReplay
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
             throw new InvalidOperationException("重放输出目录必须为空。");
         var official = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        if (official["operation"]?.GetValue<string>() != "character-costume-save" || official["status"]?.GetValue<string>() != "completed")
-            throw new InvalidOperationException("需要成功的服装保存记录。");
+        var operation = official["operation"]?.GetValue<string>();
+        if (operation is not ("character-costume-save" or "costume-craft") || official["status"]?.GetValue<string>() != "completed")
+            throw new InvalidOperationException("需要成功的服装保存或制作记录。");
         var state = store.Read(1)!;
+        var baseline = official["before"]!.DeepClone();
+        foreach (var status in baseline["userCharacterMissionV2Statuses"]?.AsArray() ?? []) status!["userId"] = 1;
         foreach (var member in DumpContract.For(typeof(SuiteUser)).Members.Where(m => Fields.Contains((string)m.Key)))
-            if (official["before"]![(string)member.Key] is { } value)
+            if (baseline[(string)member.Key] is { } value)
                 member.Set(state.Data, JsonSerializer.Deserialize(value.ToJsonString(), member.Type, DumpJson.Options));
         store.Save(1, state);
         await client.Send(new() { Operation = "system" });
         await ScenarioRunner.Run(client, new() { Steps = [new()
         {
-            Operation = "character-costume-save", Body = official["request"]!.DeepClone().AsObject(),
+            Operation = operation, Body = official["request"]?.DeepClone().AsObject(),
             Args = JsonSerializer.Deserialize<Dictionary<string, string>>(official["args"]!.ToJsonString())!
         }] }, output);
         var local = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "001.json")))!.AsObject();
@@ -47,8 +51,8 @@ internal static class CostumeReplay
         if (!report["complete"]!.GetValue<bool>() ||
             new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
                 .Any(k => report[k]!.AsArray().Count != 0))
-            throw new InvalidOperationException("服装保存与官方样本存在差异，见报告。");
-        Console.WriteLine("服装保存和新手任务相关字段 HTTP 对拍通过，其他背景字段未覆盖。");
+            throw new InvalidOperationException("服装操作与官方样本存在差异，见报告。");
+        Console.WriteLine("服装、材料和相关任务字段 HTTP 对拍通过，其他背景字段未覆盖。");
     }
 
     private static JsonObject Select(JsonNode? source) => new(Fields

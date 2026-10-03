@@ -22,14 +22,15 @@ public sealed class ProfileResourceHandler : IResourceHandler
         {
             case "costume_3d":
                 var costumes = (user.Data.userCostume3dStatuses ?? []).ToList();
-                if (costumes.Any(c => c.costume3dId == resource.resourceId))
-                    return;
-                costumes.Add(new UserCostume3DStatus
+                var costume = costumes.SingleOrDefault(c => c.costume3dId == resource.resourceId);
+                if (costume?.status == "available") return;
+                if (costume == null)
                 {
-                    costume3dId = resource.resourceId,
-                    obtainedAt = user.Now,
-                    status = "available"
-                });
+                    costume = new UserCostume3DStatus { costume3dId = resource.resourceId };
+                    costumes.Add(costume);
+                }
+                costume.obtainedAt = user.Now;
+                costume.status = "available";
                 user.Data.userCostume3dStatuses = costumes.OrderBy(c => c.costume3dId).ToArray();
                 user.MarkChanged(nameof(SuiteUser.userCostume3dStatuses));
                 user.MarkChanged(nameof(SuiteUser.userCostume3dShopItems));

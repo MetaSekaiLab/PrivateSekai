@@ -81,9 +81,10 @@ FavoriteHttpChecks.WriteMaster(directory);
 ChallengeDeckHttpChecks.WriteMaster(directory);
 MaterialExchangeHttpChecks.WriteMaster(directory);
 EventExchangeHttpChecks.WriteMaster(directory);
+CostumeHttpChecks.WriteCraftMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 LiveHttpChecks.WriteBoostMaster(directory);
-if (args is ["--replay-costume", _, var costumeMaster, _])
+if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
     CostumeReplay.ImportMaster(costumeMaster, directory);
 if (args is ["--replay-live-mission" or "--replay-beginner-mission" or "--replay-beginner-repeat", _, var missionMaster, _])
     LiveMissionReplay.ImportMaster(missionMaster, directory);
@@ -138,6 +139,8 @@ store.Save(1, new UserState { Data = new SuiteUser
 builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
     .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
+if (args is ["--replay-costume-craft", var craftCapture, _, _])
+    builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(craftCapture));
 if (args is ["--replay-login-bonus", var loginCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(LoginBonusReplay.Clock(loginCapture));
 if (args is ["--replay-present", var replayCapture, _])
@@ -245,7 +248,7 @@ try
     JsonFiles.Write(Path.Combine(directory, "headers.json"), new Dictionary<string, string> { ["Accept"] = "application/octet-stream" });
     var config = new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = 1, RequireRotatingToken = true, HeadersFile = "headers.json" };
     using var client = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
-    if (args is ["--replay-costume", var costumePath, _, var costumeOutput])
+    if (args is ["--replay-costume" or "--replay-costume-craft", var costumePath, _, var costumeOutput])
     {
         await CostumeReplay.Run(client, store, costumePath, costumeOutput);
         return;
@@ -491,6 +494,7 @@ try
     await FavoriteHttpChecks.Run(client, store, directory, Check);
     await ProfileHttpChecks.Run(client, store, directory, Check);
     await CostumeHttpChecks.Run(client, store, app.Services, directory, Check);
+    await CostumeHttpChecks.RunCraft(client, store, app.Services, directory, Check);
     await CustomProfileHttpChecks.Run(client, store, directory, Check);
     Check(imageRequests == 2 && !privateImageHeaders, "图片请求不发送 API 凭证且不消耗轮换 token");
     Fails(() => ThumbnailDownload.ValidatePath("https://example.invalid/image/custom-profile-card/thumbnail/a/b"), "图片拒绝外部 URL");
