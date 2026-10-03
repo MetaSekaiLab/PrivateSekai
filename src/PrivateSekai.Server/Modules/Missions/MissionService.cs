@@ -212,6 +212,7 @@ public sealed class MissionService(
     public UserMissionReceiveResponse ReceiveBeginnerMissionV2Rewards(int[]? missionIds)
     {
         var obtainedRewards = new List<UserResource>();
+        var normalReceived = 0;
         if (missionIds == null || missionIds.Length == 0)
         {
             return new UserMissionReceiveResponse
@@ -231,6 +232,7 @@ public sealed class MissionService(
             if (status?.missionStatus != "achieved")
                 throw new ArgumentException("Beginner mission is not achieved.");
             MarkMissionReceived(BeginnerMissionV2Type, missionId);
+            if (mission.beginnerMissionV2Category == "normal") normalReceived++;
             foreach (var reward in mission?.rewards ?? [])
             {
                 var resources = resourceMaster.BuildResourcesFromBox("mission_reward", reward.resourceBoxId);
@@ -242,6 +244,25 @@ public sealed class MissionService(
             }
         }
 
+        if (normalReceived > 0)
+        {
+            foreach (var definition in master.GetBeginnerCompletionMissions())
+            {
+                var records = (user.Data.userBeginnerMissionV2s ?? []).ToList();
+                var progress = records.SingleOrDefault(m => m.beginnerMissionV2Id == definition.id);
+                var updated = checked((progress?.progress ?? 0) + normalReceived);
+                if (updated >= definition.requirement)
+                    throw new NotSupportedException("Beginner completion mission achievement is not verified.");
+                if (progress == null)
+                {
+                    progress = new UserBeginnerMissionV2 { beginnerMissionV2Id = definition.id };
+                    records.Add(progress);
+                }
+                progress.progress = updated;
+                progress.isNewAchieved = false;
+                user.Data.userBeginnerMissionV2s = records.OrderBy(m => m.beginnerMissionV2Id).ToArray();
+            }
+        }
         user.MarkChanged(nameof(SuiteUser.userBeginnerMissionV2s));
         user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
 

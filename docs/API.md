@@ -2119,7 +2119,13 @@ Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示
 
 `PUT /api/user/{userId}/mission/beginner_mission_v2`，body 为 `missionIds` 数组。官方已达成任务首次领取成功；对同一已领取 ID 再次请求返回 HTTP 409，正文为 `httpStatus=409`、`errorCode=""`、`errorMessage=""`。随后回读确认材料、新手任务进度和任务状态均不变。
 
-Server 已在用户事务内检查已领取状态，拒绝时回滚整次操作；Client 的 `--replay-beginner-repeat` 对齐该拒绝样本的 HTTP 状态、错误正文，并检查本地用户状态不变。未达成或不存在的任务也不允许发奖，但这些输入的官方错误响应尚未核验。混合批量请求的官方行为、首次领奖的完整联动仍待核验。
+Server 已在用户事务内检查已领取状态，拒绝时回滚整次操作；Client 的 `--replay-beginner-repeat` 对齐该拒绝样本的 HTTP 状态、错误正文，并检查本地用户状态不变。未达成或不存在的任务也不允许发奖，但这些输入的官方错误响应尚未核验。包含已领取任务的混合批量请求仍待核验。
+
+### 新手任务成功领奖与总任务进度
+
+单领普通任务和批量领取两个普通任务的官方样本确认：`achieve_all_missions` 进度分别增加 1 和 2，随 `userBeginnerMissionV2s` 刷新；未达总门槛时 `isNewAchieved=false`。计数发生在领奖时，不是普通任务刚达成时。批量奖励保留每个任务的资源记录，未把相同水晶奖励合并。材料奖励保留 `resourceId`，省略零值 `resourceLevel`；水晶奖励省略零值 ID 和等级。
+
+Server 已接入总任务未达门槛时的领奖计数，Client 提供 `--replay-beginner-mission`。两份成功样本的材料、水晶、任务进度、状态和奖励响应 HTTP 对拍无差异；其他背景字段不在该结论内。总任务最终达成及完成奖励尚未核验，触及该门槛时当前实现会整体回滚，暂不支持最后一次普通任务领奖。
 
 ### 普通 Live 结算：新手演出任务
 

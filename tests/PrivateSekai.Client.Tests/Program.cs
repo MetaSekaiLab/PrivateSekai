@@ -82,7 +82,7 @@ MaterialExchangeHttpChecks.WriteMaster(directory);
 EventExchangeHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 LiveHttpChecks.WriteBoostMaster(directory);
-if (args is ["--replay-live-mission" or "--replay-beginner-repeat", _, var missionMaster, _])
+if (args is ["--replay-live-mission" or "--replay-beginner-mission" or "--replay-beginner-repeat", _, var missionMaster, _])
     LiveMissionReplay.ImportMaster(missionMaster, directory);
 if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
@@ -247,7 +247,7 @@ try
         await LiveMissionReplay.RunBeginnerRepeat(client, store, beginnerRepeatPath, beginnerRepeatOutput);
         return;
     }
-    if (args is ["--replay-live-mission", var missionPath, _, var missionOutput])
+    if (args is ["--replay-live-mission" or "--replay-beginner-mission", var missionPath, _, var missionOutput])
     {
         await LiveMissionReplay.Run(client, store, missionPath, missionOutput);
         return;

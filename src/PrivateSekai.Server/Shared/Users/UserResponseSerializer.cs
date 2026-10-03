@@ -64,8 +64,9 @@ internal static class UserResponseSerializer
         public void Serialize(ref MessagePackWriter writer, UserMissionReceiveResponse? value, MessagePackSerializerOptions options)
         {
             var scoped = options.WithResolver(CompositeResolver.Create(
-                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) => r.resourceType == "coin" &&
-                    ((key == "resourceLevel" && r.resourceLevel == 0) || (key == "resourceId" && r.resourceId == 0))) },
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) =>
+                    (r.resourceType is "coin" or "jewel" or "material" && key == "resourceLevel" && r.resourceLevel == 0) ||
+                    (r.resourceType is "coin" or "jewel" && key == "resourceId" && r.resourceId == 0)) },
                 new[] { options.Resolver }));
             DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserMissionReceiveResponse>()
                 .Serialize(ref writer, value!, scoped);

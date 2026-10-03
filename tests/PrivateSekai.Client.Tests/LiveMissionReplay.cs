@@ -9,7 +9,7 @@ using PrivateSekai.Storage;
 
 internal static class LiveMissionReplay
 {
-    private static readonly string[] Fields = ["userGamedata", "userLiveMissions", "userMissionStatuses"];
+    private static readonly string[] Fields = ["userGamedata", "userLiveMissions", "userMissionStatuses", "userBeginnerMissionV2s", "userMaterials", "userChargedCurrency"];
 
     public static void ImportMaster(string source, string destination)
     {
@@ -57,8 +57,9 @@ internal static class LiveMissionReplay
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
             throw new InvalidOperationException("重放输出目录必须为空。");
         var official = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        if (official["operation"]?.GetValue<string>() != "live-mission-receive" || official["status"]?.GetValue<string>() != "completed")
-            throw new InvalidOperationException("需要成功的 Live 任务领奖记录。");
+        var operation = official["operation"]?.GetValue<string>();
+        if (operation is not ("live-mission-receive" or "beginner-mission-receive") || official["status"]?.GetValue<string>() != "completed")
+            throw new InvalidOperationException("需要成功的任务领奖记录。");
         var state = store.Read(1)!;
         var before = official["before"]!.DeepClone();
         foreach (var field in Fields)
@@ -74,7 +75,7 @@ internal static class LiveMissionReplay
         await client.Send(new() { Operation = "system" });
         await ScenarioRunner.Run(client, new() { Steps = [new()
         {
-            Operation = "live-mission-receive", Body = official["request"]!.DeepClone().AsObject()
+            Operation = operation, Body = official["request"]!.DeepClone().AsObject()
         }] }, output);
         var local = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "001.json")))!.AsObject();
         JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official, local));
@@ -89,7 +90,7 @@ internal static class LiveMissionReplay
             new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
                 .Any(k => report[k]!.AsArray().Count != 0))
             throw new InvalidOperationException("Live 任务领奖存在差异，见重放报告。");
-        Console.WriteLine("Live 任务领奖的金币、任务进度、任务状态和奖励响应对拍通过；其他奖励种类及背景字段未覆盖。");
+        Console.WriteLine("任务领奖的金币、材料、水晶、任务进度、任务状态和奖励响应对拍通过；其他奖励种类及背景字段未覆盖。");
     }
 
     private static JsonObject Select(JsonNode? source)

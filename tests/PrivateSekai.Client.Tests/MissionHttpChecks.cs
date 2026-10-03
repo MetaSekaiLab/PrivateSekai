@@ -9,7 +9,7 @@ internal static class MissionHttpChecks
     {
         // 测试奖励数值，不用于官方场景。
         File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"),
-            """[{"id":1,"beginnerMissionV2Type":"any_live_clear","requirement":1},{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":41}]},{"id":7,"beginnerMissionV2Type":"read_both_of_card_story","requirement":1}]""");
+            """[{"id":1,"beginnerMissionV2Type":"any_live_clear","requirement":1},{"id":6,"beginnerMissionV2Type":"any_card_level_up","beginnerMissionV2Category":"normal","requirement":1,"rewards":[{"resourceBoxId":41}]},{"id":7,"beginnerMissionV2Type":"read_both_of_card_story","requirement":1},{"id":22,"beginnerMissionV2Type":"achieve_all_missions","beginnerMissionV2Category":"complete","requirement":21}]""");
         var path = Path.Combine(directory, "resourceBoxes.json");
         var boxes = JsonNode.Parse(File.ReadAllText(path))!.AsArray();
         boxes.Add(JsonNode.Parse("""{"id":41,"resourceBoxPurpose":"mission_reward","details":[{"resourceType":"coin","resourceQuantity":5}]}"""));
@@ -33,6 +33,9 @@ internal static class MissionHttpChecks
         var saved = store.Read(1)!.Data;
         check(saved.userGamedata.coin == 5 && saved.userMissionStatuses.Single().missionStatus == "received",
             "新手任务客户端真实 HTTP 领取奖励并保存领取状态");
+        check(saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 22).progress == 1 &&
+            !saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 22).isNewAchieved,
+            "普通新手任务领奖增加总任务进度，未达总门槛不产生达成提示");
         var record = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "missions/001.json")))!;
         check(record["stateChanges"]!.AsArray().Count > 0 && record["response"]!["updatedResources"] != null,
             "任务领奖同时保存奖励响应与前后状态");
@@ -52,6 +55,7 @@ internal static class MissionHttpChecks
             "新手任务重复领取返回官方已核验的 409 空错误码与文案");
         var repeated = store.Read(1)!;
         check(repeated.Data.userGamedata.coin == 5 && repeated.Data.userMissionStatuses.Single().missionStatus == "received" &&
+            repeated.Data.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 22).progress == 1 &&
             repeated.Data.refreshableTypes.SequenceEqual(new[] { "userMaterials" }),
             "重复领奖不发奖、不修改任务或消费待刷新字段");
         await client.Send(new() { Operation = "system" });

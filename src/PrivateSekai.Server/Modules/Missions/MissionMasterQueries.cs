@@ -44,6 +44,10 @@ public sealed class MissionMasterQueries(MasterData master)
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "any_live_clear").ToArray();
 
+    public MasterBeginnerMissionV2[] GetBeginnerCompletionMissions() =>
+        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
+            .Where(m => m.beginnerMissionV2Type == "achieve_all_missions").ToArray();
+
     public MasterBeginnerMissionV2[] GetAreaItemPurchaseMissions() =>
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "exchange_any_area_item").ToArray();
