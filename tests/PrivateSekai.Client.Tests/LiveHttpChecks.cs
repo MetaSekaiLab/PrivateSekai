@@ -48,6 +48,7 @@ internal static class LiveHttpChecks
         firstState.Data.userMusicResults = [];
         firstState.Data.userLiveMissions = [];
         firstState.Data.userMissionStatuses = [];
+        firstState.Data.userBeginnerMissionV2s = [];
         firstState.Data.userLiveCharacterArchiveVoice = new() { characterArchiveVoiceGroupIds = [] };
         store.Save(1, firstState);
         var secondState = store.Read(1)!;
@@ -66,8 +67,10 @@ internal static class LiveHttpChecks
             check(saved.Data.userBoost.current == 2 && saved.Data.userLiveMissions.Single().progress == 3,
                 "Live 结算保存体力消耗和任务进度");
             check(saved.Data.userLiveMissions.Single().achievedMissionIds.Length == 0 &&
-                saved.Data.userMissionStatuses.Single().missionStatus == "achieved",
+                saved.Data.userMissionStatuses.Single(s => s.missionType == "live_mission").missionStatus == "achieved",
                 "Live 达成状态持久化，结算提示 ID 不进入存档");
+            check(saved.Data.userBeginnerMissionV2s.Single().progress == 1 && !saved.Data.userBeginnerMissionV2s.Single().isNewAchieved,
+                "新手演出任务保存进度但不保存本次达成提示");
             check(saved.Data.userLiveCharacterArchiveVoice.characterArchiveVoiceGroupIds.Order().SequenceEqual(new[] { 4, 5 }),
                 "结算与结果页语音接口共同更新语音状态");
         }
@@ -85,6 +88,8 @@ internal static class LiveHttpChecks
             var mission = clear["response"]!["updatedResources"]!["userLiveMissions"]![0]!;
             check(mission["achievedMissionIds"]!.AsArray().Single()!.GetValue<int>() == 1 && mission["userId"] == null,
                 "Live HTTP 结算提示本次新达成 ID 并省略用户 ID");
+            check(clear["response"]!["updatedResources"]!["userBeginnerMissionV2s"]![0]!["isNewAchieved"]!.GetValue<bool>(),
+                "新手演出任务仅在达成的结算响应中提示");
             check(clear["delayBeforeMs"]!.GetValue<int>() == 1 && clear["status"]!.GetValue<string>() == "completed",
                 "等待后的步骤保留会话引用并记录完成状态");
             check(clear["args"]!["userLiveId"]!.GetValue<string>() == id && voice["request"]!["userLiveId"]!.GetValue<string>() == id,
@@ -114,6 +119,8 @@ internal static class LiveHttpChecks
         check(good["updatedResources"]!["userLiveMissions"]![0]!["achievedMissionIds"]!.AsArray().Count == 0 &&
             good["updatedResources"]!["userMissionStatuses"] == null,
             "已达成任务后续结算不重复提示或刷新任务状态");
+        check(good["updatedResources"]!["userBeginnerMissionV2s"] == null && store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 1,
+            "新手演出任务达到门槛后不再增长或刷新");
         check(store.Read(1)!.Data.userMusicResults.Single().playResult == "full_perfect" &&
             good["updatedResources"]?["userMusicResults"] == null && great["updatedResources"]?["userMusicResults"] == null,
             "当前局判定不会降低历史 AP，也不重复刷新未变成绩");

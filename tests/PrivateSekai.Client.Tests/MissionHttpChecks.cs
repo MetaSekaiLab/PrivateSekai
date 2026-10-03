@@ -8,7 +8,7 @@ internal static class MissionHttpChecks
     {
         // 测试奖励数值，不用于官方场景。
         File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"),
-            """[{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":41}]},{"id":7,"beginnerMissionV2Type":"read_both_of_card_story","requirement":1}]""");
+            """[{"id":1,"beginnerMissionV2Type":"any_live_clear","requirement":1},{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":41}]},{"id":7,"beginnerMissionV2Type":"read_both_of_card_story","requirement":1}]""");
         var path = Path.Combine(directory, "resourceBoxes.json");
         var boxes = JsonNode.Parse(File.ReadAllText(path))!.AsArray();
         boxes.Add(JsonNode.Parse("""{"id":41,"resourceBoxPurpose":"mission_reward","details":[{"resourceType":"coin","resourceQuantity":5}]}"""));

@@ -135,6 +135,8 @@ public sealed class LiveService(
             ApplyLiveRewards(scoreRankRewards);
             ApplyLiveRewards(musicAchievementRewards);
             missions.UpdateLiveMissionProgress(userLivePoint);
+            if (!session.IsAuto)
+                missions.RecordManualLiveClear();
             if (session.IsAuto)
             {
                 user.Data.userAutoLive ??= new UserAutoLive();

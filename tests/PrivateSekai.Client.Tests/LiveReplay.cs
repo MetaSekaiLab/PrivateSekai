@@ -13,12 +13,12 @@ internal static class LiveReplay
     private static HashSet<int> rankReleaseIds = [];
     private static readonly string[] Fields = ["userGamedata", "userCards", "userDecks", "userBoost",
         "userMaterials", "userChargedCurrency", "userMusicResults", "userMusicAchievements", "userLiveMissions",
-        "userMissionStatuses", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive", "userReleaseConditions"];
+        "userMissionStatuses", "userBeginnerMissionV2s", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive", "userReleaseConditions"];
 
     public static void ImportMaster(string source, string destination)
     {
         foreach (var table in new[] { "cards", "cardRarities", "musicDifficulties", "playLevelScores",
-            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPasses", "liveMissions", "levels", "playerRankRewards", "configs", "releaseConditions" })
+            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPasses", "liveMissions", "beginnerMissionV2s", "levels", "playerRankRewards", "configs", "releaseConditions" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
         rankReleaseIds = JsonNode.Parse(File.ReadAllText(Path.Combine(source, "releaseConditions.json")))!.AsArray()
             .Where(c => c?["releaseConditionType"]?.GetValue<string>() == "user_rank")
@@ -116,7 +116,7 @@ internal static class LiveReplay
     private static JsonObject SelectMissionRecord(JsonObject record)
     {
         var selected = record.DeepClone().AsObject();
-        string[] fields = ["userLiveMissions", "userMissionStatuses"];
+        string[] fields = ["userLiveMissions", "userMissionStatuses", "userBeginnerMissionV2s"];
         foreach (var side in new[] { "before", "after" })
             selected[side] = Select(record[side], fields);
         selected["response"] = new JsonObject

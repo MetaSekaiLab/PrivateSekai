@@ -2115,6 +2115,14 @@ Server 已接入兑换期内、已存在记录的技能券、体力道具和金�
 
 Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示例 ID 须按当前 master 和账号库存调整。已取得成功样本的相关 HTTP、基线、响应和状态增量对拍一致；金币比较覆盖 `userGamedata.coin`，完整背景资源不在此结论范围内。
 
+### 普通 Live 结算：新手演出任务
+
+`PUT /api/user/{userId}/live/{userLiveId}` 的普通手动演出成功样本中，`beginnerMissionV2s` 的 `any_live_clear` 任务每次增加 1，达到 master 的 `requirement` 后停止增长。已核验任务的门槛为 3，第三次结算新增 `beginner_mission_v2` 的 `achieved` 状态。
+
+响应 `updatedResources.userBeginnerMissionV2s` 返回完整进度数组；仅新达成的任务在该次响应中 `isNewAchieved=true`，随后 Suite 回读为 false。达成后的再次结算不返回该进度字段，也不重复刷新任务状态。提示字段只在响应副本中填充，不写入存档。
+
+Server 已实现上述普通手动 Live 联动，Client 结算重放覆盖新手任务进度。首次、达成时及达成后的三个官方样本，在新手任务、Live 任务进度与任务状态范围 HTTP 对拍无差异。Auto、失败演出、挑战 Live 和其他新手任务类型不属于本次核验范围。
+
 ## PUT `/api/user/{userId}/mission/live_mission`
 
 - Path：当前 `userId`；无 query。Body：`UserMissionReceiveRequest.missionIds`，待领取的任务 ID 数组。

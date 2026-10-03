@@ -32,6 +32,8 @@ internal static class DeckMissionChecks
                 """);
             File.WriteAllText(Path.Combine(directory, "resourceBoxes.json"),
                 """[{"id":1,"resourceBoxPurpose":"mission_reward","details":[{"resourceType":"material","resourceId":10,"resourceQuantity":5}]}]""");
+            File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"),
+                """[{"id":1,"beginnerMissionV2Type":"any_live_clear","requirement":3}]""");
             var master = new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
             var store = new MemoryUserStore();
             using var provider = new ServiceCollection().AddPrivateSekai()
@@ -131,6 +133,13 @@ internal static class DeckMissionChecks
                 return user.BuildRefresh();
             }));
             Check.That(unchanged.userMissionStatuses == null, "没有新达成任务时不重复刷新任务状态");
+            Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+            {
+                missions.RecordManualLiveClear();
+                return new BrokenResponse();
+            }), "新手演出任务创建进度后编码失败整体回滚");
+            Check.That(!(store.Read(1)!.Data.userBeginnerMissionV2s ?? []).Any(m => m.beginnerMissionV2Id == 1),
+                "失败结算不保留新手演出进度");
             Console.WriteLine("编队与任务：保存、主编队切换、任务达成、领奖条件及回滚检查通过。");
         }
         finally

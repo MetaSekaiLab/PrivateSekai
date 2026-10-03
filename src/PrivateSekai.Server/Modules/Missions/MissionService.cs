@@ -119,6 +119,33 @@ public sealed class MissionService(
 
     public void RecordCardPracticeLevelUp(int levels) => RecordBeginnerMissionProgress(master.GetCardLevelMissions(), levels);
 
+    public void RecordManualLiveClear()
+    {
+        foreach (var definition in master.GetLiveClearMissions())
+        {
+            var records = (user.Data.userBeginnerMissionV2s ?? []).ToList();
+            var progress = records.SingleOrDefault(m => m.beginnerMissionV2Id == definition.id);
+            if (progress?.progress >= definition.requirement ||
+                user.Data.userMissionStatuses?.Any(s => s.missionType == BeginnerMissionV2Type &&
+                    s.missionId == definition.id && s.missionStatus is "achieved" or "received") == true)
+                continue;
+            if (progress == null)
+            {
+                progress = new UserBeginnerMissionV2 { beginnerMissionV2Id = definition.id };
+                records.Add(progress);
+            }
+            progress.progress = Math.Min(checked(progress.progress + 1), definition.requirement);
+            progress.isNewAchieved = false;
+            user.Data.userBeginnerMissionV2s = records.OrderBy(m => m.beginnerMissionV2Id).ToArray();
+            user.MarkChanged(nameof(SuiteUser.userBeginnerMissionV2s));
+            if (progress.progress == definition.requirement)
+            {
+                MarkMissionAchieved(BeginnerMissionV2Type, definition.id);
+                user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
+            }
+        }
+    }
+
     private void RecordBeginnerMissionProgress(IEnumerable<MasterBeginnerMissionV2> definitions, int amount = 1)
     {
         foreach (var definition in definitions)
