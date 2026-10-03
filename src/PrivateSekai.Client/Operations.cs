@@ -13,7 +13,7 @@ namespace PrivateSekai.Client;
 
 public sealed record OperationDefinition(string Method, string Path, Type? RequestType, string? RequiredResponseField,
     bool Snapshot = true, string[]? BooleanQueries = null, bool OptionalBody = false,
-    string[]? RequiredIntegerListQueries = null)
+    string[]? RequiredIntegerListQueries = null, Dictionary<string, int>? RequiredIntegerQueries = null)
 {
     public bool IsWrite => Method != "GET";
 }
@@ -39,6 +39,8 @@ public static class Operations
         ["present-receive"] = new("POST", "/api/user/{userId}/present", typeof(UserPresentAPIRequest), "receivedUserPresents"),
         ["shop-purchase"] = new("POST", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
         ["shop-upgrade"] = new("PUT", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
+        ["material-exchange"] = new("PUT", "/api/user/{userId}/material-exchange/{materialExchangeId}", null, "updatedResources",
+            RequiredIntegerQueries: new() { ["costGroupId"] = 0, ["count"] = 1 }),
         ["gacha-draw"] = new("PUT", "/api/user/{userId}/gacha/{gachaId}/gachaBehaviorId/{gachaBehaviorId}", null, "obtainPrizes", BooleanQueries: ["isPriorityUsePaidJewel"]),
         ["gacha-exchange"] = new("PUT", "/api/user/{userId}/exchange/gacha-ceil-item", typeof(UserGachaCeilExchangeRequest), "obtainUserResources"),
         ["gacha-wish"] = new("PUT", "/api/user/{userId}/rate-choice-gacha-wish", typeof(UserRateChoiceGachaWishRequest), "updatedResources"),
@@ -113,10 +115,17 @@ public static class Operations
         if (path.Contains('{')) throw new InvalidOperationException("场景缺少路径参数。");
         foreach (var (name, value) in step.Query)
         {
-            if (definition.BooleanQueries?.Contains(name, StringComparer.Ordinal) != true || !bool.TryParse(value, out var parsed))
-                throw new InvalidOperationException("查询参数未支持或不是布尔值。");
-            path += (path.Contains('?') ? "&" : "?") + Uri.EscapeDataString(name) + "=" + (parsed ? "true" : "false");
+            string encoded;
+            if (definition.BooleanQueries?.Contains(name, StringComparer.Ordinal) == true && bool.TryParse(value, out var parsed))
+                encoded = parsed ? "true" : "false";
+            else if (definition.RequiredIntegerQueries?.TryGetValue(name, out var minimum) == true &&
+                     int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) && number >= minimum)
+                encoded = number.ToString(CultureInfo.InvariantCulture);
+            else throw new InvalidOperationException("查询参数未支持或值不符合要求。");
+            path += (path.Contains('?') ? "&" : "?") + Uri.EscapeDataString(name) + "=" + encoded;
         }
+        foreach (var required in definition.RequiredIntegerQueries?.Keys ?? Enumerable.Empty<string>())
+            if (!step.Query.ContainsKey(required)) throw new InvalidOperationException("缺少必填的整数查询参数。");
         foreach (var required in definition.RequiredIntegerListQueries ?? [])
             if (!step.QueryLists.ContainsKey(required)) throw new InvalidOperationException("缺少必填的列表查询参数。");
         foreach (var (name, values) in step.QueryLists)

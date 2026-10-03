@@ -9,19 +9,22 @@ using PrivateSekai.Storage;
 
 internal static class CardPracticeReplay
 {
-    private static readonly string[] Fields = ["userCards", "userPracticeTickets", "userBeginnerMissionV2s", "userMissionStatuses"];
+    private static readonly string[] Fields = ["userCards", "userPracticeTickets", "userBeginnerMissionV2s", "userMissionStatuses",
+        "userMaterials", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
 
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "cards", "cardRarities", "levels", "practiceTickets", "beginnerMissionV2s", "cardEpisodes", "releaseConditions" })
+        foreach (var table in new[] { "cards", "cardRarities", "levels", "practiceTickets", "beginnerMissionV2s", "cardEpisodes", "releaseConditions",
+                     "characterMissionV2s", "characterMissionV2ParameterGroups", "resourceBoxes" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
     public static async Task Run(ProtocolClient client, MemoryUserStore store, string path, string output)
     {
         var official = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        if (official["operation"]?.GetValue<string>() != "card-practice" || official["status"]?.GetValue<string>() != "completed")
-            throw new InvalidOperationException("需要成功的卡牌练习记录。");
+        var operation = official["operation"]?.GetValue<string>();
+        if (operation is not ("card-practice" or "special-training") || official["status"]?.GetValue<string>() != "completed")
+            throw new InvalidOperationException("需要成功的卡牌练习或特训记录。");
         var state = store.Read(1)!;
         var before = official["before"]!.DeepClone();
         foreach (var field in Fields)
@@ -34,7 +37,7 @@ internal static class CardPracticeReplay
         await client.Send(new() { Operation = "system" });
         await ScenarioRunner.Run(client, new() { Steps = [new()
         {
-            Operation = "card-practice",
+            Operation = operation,
             Args = JsonSerializer.Deserialize<Dictionary<string, string>>(official["args"]!.ToJsonString())!,
             Body = official["request"]!.DeepClone().AsObject()
         }] }, output);
@@ -45,7 +48,7 @@ internal static class CardPracticeReplay
             foreach (var side in new[] { "before", "after" }) record[side] = Select(record[side]);
             record["response"]!["updatedResources"] = Select(record["response"]!["updatedResources"]);
         }
-        JsonFiles.Write(Path.Combine(output, "card-practice-compare.json"), ScenarioRunner.Compare(official, local));
+        JsonFiles.Write(Path.Combine(output, operation + "-compare.json"), ScenarioRunner.Compare(official, local));
     }
 
     private static JsonObject Select(JsonNode? source) => new(Fields.Select(field => KeyValuePair.Create(field, source?[field]?.DeepClone())));

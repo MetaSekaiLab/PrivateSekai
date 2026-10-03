@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "special-training", "args": { "cardId": "531" },
+      "body": { "specialTrainingStatus": "done" } },
+    { "operation": "suite" }
+  ]
+}

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
+using PrivateSekai.Models;
 using PrivateSekai.Protocol;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
@@ -124,8 +125,21 @@ public sealed class CardController(UserOperation operations, UserSession user, C
                 case "special_training":
                     var specialTrainingRequest =
                         DumpSerializer.Deserialize<UserCardSpecialTrainingRequest>(request);
-                    cards.SetCardSpecialTrainingStatus(cardId, specialTrainingRequest?.specialTrainingStatus);
-                    break;
+                    var before = (user.Data.userCharacterMissionStatuses ?? [])
+                        .Select(s => (s.characterId, s.missionId, s.parameterGroupId, s.seq)).ToHashSet();
+                    var rewards = cards.SetCardSpecialTrainingStatus(cardId, specialTrainingRequest?.specialTrainingStatus);
+                    var achieved = (user.Data.userCharacterMissionStatuses ?? [])
+                        .Where(s => !before.Contains((s.characterId, s.missionId, s.parameterGroupId, s.seq))).ToArray();
+                    var refresh = user.BuildRefresh();
+                    if (refresh.userCharacterMissions != null)
+                        refresh.userCharacterMissions = refresh.userCharacterMissions.Select(m => new UserCharacterMissionV2
+                        {
+                            userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType,
+                            progress = m.progress, achievedMissions = m.characterMissionType == "collect_member"
+                                ? achieved.Where(s => s.characterId == m.characterId).ToArray() : []
+                        }).ToArray();
+                    // 无特殊奖励的官方样本返回空数组；非空奖励字段仍待核验。
+                    return (object)new SpecialTrainingResponse { UpdatedResources = refresh, IncludeEmptyResources = rewards.Length == 0 };
                 case "set_default_image":
                     var defaultImageRequest =
                         DumpSerializer.Deserialize<UserCardDefaultImageRequest>(request);

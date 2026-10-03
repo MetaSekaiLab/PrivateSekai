@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "material-exchange", "args": { "materialExchangeId": "2" },
+      "query": { "costGroupId": "1", "count": "1" } },
+    { "operation": "suite" }
+  ]
+}

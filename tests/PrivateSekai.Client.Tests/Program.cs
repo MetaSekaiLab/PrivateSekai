@@ -63,7 +63,7 @@ if (args is ["--replay-story", _, var storyMaster, _])
     StoryReplay.ImportMaster(storyMaster, directory);
 if (args is ["--replay-area-shop", _, var areaMaster, _])
     AreaShopReplay.ImportMaster(areaMaster, directory);
-if (args is ["--replay-card-practice", _, var practiceMaster, _])
+if (args is ["--replay-card-practice" or "--replay-special-training", _, var practiceMaster, _])
     CardPracticeReplay.ImportMaster(practiceMaster, directory);
 if (args is ["--replay-live", _, _, var liveMaster, _])
     LiveReplay.ImportMaster(liveMaster, directory);
@@ -182,7 +182,7 @@ try
         await FavoriteReplay.Run(client, store, favoriteCaptures, favoriteOutput);
         return;
     }
-    if (args is ["--replay-card-practice", var practicePath, _, var practiceOutput])
+    if (args is ["--replay-card-practice" or "--replay-special-training", var practicePath, _, var practiceOutput])
     {
         await CardPracticeReplay.Run(client, store, practicePath, practiceOutput);
         return;
@@ -340,6 +340,19 @@ try
     }, 1), "拒绝抽卡查询参数注入");
     Fails(() => Operations.Path(Operations.All["system"], new() { Query = new() { ["unexpected"] = "true" } }, 1),
         "拒绝操作未声明的查询参数");
+    Check(Operations.Path(Operations.All["material-exchange"], new()
+    {
+        Args = new() { ["materialExchangeId"] = "2" }, Query = new() { ["costGroupId"] = "0", ["count"] = "2" }
+    }, 1) == "/api/user/1/material-exchange/2?costGroupId=0&count=2", "材料兑换以整数 query 发送成本组和次数");
+    foreach (var value in new[] { "0", "-1", "1&costGroupId=2", "2147483648" })
+        Fails(() => Operations.Path(Operations.All["material-exchange"], new()
+        {
+            Args = new() { ["materialExchangeId"] = "2" }, Query = new() { ["costGroupId"] = "1", ["count"] = value }
+        }, 1), "材料兑换拒绝无效次数和 query 注入");
+    Fails(() => Operations.Path(Operations.All["material-exchange"], new()
+    {
+        Args = new() { ["materialExchangeId"] = "2" }, Query = new() { ["count"] = "1" }
+    }, 1), "材料兑换必须明确成本组");
     foreach (var (offset, phase) in new[] { (1, "before-snapshot"), (2, "request"), (3, "after-snapshot") })
     {
         using var interrupted = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());

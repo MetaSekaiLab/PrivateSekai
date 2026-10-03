@@ -198,14 +198,14 @@ public sealed class CardService(
         };
     }
 
-    public void SetCardSpecialTrainingStatus(int cardId, string? specialTrainingStatus)
+    public UserResource[] SetCardSpecialTrainingStatus(int cardId, string? specialTrainingStatus)
     {
         if (specialTrainingStatus != "done")
             throw new ArgumentException("Invalid special training status.");
         var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId)
             ?? throw new ArgumentException("Card is not owned.");
         if (card.specialTrainingStatus == "done")
-            return;
+            return [];
         var masterCard = master.GetMasterCard(cardId)
             ?? throw new InvalidOperationException("Missing card master data.");
         var rarity = master.GetCardRarity(masterCard);
@@ -239,7 +239,10 @@ public sealed class CardService(
             resourceService.Consume("material", id, quantity);
         resourceService.Grant(rewards);
         card.specialTrainingStatus = "done";
+        card.defaultImage = "special_training";
+        missions.RecordCardSpecialTraining(masterCard.characterId);
         user.MarkChanged(nameof(SuiteUser.userCards));
+        return rewards;
     }
 
     public void SetCardDefaultImage(int cardId, string? defaultImage)

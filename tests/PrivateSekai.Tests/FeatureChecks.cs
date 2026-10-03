@@ -280,6 +280,10 @@ internal static class FeatureChecks
             "特训扣除 master 材料并发放配置奖励，保留等级经验");
         Check.That(scope.ServiceProvider.GetRequiredService<CardMasterQueries>().GetCardMaxLevel(2, true) == 50,
             "特训后练习使用新的等级上限");
+        Check.That(result.userCards.Single().defaultImage == "special_training" &&
+            store.Read(5)!.Data.userCharacterMissions.Single().progress == 1 &&
+            store.Read(5)!.Data.userCharacterMissionStatuses.Single().missionStatus == "achieved",
+            "首次特训切换卡面并增加所属角色的收集任务进度");
         operation.Execute(5, () =>
         {
             cards.SetCardSpecialTrainingStatus(2, "done");
@@ -287,6 +291,8 @@ internal static class FeatureChecks
         });
         Check.That(store.Read(5)!.Data.userCostume3dStatuses.Length == 1 &&
             store.Read(5)!.Data.userMaterials.All(m => m.quantity == 0), "重复特训不重复扣材及发奖");
+        Check.That(store.Read(5)!.Data.userCharacterMissions.Single().progress == 1,
+            "重复特训不重复增加收集任务进度");
     }
 
     private static void GachaDraw(ServiceProvider provider, IUserStore store)
@@ -358,12 +364,14 @@ internal static class FeatureChecks
                 """,
             ["cards"] = """
                 [{"id":1,"cardRarityType":"rarity_1"},
-                 {"id":2,"cardRarityType":"rarity_3","specialTrainingPower1BonusFixed":100,
+                 {"id":2,"characterId":1,"cardRarityType":"rarity_3","specialTrainingPower1BonusFixed":100,
                   "specialTrainingRewardResourceBoxId":90,
                   "specialTrainingCosts":[{"cardId":2,"cost":{"resourceType":"material","resourceId":10,"quantity":100}},
                                           {"cardId":2,"cost":{"resourceType":"material","resourceId":14,"quantity":50}}]}]
                 """,
             ["cardEpisodes"] = "[]",
+            ["characterMissionV2s"] = """[{"id":12,"characterId":1,"characterMissionType":"collect_member","parameterGroupId":14}]""",
+            ["characterMissionV2ParameterGroups"] = """[{"id":14,"seq":1,"requirement":1}]""",
             ["cardCostume3ds"] = """[{"cardId":10,"costume3dId":20}]""",
             ["gachas"] = """
                 [{"id":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":10,"weight":1}],

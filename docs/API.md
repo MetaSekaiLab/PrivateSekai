@@ -916,6 +916,10 @@
 - `Sekai.PutUserCardSpecialTrainingAPI.Execute`: 确认 path 为 `user/{userId}/card/{cardId}?behavior=special_training`，method 为 PUT，request 为 `UserCardSpecialTrainingRequest`，response 为 `SuiteUserCommonResponse`。
 - `Sekai.UserCardSpecialTrainingRequest`: 确认 request body 字段为 `specialTrainingStatus`。
 
+后续官方样本：三星卡在 40 级完成特训后，等级及累计经验不变，`specialTrainingStatus=done`，`defaultImage=special_training`；材料按逐卡配置扣除。所属角色 `collect_member` 进度增加 1，新达成项同时出现在 `userCharacterMissionV2Statuses` 和响应进度项的 `achievedMissions` 中；后者不保留到后续 Suite 状态。无特殊奖励的样本额外返回 `obtainedResources: []`，该字段不在旧 `SuiteUserCommonResponse` 内。
+
+Server 已补卡面和任务联动，Client 支持 `--replay-special-training`。该样本的相关响应与增量一致；导入基线仍有一项无关 Live 任务的 `userId` 字段差异。非空特殊奖励、重复特训及其他稀有度尚需官方样本；非空奖励返回字段不按空数组样本推定。`special-training.json` 中的卡牌须替换为目标账号持有、未特训且已达等级上限的卡，并准备 master 指定材料。
+
 ## PUT `/api/user/{userId}/card/{cardId}?behavior=set_default_image`
 
 > 审计版本: jp-6.5.5
@@ -2035,3 +2039,13 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 4. 成功后合并资源差异并展示 `obtainRewards`。
 
 待补材料：一次具备选择资格的成功请求、响应及前后用户状态，用于核验领取状态变化、资源增量和重复领取行为。不能仅凭 master 的奖励配置推断这些状态变化。
+
+## PUT `/api/user/{userId}/material-exchange/{materialExchangeId}`
+
+- Path：当前 `userId`、master 兑换项 `materialExchangeId`。
+- Query：`costGroupId` 为消耗组，`count` 为兑换次数；不发送 body。客户端构造函数将次数限制为至少 1。
+- Response：`updatedResources`、`releasedActionSetIds`。成功回调合并资源；兑换页据此更新库存及兑换状态。
+- 证据：`PutUserMaterialExchangeAPI.Execute` 使用 PUT，按用户、兑换项、消耗组和次数拼接请求；`OnCallBack` 合并 `UserExchangeResponse.updatedResources`。
+- 官方样本：兑换项 2、成本组 1、次数 2，扣除材料 15 共 200，增加中级练习券 30；新增兑换记录，`exchangeCount=2`、`totalExchangeCount=2`、`exchangeStatus=exchangeable`，并记录 `lastExchangedAt`。数值均与 master 消耗组及 `material_exchange` 资源盒一致。
+
+Client 已支持 `material-exchange` 和示例场景，要求明确提供整数消耗组与正整数次数。Server 尚未接入；周期刷新、限量、关联兑换和失败行为仍待核验。示例兑换项须按当前 master 和账号库存确认。

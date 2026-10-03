@@ -24,6 +24,9 @@ public sealed class MissionService(
     public void RecordCardEpisodeRead(int episodeId) =>
         RecordCharacterMissionProgress(master.GetCardEpisodeMissions(episodeId));
 
+    public void RecordCardSpecialTraining(int characterId) =>
+        RecordCharacterMissionProgress(master.GetCardCollectionMissions(characterId));
+
     private UserCharacterMissionV2Status[] RecordCharacterMissionProgress(IEnumerable<MasterCharacterMissionV2> definitions)
     {
         var achieved = new List<UserCharacterMissionV2Status>();
