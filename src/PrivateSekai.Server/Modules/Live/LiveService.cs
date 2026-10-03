@@ -137,7 +137,7 @@ public sealed class LiveService(
             missions.UpdateLiveMissionProgress(userLivePoint);
             if (!session.IsAuto)
                 missions.RecordManualLiveClear();
-            if (!session.IsAuto && request.life > 0)
+            if (request.life > 0)
                 RecordDeckLiveClear(session.DeckId);
             if (session.IsAuto)
             {

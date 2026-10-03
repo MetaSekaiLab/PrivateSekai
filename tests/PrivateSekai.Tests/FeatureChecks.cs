@@ -239,6 +239,9 @@ internal static class FeatureChecks
         Check.That((store.Read(3)!.Data.userAutoLive?.count ?? 0) == 0 &&
             store.Read(3)!.Data.userBoost.current == 11 && store.Read(3)!.Data.userGamedata.totalExp == 400 &&
             store.Read(3)!.Private.UserLiveSessions.ContainsKey(autoId), "Auto 失败回滚次数、经验、体力和会话");
+        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.All(c => c.usageCount == 1) &&
+            store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 1,
+            "Auto 结算编码失败回滚成员次数与角色任务");
         var autoBytes = operation.Execute(3, () =>
         {
             var response = live.ClearUserLive(autoId, autoRequest);
@@ -252,9 +255,9 @@ internal static class FeatureChecks
         Check.That(auto.userExpResult.afterTotalExp == 600 && auto.updatedResources.userAutoLive.count == 1 &&
             auto.updatedResources.userBoost.current == 10, "Auto C 档经验、次数与体力在结算中提交");
         operation.Execute(3, () => live.ClearUserLive(autoId, autoRequest));
-        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.All(c => c.usageCount == 1) &&
-            store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 1,
-            "失败及 Auto 结算暂不累计手动队长记录");
+        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.All(c => c.usageCount == 2) &&
+            store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 2,
+            "失败演出不计数，成功 Auto 累计成员次数和角色任务且不重复累计");
         Check.That(store.Read(3)!.Data.userAutoLive.count == 1 && store.Read(3)!.Data.userGamedata.totalExp == 600 &&
             store.Read(3)!.Data.userBoost.current == 10, "重复 Auto 结算不重复计数、发经验或扣体力");
     }
