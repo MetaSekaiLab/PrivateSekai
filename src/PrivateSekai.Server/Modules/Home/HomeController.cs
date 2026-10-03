@@ -9,7 +9,8 @@ using PrivateSekai.Shared.Users;
 
 namespace PrivateSekai.Modules.Home;
 
-public sealed class HomeController(UserOperation operations, UserSession user, HomeService home) : PrskController
+public sealed class HomeController(UserOperation operations, UserSession user, HomeService home,
+    LoginBonusService loginBonuses) : PrskController
 {
     /// <summary>
     /// PUT /api/user/{userId}/home/refresh
@@ -21,6 +22,14 @@ public sealed class HomeController(UserOperation operations, UserSession user, H
         return Encoded(operations.Execute(userId, () =>
         {
             home.Refresh(request);
+            if (request?.refreshableTypes?.Contains("login_bonus") == true)
+            {
+                var bonuses = loginBonuses.ClaimInitial();
+                return (object)new UserHomeRefreshResponse
+                {
+                    updatedResources = user.BuildRefresh(), userLoginBonuses = bonuses
+                };
+            }
 
             return new SuiteUserCommonResponse
             {

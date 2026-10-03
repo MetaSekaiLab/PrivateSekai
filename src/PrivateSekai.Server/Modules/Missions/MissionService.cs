@@ -18,6 +18,19 @@ public sealed class MissionService(
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
 
+    public void RecordInitialLogin()
+    {
+        var records = (user.Data.userHonorMissions ?? []).ToList();
+        foreach (var type in new[] { "login_continued", "login_total" })
+        {
+            if (records.Any(m => m.honorMissionType == type))
+                throw new NotSupportedException("Existing login honor progress is not verified.");
+            records.Add(new UserHonorMission { honorMissionType = type, progress = 1, achievedMissionIds = [] });
+        }
+        user.Data.userHonorMissions = records.OrderBy(m => m.honorMissionType, StringComparer.Ordinal).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userHonorMissions));
+    }
+
     public bool RecordEventItemConsumption(int eventId, int quantity)
     {
         if (quantity <= 0) throw new ArgumentException("Invalid event item consumption.");

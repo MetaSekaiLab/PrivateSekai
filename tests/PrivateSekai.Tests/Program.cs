@@ -15,6 +15,7 @@ internal static class Program
         SkillPracticeChecks.Run();
         StoryCollectionChecks.Run();
         DeckMissionChecks.Run();
+        LoginBonusChecks.Run();
         TransportChecks.Run();
         Console.WriteLine($"通过 {Check.Count} 项检查。");
     }

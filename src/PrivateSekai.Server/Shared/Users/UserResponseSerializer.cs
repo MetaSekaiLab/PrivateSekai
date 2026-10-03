@@ -25,7 +25,12 @@ internal static class UserResponseSerializer
                     (key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0 && s.refreshedAt == 0)),
                 new FieldFilterFormatter<UserCharacterMissionV2>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserReleaseCondition>((_, key) => key == "userId"),
-                new FieldFilterFormatter<UserPresentData>((s, key) => key == "grantedAt" && s.grantedAt == 0),
+                new FieldFilterFormatter<UserPresentData>((s, key) => (key == "grantedAt" && s.grantedAt == 0) ||
+                    (s.grantedAt > 0 && ((key == "resourceId" && s.resourceId == 0) || (key == "resourceLevel" && s.resourceLevel == 0) ||
+                        (key == "expiredAt" && s.expiredAt == 0)))),
+                new FieldFilterFormatter<UserGamedata>((s, key) => key == "lastLoginAt" && s.lastLoginAt == 0),
+                new FieldFilterFormatter<UserHonorMission>((_, key) => key == "userId"),
+                new FieldFilterFormatter<UserHomeRefreshResponse>((s, key) => key == "shouldReflectWebPayment" && !s.shouldReflectWebPayment),
                 new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" && s.missionType == "beginner_mission_v2"),
                 new FieldFilterFormatter<UserChallengeLivePlayStatus>((s, key) => key == "playEndAt" && s.liveStatus == "start")
             },

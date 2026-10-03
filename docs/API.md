@@ -2083,3 +2083,16 @@ Client 检查项目支持 `--replay-skill-practice <请求记录> <回读记录>
 Server 已接入兑换期内、已存在记录的技能券、体力道具和金币兑换，支持无限量、恰好售罄、余额归零，以及尚未达成的普通消费任务进度。已售罄后的重复兑换、超过剩余次数、兑换期外、缺少兑换记录、任务达成与其他奖励暂返回本地 501，不代表官方错误码；目录初始化和活动任务领奖待补。奖励数量溢出会回滚整次操作。
 
 Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示例 ID 须按当前 master 和账号库存调整。已取得成功样本的相关 HTTP、基线、响应和状态增量对拍一致；金币比较覆盖 `userGamedata.coin`，完整背景资源不在此结论范围内。
+
+## PUT `/api/user/{userId}/home/refresh`：登录奖励分支
+
+- Path：当前 `userId`；无 query。
+- Body：`UserHomeRefreshRequest.refreshableTypes` 为字符串数组，登录奖励类型为 `login_bonus`。
+- 请求时机：`HomeUtility.GetHomeAPIRefreshableTypes` 在 `UserDataManager.LoginBonusStatus` 有效时追加 `login_bonus`，同时追加感谢消息刷新类型；类型由 `RefreshableType` 转为字符串。在线状态更新接口不用于领取登录奖励。
+- Response：客户端读取 `UserHomeRefreshResponse`，以 `updatedResources` 合并状态，顶层 `userLoginBonuses` 供登录奖励展示。每条奖励包含 `userId`、`loginBonusId`、`loginBonusType`、`progress`、`receivedAt`、`displayTexts`。
+- 奖励类型包含 `normal`、`beginner`、`limited`。响应还有其他刷新类型对应字段，不能将所有刷新统一当作登录发奖。
+- 证据：`HomeUtility.GetHomeAPIRefreshableTypes`、`PutUserHomeRefreshAPI` 构造、Execute 与回调，以及 `UserHomeRefreshRequest`、`UserHomeRefreshResponse`、`UserLoginBonus` 契约。
+
+Server 已接入首次登录发奖及重复刷新保护，Client 提供对应场景与官方记录重放。奖励按 master 写入邮箱，不直接增加背包；邮箱、登录记录及首次荣誉任务进度在同一用户操作内提交。现有实现只支持已核验的新手及限时赠礼文案，后续日次、跨日推进、活动边界和状态头联动仍待实现与核验。
+
+官方首次刷新样本：普通、新手及两组限时登录记录的 `progress` 均为 1，`receivedAt` 相同，`displayTexts=[]`，保留 `userId`；顶层依次展示普通、新手、限时奖励，后续 suite 按类型及 ID 排列。邮箱新增 10 项，资源种类、ID 和数量与 `login_bonus` 奖励箱展开结果一致；样本中赠礼有效期为发放后 30 天，`seq` 等于有符号 64 位最大值减 `grantedAt`。首次与重复刷新均更新 `lastLoginAt`；重复刷新顶层 `userLoginBonuses=[]`，已保存登录记录及邮箱不变。`X-Login-Bonus-Status` 在首次刷新前为 true，刷新后为 false。首次及重复样本的登录记录、邮箱、荣誉任务和玩家数据范围重放无差异；不代表全量背景字段或完整登录周期已对齐。

@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "home-refresh", "body": { "refreshableTypes": ["login_bonus"] } },
+    { "operation": "home-refresh", "body": { "refreshableTypes": ["login_bonus"] }, "expect": { "/userLoginBonuses": [] } },
+    { "operation": "suite" }
+  ]
+}

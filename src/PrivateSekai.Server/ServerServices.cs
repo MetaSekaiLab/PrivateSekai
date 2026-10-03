@@ -44,6 +44,7 @@ public static class ServerServices
         services.AddSingleton<ResourceMasterQueries>();
         services.AddSingleton<ShopMasterQueries>();
         services.AddSingleton<StoryMasterQueries>();
+        services.AddSingleton<LoginBonusMasterQueries>();
 
         services.AddSingleton<IResourceHandler, CurrencyResourceHandler>();
         services.AddSingleton<IResourceHandler, InventoryResourceHandler>();
@@ -58,6 +59,7 @@ public static class ServerServices
         services.AddScoped<CardService>();
         services.AddScoped<GachaService>();
         services.AddScoped<HomeService>();
+        services.AddScoped<LoginBonusService>();
         services.AddScoped<LiveService>();
         services.AddScoped<DeckService>();
         services.AddScoped<ChallengeLiveService>();

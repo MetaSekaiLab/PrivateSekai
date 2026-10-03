@@ -97,6 +97,8 @@ if (args is ["--replay-live", _, _, var liveMaster, _])
     LiveReplay.ImportMaster(liveMaster, directory);
 if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock" or "--replay-challenge-start", _, var challengeMaster, _])
     ChallengeDeckReplay.ImportMaster(challengeMaster, directory);
+if (args is ["--replay-login-bonus", _, var loginMaster, _])
+    LoginBonusReplay.ImportMaster(loginMaster, directory);
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Loopback, 0));
@@ -120,6 +122,8 @@ store.Save(1, new UserState { Data = new SuiteUser
 builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
     .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
+if (args is ["--replay-login-bonus", var loginCapture, _, _])
+    builder.Services.AddSingleton<TimeProvider>(LoginBonusReplay.Clock(loginCapture));
 if (args is ["--replay-present", var replayCapture, _])
     builder.Services.AddSingleton<TimeProvider>(PresentReplay.Clock(replayCapture));
 if (args is ["--replay-story", var storyCapture, _, _])
@@ -206,6 +210,11 @@ try
     if (args is ["--replay-present", var capturePath, var replayOutput])
     {
         await PresentReplay.Run(client, store, capturePath, replayOutput);
+        return;
+    }
+    if (args is ["--replay-login-bonus", var loginPath, _, var loginOutput])
+    {
+        await LoginBonusReplay.Run(client, store, loginPath, loginOutput);
         return;
     }
     if (args is ["--replay-favorites", var favoriteCaptures, _, var favoriteOutput])

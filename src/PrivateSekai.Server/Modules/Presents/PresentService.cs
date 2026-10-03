@@ -1,5 +1,6 @@
 extern alias game;
 
+using System;
 using System.Collections.Generic;
 using game::Sekai;
 using PrivateSekai.Shared.Resources;
@@ -9,6 +10,20 @@ namespace PrivateSekai.Modules.Presents;
 
 public sealed class PresentService(UserSession user, ResourceService resourceService)
 {
+    public void AddLoginRewards(IEnumerable<UserResource> resources, string reason)
+    {
+        user.Data.userPresents ??= [];
+        foreach (var resource in resources)
+            user.Data.userPresents.Add(new UserPresentData
+            {
+                presentId = Guid.NewGuid().ToString(), seq = long.MaxValue - user.Now,
+                resourceType = resource.resourceType, resourceId = resource.resourceId,
+                resourceLevel = resource.resourceLevel, resourceQuantity = resource.quantity,
+                grantedAt = user.Now, expiredAt = checked(user.Now + 30L * 24 * 60 * 60 * 1000), reason = reason
+            });
+        user.MarkChanged(nameof(SuiteUser.userPresents));
+    }
+
     public List<UserPresentData> ReceivePresent(IEnumerable<string> presentIds)
     {
         var received = new List<UserPresentData>();
