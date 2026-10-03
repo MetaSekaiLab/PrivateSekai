@@ -29,6 +29,7 @@ public sealed class LoginController(
         }));
 
     [HttpGet("api/suite/user/{userId}")]
+    [ServiceFilter(typeof(LoginBonusStatusFilter))]
     public IActionResult HandleSuiteUser(long userId) =>
         Encoded(operations.Query(ResolveUser(userId), () =>
         {

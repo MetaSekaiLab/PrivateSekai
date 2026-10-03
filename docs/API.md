@@ -2093,6 +2093,6 @@ Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示
 - 奖励类型包含 `normal`、`beginner`、`limited`。响应还有其他刷新类型对应字段，不能将所有刷新统一当作登录发奖。
 - 证据：`HomeUtility.GetHomeAPIRefreshableTypes`、`PutUserHomeRefreshAPI` 构造、Execute 与回调，以及 `UserHomeRefreshRequest`、`UserHomeRefreshResponse`、`UserLoginBonus` 契约。
 
-Server 已接入首次登录发奖及重复刷新保护，Client 提供对应场景与官方记录重放。奖励按 master 写入邮箱，不直接增加背包；邮箱、登录记录及首次荣誉任务进度在同一用户操作内提交。现有实现只支持已核验的新手及限时赠礼文案，后续日次、跨日推进、活动边界和状态头联动仍待实现与核验。
+Server 已接入首次登录发奖及重复刷新保护，Client 提供对应场景与官方记录重放。奖励按 master 写入邮箱，不直接增加背包；邮箱、登录记录及首次荣誉任务进度在同一用户操作内提交。现有实现只支持已核验的新手及限时赠礼文案，认证、完整 Suite 和首页刷新已返回首次领取状态头；后续日次、跨日推进及活动边界仍待实现与核验。
 
 官方首次刷新样本：普通、新手及两组限时登录记录的 `progress` 均为 1，`receivedAt` 相同，`displayTexts=[]`，保留 `userId`；顶层依次展示普通、新手、限时奖励，后续 suite 按类型及 ID 排列。邮箱新增 10 项，资源种类、ID 和数量与 `login_bonus` 奖励箱展开结果一致；样本中赠礼有效期为发放后 30 天，`seq` 等于有符号 64 位最大值减 `grantedAt`。首次与重复刷新均更新 `lastLoginAt`；重复刷新顶层 `userLoginBonuses=[]`，已保存登录记录及邮箱不变。`X-Login-Bonus-Status` 在首次刷新前为 true，刷新后为 false。首次及重复样本的登录记录、邮箱、荣誉任务和玩家数据范围重放无差异；不代表全量背景字段或完整登录周期已对齐。

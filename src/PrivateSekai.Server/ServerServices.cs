@@ -60,6 +60,7 @@ public static class ServerServices
         services.AddScoped<GachaService>();
         services.AddScoped<HomeService>();
         services.AddScoped<LoginBonusService>();
+        services.AddScoped<LoginBonusStatusFilter>();
         services.AddScoped<LiveService>();
         services.AddScoped<DeckService>();
         services.AddScoped<ChallengeLiveService>();

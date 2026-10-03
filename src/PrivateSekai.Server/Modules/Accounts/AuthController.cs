@@ -17,6 +17,7 @@ public sealed class AuthController(
     HomeService home) : PrskController
 {
     [HttpPut("api/user/{userId}/auth")]
+    [ServiceFilter(typeof(LoginBonusStatusFilter))]
     public IActionResult HandleAuthUser(long userId, [FromBody] UserAuthRequest request)
     {
         if (string.IsNullOrEmpty(request.credential))

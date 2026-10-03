@@ -16,6 +16,7 @@ public sealed class HomeController(UserOperation operations, UserSession user, H
     /// PUT /api/user/{userId}/home/refresh
     /// </summary>
     [HttpPut("api/user/{userId}/home/refresh")]
+    [ServiceFilter(typeof(LoginBonusStatusFilter))]
     [PrskOptionalBody]
     public IActionResult HandleUserHomeRefresh(long userId, [FromBody] UserHomeRefreshRequest? request)
     {

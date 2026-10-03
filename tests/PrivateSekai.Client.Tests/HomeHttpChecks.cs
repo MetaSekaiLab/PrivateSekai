@@ -11,6 +11,7 @@ internal static class HomeHttpChecks
         state.Data.viewableAppeal = new() { appealIds = [3] };
         state.Data.userFriends = [];
         state.Data.userNews = [];
+        state.Data.userLoginBonuses = [];
         store.Save(1, state);
         // 公告入口使用服务端模板账号快照。
         var template = store.Read(1)!;
@@ -34,5 +35,17 @@ internal static class HomeHttpChecks
         check(empty["status"]!.GetValue<string>() == "completed" && empty["request"] == null &&
             body["status"]!.GetValue<string>() == "completed" && body["request"]!["refreshableTypes"]!.AsArray().Count == 0,
             "首页刷新兼容空 body 和 typed body，两种请求均经真实 HTTP 验证");
+        await client.Send(new() { Operation = "home-refresh" });
+        check(client.LastLoginBonusStatus == "true",
+            "没有登录奖励记录时首页响应提示首次可领取");
+        state = store.Read(1)!;
+        state.Data.userLoginBonuses = [new() { loginBonusId = 1, loginBonusType = "normal", progress = 1 }];
+        store.Save(1, state);
+        var repeated = await client.Send(new() { Operation = "home-refresh",
+            Body = JsonNode.Parse("""{"refreshableTypes":["login_bonus"]}""")!.AsObject() });
+        check(client.LastLoginBonusStatus == "false" && repeated["userLoginBonuses"]!.AsArray().Count == 0,
+            "已领取时奖励刷新返回 false 状态头和空奖励列表");
+        await client.Suite();
+        check(client.LastLoginBonusStatus == "false", "已领取时完整 Suite 返回 false 状态头");
     }
 }

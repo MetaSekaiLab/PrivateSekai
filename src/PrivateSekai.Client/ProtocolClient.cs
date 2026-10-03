@@ -37,6 +37,7 @@ public sealed class ProtocolClient : IDisposable
     public Redactor Redactor { get; } = new();
     public JsonObject? LastResponse { get; private set; }
     public int? LastHttpStatus { get; private set; }
+    public string? LastLoginBonusStatus { get; private set; }
     public string[] LastResponseHeaderNames { get; private set; } = [];
 
     public ProtocolClient(TargetConfiguration config, string configDirectory, byte[]? testKey = null, byte[]? testIv = null)
@@ -202,6 +203,8 @@ public sealed class ProtocolClient : IDisposable
             poisoned = true;
             using var response = await http.SendAsync(request);
             LastHttpStatus = (int)response.StatusCode;
+            LastLoginBonusStatus = response.Headers.TryGetValues("X-Login-Bonus-Status", out var loginStatus)
+                ? loginStatus.Single() : null;
             LastResponseHeaderNames = response.Headers.Select(h => h.Key).OrderBy(k => k).ToArray();
             var ciphertext = await response.Content.ReadAsByteArrayAsync();
             if (!response.IsSuccessStatusCode)
