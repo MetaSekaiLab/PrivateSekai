@@ -12,6 +12,7 @@ internal static class Program
         ResourceTests.Run();
         FeatureChecks.Run();
         BoostRecoveryChecks.Run();
+        ChallengeStageChecks.Run();
         AreaShopChecks.Run();
         SkillPracticeChecks.Run();
         StoryCollectionChecks.Run();

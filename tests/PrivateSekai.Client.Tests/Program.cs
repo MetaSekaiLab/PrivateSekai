@@ -104,6 +104,8 @@ if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock" or "--repl
     ChallengeDeckReplay.ImportMaster(challengeMaster, directory);
 if (args is ["--replay-login-bonus", _, var loginMaster, _])
     LoginBonusReplay.ImportMaster(loginMaster, directory);
+if (args is ["--replay-challenge-stage", _, var stageMaster, _])
+    ChallengeStageReplay.ImportMaster(stageMaster, directory);
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
 builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Loopback, 0));
@@ -148,6 +150,11 @@ if (args is ["--replay-material-exchange" or "--replay-event-exchange", var exch
 builder.Services.AddControllers().AddApplicationPart(typeof(DeckController).Assembly)
     .ConfigureApplicationPartManager(manager => manager.FeatureProviders.Add(new TestedControllers()));
 await using var app = builder.Build();
+if (args is ["--replay-challenge-stage", var stageCapture, _, var stageOutput])
+{
+    ChallengeStageReplay.Run(app.Services, store, stageCapture, stageOutput);
+    return;
+}
 var token = "";
 var requests = 0;
 int? failAtRequest = null;

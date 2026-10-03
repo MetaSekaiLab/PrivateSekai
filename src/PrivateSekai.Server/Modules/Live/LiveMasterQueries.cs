@@ -18,6 +18,11 @@ public sealed class LiveMasterQueries(MasterData master)
 
     public int GetChallengePlayableCount() => master.GetTable<MasterChallengeLive>("challengeLives").Rows.First().playableCount;
 
+    public MasterChallengeLiveStage GetChallengeStage(int characterId, int rank) =>
+        master.GetTable<MasterChallengeLiveStage>("challengeLiveStages").Rows
+            .SingleOrDefault(s => s.characterId == characterId && s.rank == rank)
+        ?? throw new NotSupportedException("Challenge stage is missing or enters unverified EX stages.");
+
     public int GetFirstChallengeUnlockRank()
     {
         var behavior = master.GetTable<MasterOneTimeBehavior>("oneTimeBehaviors").Rows

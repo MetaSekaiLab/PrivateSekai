@@ -1,14 +1,67 @@
 extern alias game;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
+using PrivateSekai.Modules.Inventory;
+using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 
 namespace PrivateSekai.Modules.Live;
 
-public sealed class ChallengeLiveService(UserSession user, LiveMasterQueries master)
+public sealed class ChallengeLiveService(
+    UserSession user,
+    LiveMasterQueries master,
+    ResourceMasterQueries resourceMaster,
+    ResourceService resources)
 {
+    // addPoint 由结算提供；这里不推断分数、活动或会员的点数倍率。
+    public (int BeforeRank, int BeforePoint, int AfterRank, int AfterPoint, UserResource[] Rewards, int CharacterExp)
+        AdvanceStage(int characterId, int addPoint)
+    {
+        if (addPoint <= 0) throw new ArgumentOutOfRangeException(nameof(addPoint));
+        var stages = (user.Data.userChallengeLiveSoloStages ?? []).ToList();
+        var owned = stages.Where(s => s.characterId == characterId).ToArray();
+        if (owned.Any(s => s.challengeLiveStageType != "normal"))
+            throw new NotSupportedException("Challenge EX stages are not verified.");
+        var current = owned.SingleOrDefault(s => s.challengeLiveStageStatus == "in_progress");
+        if (owned.Length > 0 && current == null)
+            throw new InvalidOperationException("Missing current challenge stage.");
+        var beforeRank = current?.rank ?? 1;
+        var beforePoint = current?.point ?? 0;
+        var rank = beforeRank;
+        var point = checked(beforePoint + addPoint);
+        var rewards = new List<UserResource>();
+        var characterExp = 0;
+        if (current != null) stages.Remove(current);
+        while (true)
+        {
+            var row = master.GetChallengeStage(characterId, rank);
+            if (row.nextStageChallengePoint <= 0 || row.completeStageCharacterExp < 0)
+                throw new InvalidOperationException("Invalid challenge stage thresholds.");
+            var complete = point >= row.nextStageChallengePoint;
+            stages.Add(new UserChallengeLiveSoloStage
+            {
+                characterId = characterId, challengeLiveStageType = "normal", rank = rank,
+                challengeLiveStageId = row.id, challengeLiveStageStatus = complete ? "complete" : "in_progress",
+                point = complete ? row.nextStageChallengePoint : point
+            });
+            if (!complete) break;
+            var stageRewards = resourceMaster.BuildResourcesFromBox("challenge_live_stage", row.completeStageResourceBoxId);
+            if (row.completeStageResourceBoxId > 0 && stageRewards.Length == 0)
+                throw new InvalidOperationException("Missing challenge stage rewards.");
+            rewards.AddRange(stageRewards);
+            characterExp = checked(characterExp + row.completeStageCharacterExp);
+            point -= row.nextStageChallengePoint;
+            rank++;
+        }
+        resources.Grant(rewards);
+        user.Data.userChallengeLiveSoloStages = stages.ToArray();
+        user.MarkChanged(nameof(SuiteUser.userChallengeLiveSoloStages));
+        return (beforeRank, beforePoint, rank, point, rewards.ToArray(), characterExp);
+    }
+
     public (int Status, UserChallengeLiveStartResponse? Response) Start(UserChallengeLiveStartRequest request)
     {
         var deck = (user.Data.userChallengeLiveSoloDecks ?? []).SingleOrDefault(d => d.characterId == request.characterId);

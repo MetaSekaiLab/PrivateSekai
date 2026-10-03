@@ -2018,6 +2018,10 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 
 当前结算样本使用模拟输入。三次 C 档样本中，7999 分获得 200 点，8000 与 10000 分获得 201 点；玩家经验均增加 4000。双卡样本的两张卡各增加 12000 经验，响应 index 为 1、2，与领队、支援位对应。部分评分奖励材料 ID 不同，发放规则仍待核验。完整点数公式、其他评分经验、奖励抽取、跨日和自动挑战尚未核验，不能把单次返回值用作固定公式。
 
+普通阶段业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp` 供后续角色升级使用。EX 阶段暂不支持。
+
+Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 使用官方响应的 `addPoint` 重放阶段业务。三份样本的阶段记录、前后等级与点数、解码后奖励及待发角色经验均一致；该检查不覆盖点数公式、角色升级、网络字段省略规则或完整 HTTP 结算。
+
 ## POST `/api/user/{userId}/challenge-live/receive-select-reward/{resourceId}`
 
 领取挑战 Live 的可选出勤奖励。以下来自客户端静态审计，尚无官方成功领奖样本。
