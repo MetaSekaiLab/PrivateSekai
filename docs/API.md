@@ -2065,7 +2065,7 @@ Server 已接入手动成功 D／C 档的玩家与卡牌经验业务，复用普
 
 活动有效期采用 `startAt <= timestamp < aggregateAt`，依据 `EventUtility.IsPlayableEvent`（RVA `0x4d91984`）。开局与结算须属于同一活动；仅支持 marathon 且不统计队长活动次数的分支。自动、失败、跨活动、休息点数达到 master 上限及超过活动分数上限暂不支持。休息上限判断来自 `EventBreakTimeUtility.IsEventBreakPointOverMaxValue`，不将任意正点数视作休息状态；休息点数随时间恢复和休息中的奖励仍待核验。
 
-Client 阶段回放已加入活动前后积分、道具数量及 `userEvents`、`userEventItems`、`userReleaseConditions` 的状态比较，五份样本一致。时间边界、首次创建活动记录和编码失败回滚另有本地检查；World Link、其他活动类型、排行榜及完整 HTTP 结算仍未接入。
+Client 阶段回放已加入活动前后积分、道具数量及 `userEvents`、`userEventItems`、`userReleaseConditions` 的状态比较，五份样本一致。回放使用样本的真实编队，将玩家／卡牌经验与阶段、角色升级、任务、生日奖励、活动奖励及完成状态放在同一次用户操作中，并比较经验响应和卡牌持久状态。时间边界、首次创建活动记录和编码失败回滚另有本地检查；World Link、其他活动类型、排行榜及完整 HTTP 结算仍未接入。
 
 普通阶段及角色升级业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp`。角色等级按 `levels.levelType=character` 的累计门槛计算，更新 `userCharacters` 的等级、总经验和余经验；跨越的等级按 `characterRanks.rewardResourceBoxIds` 与 `character_rank_reward` 用途发奖。EX、角色满级及含额外解锁奖励的等级暂不支持。
 
