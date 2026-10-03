@@ -18,6 +18,7 @@ internal static class UserResponseSerializer
             {
                 new ChallengeStartFormatter(),
                 new EventExchangeFormatter(),
+                new MissionReceiveFormatter(),
                 new FieldFilterFormatter<UserEventExchange>((s, key) =>
                     key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0),
                 new FieldFilterFormatter<UserMaterialExchange>((s, key) =>
@@ -31,7 +32,9 @@ internal static class UserResponseSerializer
                 new FieldFilterFormatter<UserGamedata>((s, key) => key == "lastLoginAt" && s.lastLoginAt == 0),
                 new FieldFilterFormatter<UserHonorMission>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserHomeRefreshResponse>((s, key) => key == "shouldReflectWebPayment" && !s.shouldReflectWebPayment),
-                new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" && s.missionType == "beginner_mission_v2"),
+                new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" &&
+                    s.missionType is "beginner_mission_v2" or "live_mission"),
+                new FieldFilterFormatter<UserLiveMission>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserChallengeLivePlayStatus>((s, key) => key == "playEndAt" && s.liveStatus == "start")
             },
             new[] { DumpSerializer.Options.Resolver }));
@@ -54,6 +57,22 @@ internal static class UserResponseSerializer
 
         public UserEventExchangeResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
             DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserEventExchangeResponse>().Deserialize(ref reader, DumpSerializer.Options);
+    }
+
+    internal sealed class MissionReceiveFormatter : IMessagePackFormatter<UserMissionReceiveResponse?>
+    {
+        public void Serialize(ref MessagePackWriter writer, UserMissionReceiveResponse? value, MessagePackSerializerOptions options)
+        {
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) => r.resourceType == "coin" &&
+                    ((key == "resourceLevel" && r.resourceLevel == 0) || (key == "resourceId" && r.resourceId == 0))) },
+                new[] { options.Resolver }));
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserMissionReceiveResponse>()
+                .Serialize(ref writer, value!, scoped);
+        }
+
+        public UserMissionReceiveResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserMissionReceiveResponse>().Deserialize(ref reader, DumpSerializer.Options);
     }
 
     internal sealed class ChallengeStartFormatter : IMessagePackFormatter<UserChallengeLiveStartResponse?>

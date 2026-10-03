@@ -82,6 +82,8 @@ MaterialExchangeHttpChecks.WriteMaster(directory);
 EventExchangeHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 LiveHttpChecks.WriteBoostMaster(directory);
+if (args is ["--replay-live-mission", _, var missionMaster, _])
+    LiveMissionReplay.ImportMaster(missionMaster, directory);
 if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
 if (args is ["--replay-story", _, var storyMaster, _])
@@ -240,6 +242,11 @@ try
     JsonFiles.Write(Path.Combine(directory, "headers.json"), new Dictionary<string, string> { ["Accept"] = "application/octet-stream" });
     var config = new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = 1, RequireRotatingToken = true, HeadersFile = "headers.json" };
     using var client = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+    if (args is ["--replay-live-mission", var missionPath, _, var missionOutput])
+    {
+        await LiveMissionReplay.Run(client, store, missionPath, missionOutput);
+        return;
+    }
     if (args is ["--replay-natural-boost", var naturalBefore, var naturalAfter, _, var naturalOutput])
     {
         await BoostReplay.RunNatural(client, store, naturalBefore, naturalAfter, naturalOutput);

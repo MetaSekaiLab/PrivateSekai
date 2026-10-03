@@ -1,5 +1,6 @@
 extern alias game;
 
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using game::Sekai.ApiData;
@@ -44,8 +45,22 @@ public sealed class LiveController(UserOperation operations, UserSession user, L
     {
         return Encoded(operations.Execute(userId, () =>
         {
+            var previous = (user.Data.userMissionStatuses ?? [])
+                .Where(s => s.missionType == "live_mission" && s.missionStatus is "achieved" or "received")
+                .Select(s => s.missionId).ToHashSet();
             var response = live.ClearUserLive(userLiveId, request);
             response.updatedResources = user.BuildRefresh();
+            var achieved = (user.Data.userMissionStatuses ?? [])
+                .Where(s => s.missionType == "live_mission" && s.missionStatus == "achieved" && !previous.Contains(s.missionId))
+                .Select(s => s.missionId).ToArray();
+            // 新达成 ID 仅用于本次结算展示，后续 Suite 不保留该列表。
+            if (achieved.Length > 0)
+                response.updatedResources.userLiveMissions = response.updatedResources.userLiveMissions.Select(m => new UserLiveMission
+                {
+                    userId = m.userId, liveMissionPeriodId = m.liveMissionPeriodId,
+                    liveMissionStatus = m.liveMissionStatus, progress = m.progress, paidProgress = m.paidProgress,
+                    achievedMissionIds = m.liveMissionPeriodId == response.userLivePoint.liveMissionPeriodId ? achieved : m.achievedMissionIds
+                }).ToArray();
             return response;
         }));
     }

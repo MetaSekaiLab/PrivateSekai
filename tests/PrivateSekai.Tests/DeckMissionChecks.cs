@@ -109,7 +109,29 @@ internal static class DeckMissionChecks
             Check.That(received.ObtainedRewards.Single().quantity == 5 && repeated.Length == 0 &&
                 store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 10).quantity == 5,
                 "Live 任务重复 ID 与重复请求均不重复发奖");
-            Console.WriteLine("编队与任务：保存、主编队切换、领奖条件、幂等及回滚检查通过。");
+            Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+            {
+                missions.UpdateLiveMissionProgress(new() { liveMissionPeriodId = 1, addNormalProgress = 25 });
+                return new BrokenResponse();
+            }), "Live 任务跨门槛后编码失败回滚进度和达成状态");
+            Check.That(store.Read(1)!.Data.userLiveMissions.Single().progress == 25 &&
+                !store.Read(1)!.Data.userMissionStatuses.Any(s => s.missionId == 3), "失败结算不残留达成状态");
+            var achieved = DumpSerializer.Deserialize<SuiteUser>(operations.Execute(1, () =>
+            {
+                missions.UpdateLiveMissionProgress(new() { liveMissionPeriodId = 1, addNormalProgress = 25 });
+                return user.BuildRefresh();
+            }));
+            Check.That(achieved.userMissionStatuses.Single(s => s.missionId == 3).missionStatus == "achieved" &&
+                achieved.userMissionStatuses.Single(s => s.missionId == 1).missionStatus == "received" &&
+                achieved.userLiveMissions.Single().achievedMissionIds.Length == 0,
+                "免费任务达到门槛后新增状态，保留已领奖状态和独立历史数组");
+            var unchanged = DumpSerializer.Deserialize<SuiteUser>(operations.Execute(1, () =>
+            {
+                missions.UpdateLiveMissionProgress(new() { liveMissionPeriodId = 1, addNormalProgress = 1 });
+                return user.BuildRefresh();
+            }));
+            Check.That(unchanged.userMissionStatuses == null, "没有新达成任务时不重复刷新任务状态");
+            Console.WriteLine("编队与任务：保存、主编队切换、任务达成、领奖条件及回滚检查通过。");
         }
         finally
         {

@@ -400,6 +400,7 @@ internal static class FeatureChecks
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
             ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPasses"] = """[{"id":1,"liveMissionPeriodId":1}]""",
+            ["liveMissions"] = "[]",
             ["musicAchievements"] = """[{"id":1,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_c","resourceBoxId":80}]"""
         };
         foreach (var (table, json) in tables)

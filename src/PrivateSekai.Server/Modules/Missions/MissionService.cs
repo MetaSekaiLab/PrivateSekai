@@ -322,9 +322,18 @@ public sealed class MissionService(
             missions.Add(mission);
         }
 
-        mission.progress += livePoint.addNormalProgress;
+        mission.progress = checked(mission.progress + livePoint.addNormalProgress);
         mission.achievedMissionIds ??= [];
         user.Data.userLiveMissions = missions.ToArray();
         user.MarkChanged(nameof(SuiteUser.userLiveMissions));
+        foreach (var definition in master.GetFreeLiveMissions(mission.liveMissionPeriodId))
+        {
+            if (mission.progress < definition.requirement ||
+                user.Data.userMissionStatuses?.Any(s => s.missionType == "live_mission" &&
+                    s.missionId == definition.id && s.missionStatus is "achieved" or "received") == true)
+                continue;
+            MarkMissionAchieved("live_mission", definition.id);
+            user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
+        }
     }
 }

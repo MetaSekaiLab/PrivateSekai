@@ -2115,6 +2115,18 @@ Server 已接入兑换期内、已存在记录的技能券、体力道具和金�
 
 Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示例 ID 须按当前 master 和账号库存调整。已取得成功样本的相关 HTTP、基线、响应和状态增量对拍一致；金币比较覆盖 `userGamedata.coin`，完整背景资源不在此结论范围内。
 
+## PUT `/api/user/{userId}/mission/live_mission`
+
+- Path：当前 `userId`；无 query。Body：`UserMissionReceiveRequest.missionIds`，待领取的任务 ID 数组。
+- Response：`UserMissionReceiveResponse`；`obtainedRewards` 为获得的资源，`updatedResources` 为用户刷新数据。
+- 请求用途：领取已达成的 Live 任务。`PutUserMissionReceiveAPI` 使用任务类型拼接路由，成功回调合并用户刷新数据，再通知调用方。
+- 官方免费任务成功样本：返回金币奖励，任务状态从 `achieved` 变为 `received`；刷新包含完整 `userMissionStatuses`，各条省略 `userId`，不包含 `userLiveMissions`。金币资源省略零值 `resourceId`、`resourceLevel`。
+- 普通 Live 的任务达成样本：进度从 90 增至 120，跨过 master 的 100 门槛后新增 `achieved` 状态。本次结算的 `userLiveMissions.achievedMissionIds` 包含新达成 ID，随后 Suite 回读为空；后续 120 至 150 不重复提示，也不重复刷新任务状态。`userLiveMissions` 省略 `userId`。
+
+Server 已补免费任务达成及结算提示，Client 支持领奖场景和 `--replay-live-mission` 样本重放。门槛前、跨门槛及达成后的三次普通 Live HTTP 重放，在任务进度、任务状态和对应响应字段范围无差异；领奖样本在金币、任务进度、任务状态及奖励响应范围无差异。全量背景字段、其他奖励种类、批量及重复领奖、付费通行证和周期边界仍待官方核验；本地防重复测试不代表官方重复请求行为已确认。
+
+证据：`PutUserMissionReceiveAPI` 构造、Execute 和回调，任务请求与响应契约、`liveMissions` 与 `mission_reward` 资源盒，以及免费任务达成、领奖和回读样本。
+
 ## PUT `/api/user/{userId}/home/refresh`：登录奖励分支
 
 - Path：当前 `userId`；无 query。

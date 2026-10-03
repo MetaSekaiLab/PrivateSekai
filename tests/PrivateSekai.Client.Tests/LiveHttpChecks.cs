@@ -23,6 +23,7 @@ internal static class LiveHttpChecks
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
             ["boosts"] = """[{"id":1,"costBoost":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPasses"] = """[{"id":1,"liveMissionPeriodId":1}]""",
+            ["liveMissions"] = """[{"id":1,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":3}]""",
             ["musicAchievements"] = "[]"
         };
         foreach (var (table, json) in tables) File.WriteAllText(Path.Combine(directory, table + ".json"), json);
@@ -46,6 +47,7 @@ internal static class LiveHttpChecks
         firstState.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         firstState.Data.userMusicResults = [];
         firstState.Data.userLiveMissions = [];
+        firstState.Data.userMissionStatuses = [];
         firstState.Data.userLiveCharacterArchiveVoice = new() { characterArchiveVoiceGroupIds = [] };
         store.Save(1, firstState);
         var secondState = store.Read(1)!;
@@ -63,6 +65,9 @@ internal static class LiveHttpChecks
                 "Live 真实 HTTP 结算保存成绩并移除各自会话");
             check(saved.Data.userBoost.current == 2 && saved.Data.userLiveMissions.Single().progress == 3,
                 "Live 结算保存体力消耗和任务进度");
+            check(saved.Data.userLiveMissions.Single().achievedMissionIds.Length == 0 &&
+                saved.Data.userMissionStatuses.Single().missionStatus == "achieved",
+                "Live 达成状态持久化，结算提示 ID 不进入存档");
             check(saved.Data.userLiveCharacterArchiveVoice.characterArchiveVoiceGroupIds.Order().SequenceEqual(new[] { 4, 5 }),
                 "结算与结果页语音接口共同更新语音状态");
         }
@@ -77,6 +82,9 @@ internal static class LiveHttpChecks
             var voice = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, name, "004.json")))!;
             check(clear["response"]!["scoreRank"]!.GetValue<string>() == "rank_c",
                 "结算响应包含 master 阈值计算的评分");
+            var mission = clear["response"]!["updatedResources"]!["userLiveMissions"]![0]!;
+            check(mission["achievedMissionIds"]!.AsArray().Single()!.GetValue<int>() == 1 && mission["userId"] == null,
+                "Live HTTP 结算提示本次新达成 ID 并省略用户 ID");
             check(clear["delayBeforeMs"]!.GetValue<int>() == 1 && clear["status"]!.GetValue<string>() == "completed",
                 "等待后的步骤保留会话引用并记录完成状态");
             check(clear["args"]!["userLiveId"]!.GetValue<string>() == id && voice["request"]!["userLiveId"]!.GetValue<string>() == id,
@@ -103,6 +111,9 @@ internal static class LiveHttpChecks
             "含 GOOD 且没有 BAD/MISS 的结算不算全连");
         check(great["fullComboFlg"]!.GetValue<bool>() && !great["fullPerfectFlg"]!.GetValue<bool>(),
             "GREAT 保留全连但不算 AP");
+        check(good["updatedResources"]!["userLiveMissions"]![0]!["achievedMissionIds"]!.AsArray().Count == 0 &&
+            good["updatedResources"]!["userMissionStatuses"] == null,
+            "已达成任务后续结算不重复提示或刷新任务状态");
         check(store.Read(1)!.Data.userMusicResults.Single().playResult == "full_perfect" &&
             good["updatedResources"]?["userMusicResults"] == null && great["updatedResources"]?["userMusicResults"] == null,
             "当前局判定不会降低历史 AP，也不重复刷新未变成绩");

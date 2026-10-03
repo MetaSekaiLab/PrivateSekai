@@ -18,7 +18,7 @@ internal static class LiveReplay
     public static void ImportMaster(string source, string destination)
     {
         foreach (var table in new[] { "cards", "cardRarities", "musicDifficulties", "playLevelScores",
-            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPasses", "levels", "playerRankRewards", "configs", "releaseConditions" })
+            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPasses", "liveMissions", "levels", "playerRankRewards", "configs", "releaseConditions" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
         rankReleaseIds = JsonNode.Parse(File.ReadAllText(Path.Combine(source, "releaseConditions.json")))!.AsArray()
             .Where(c => c?["releaseConditionType"]?.GetValue<string>() == "user_rank")
@@ -82,6 +82,8 @@ internal static class LiveReplay
                     ScenarioRunner.Compare(SelectRankReleaseRecord(official), SelectRankReleaseRecord(local)));
                 JsonFiles.Write(Path.Combine(output, "boost-compare.json"),
                     ScenarioRunner.Compare(SelectBoostRecord(official), SelectBoostRecord(local)));
+                JsonFiles.Write(Path.Combine(output, "live-mission-compare.json"),
+                    ScenarioRunner.Compare(SelectMissionRecord(official), SelectMissionRecord(local)));
                 foreach (var record in new[] { official, local })
                 {
                     foreach (var side in new[] { "before", "after" })
@@ -107,6 +109,19 @@ internal static class LiveReplay
         selected["response"] = new JsonObject
         {
             ["updatedResources"] = Select(record["response"]?["updatedResources"], ["userBoost"])
+        };
+        return selected;
+    }
+
+    private static JsonObject SelectMissionRecord(JsonObject record)
+    {
+        var selected = record.DeepClone().AsObject();
+        string[] fields = ["userLiveMissions", "userMissionStatuses"];
+        foreach (var side in new[] { "before", "after" })
+            selected[side] = Select(record[side], fields);
+        selected["response"] = new JsonObject
+        {
+            ["updatedResources"] = Select(record["response"]?["updatedResources"], fields)
         };
         return selected;
     }
