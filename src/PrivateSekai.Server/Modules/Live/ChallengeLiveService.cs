@@ -7,6 +7,7 @@ using game::Sekai;
 using PrivateSekai.Modules.Cards;
 using PrivateSekai.Modules.Characters;
 using PrivateSekai.Modules.Inventory;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 
@@ -19,8 +20,24 @@ public sealed class ChallengeLiveService(
     ResourceService resources,
     CharacterService characters,
     LiveService live,
-    CardService cards)
+    CardService cards,
+    MissionService missions)
 {
+    public void UpdateMissions(UserChallengeLiveStartRequest start, UserChallengeLiveClearRequest clear, int liveMissionPeriodId)
+    {
+        if (liveMissionPeriodId <= 0) throw new ArgumentOutOfRangeException(nameof(liveMissionPeriodId));
+        if (start.isAuto || clear.life <= 0 || user.Data.userColorfulPassV2?.colorfulPassId > 0 ||
+            user.Data.userLiveMissions?.Any(m => m.liveMissionPeriodId == liveMissionPeriodId && m.liveMissionStatus != "free") == true)
+            throw new NotSupportedException("Challenge mission mode is not verified.");
+        var point = master.GetChallengeLivePoint();
+        if (point <= 0) throw new InvalidOperationException("Invalid challenge Live point configuration.");
+        missions.UpdateLiveMissionProgress(new UserLivePoint
+        {
+            liveMissionPeriodId = liveMissionPeriodId, addNormalProgress = point
+        });
+        missions.RecordChallengeLiveClear();
+    }
+
     public (UpdateExpResult Player, DeckCardUpdateExpResult[] Cards, UserResource[] Rewards) GainExperience(
         UserChallengeLiveStartRequest start, UserChallengeLiveClearRequest clear)
     {

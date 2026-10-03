@@ -18,6 +18,10 @@ public sealed class LiveMasterQueries(MasterData master)
 
     public int GetChallengePlayableCount() => master.GetTable<MasterChallengeLive>("challengeLives").Rows.First().playableCount;
 
+    public int GetChallengeLivePoint() => int.Parse(master.GetTable<MasterConfig>("configs").Rows
+        .Single(c => c.configKey == "obtain_live_point_for_challenge_live").value,
+        System.Globalization.CultureInfo.InvariantCulture);
+
     public int CalculateChallengeBasePoint(int score)
     {
         if (score < 0) throw new ArgumentOutOfRangeException(nameof(score));

@@ -2065,7 +2065,11 @@ Server 的挑战评分查询按曲目难度的 `playLevel` 选择 `playLevelScor
 
 普通挑战点数按 `challenge_base_point + floor(score / challenge_point_calc_value)` 计算；当前 master 参数为 200、8000。[公开分析](https://note.com/notnishikori_18/n/nd3b1719c555f) 明确给出同一公式，五份官方样本交叉验证了 3999、7999、8000、10000、100000 分的结果。Server 已将其接入手动成功、无会员的阶段业务；会员倍率、自动和失败结算仍待核验。
 
+挑战任务联动已接入业务层：按 `configs.obtain_live_point_for_challenge_live` 增加免费 Live 任务进度，并按 `beginnerMissionV2Type=challenge_live_clear` 推进新手任务。五份官方样本中该新手任务从无记录变为进度 1、`isNewAchieved=false`，对应状态为 `achieved`，普通 Live 新手任务不变。任务周期由结算入口提供；自动、失败、会员和付费任务状态暂不支持。完整结算入口、跨期选择及每日加成响应仍待接入和核验。
+
 Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 从请求分数独立计算评分和点数，再重放阶段业务，不使用官方 `addPoint` 作为输入。五份样本的评分、点数、阶段记录、角色状态及解码后的完整 `userChallengeLiveStageResult` 一致，涵盖角色 1 和 21 从等级 1 升至 3 的经验与奖励；该检查不覆盖网络字段省略规则或完整 HTTP 结算。样本新增的释放条件来自活动积分，不属于角色升级。
+
+该回放同时比较 `userLiveMissions`、`userBeginnerMissionV2s`、`userMissionStatuses` 的完整业务状态，五份样本一致；周期取结算前唯一免费任务记录。用户 ID 映射为本地测试账号，不据此验证网络字段省略规则。后续挑战不重复推进已达成新手任务，以及编码失败回滚两类任务，另有本地检查。
 
 高分业务已实现：保存角色最高分，按 master 门槛发放未记录的奖励，保存 `complete` 记录。四份样本经 `--replay-challenge-high-score` 重放，覆盖未达门槛和首次达到单个门槛，解码后响应、最高分及已领记录一致。一次跨越多门槛、较低成绩和重复成绩只有本地检查，仍需官方样本。
 

@@ -48,6 +48,10 @@ public sealed class MissionMasterQueries(MasterData master)
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "any_live_clear").ToArray();
 
+    public MasterBeginnerMissionV2[] GetChallengeLiveClearMissions() =>
+        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
+            .Where(m => m.beginnerMissionV2Type == "challenge_live_clear").ToArray();
+
     public MasterBeginnerMissionV2[] GetMusicPurchaseMissions() =>
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "exchange_any_music").ToArray();

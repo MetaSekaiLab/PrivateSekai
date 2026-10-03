@@ -161,6 +161,8 @@ public sealed class MissionService(
 
     public void RecordManualLiveClear() => RecordLimitedBeginnerProgress(master.GetLiveClearMissions());
 
+    public void RecordChallengeLiveClear() => RecordLimitedBeginnerProgress(master.GetChallengeLiveClearMissions());
+
     public void RecordMusicPurchase() => RecordLimitedBeginnerProgress(master.GetMusicPurchaseMissions());
 
     public void RecordCostumeChange() => RecordBeginnerMissionProgress(master.GetCostumeChangeMissions());

@@ -22,7 +22,15 @@ internal static class ChallengeStageChecks
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "configs.json"), """
             [{"configKey":"challenge_base_point","value":"17"},
-             {"configKey":"challenge_point_calc_value","value":"13"}]
+             {"configKey":"challenge_point_calc_value","value":"13"},
+             {"configKey":"obtain_live_point_for_challenge_live","value":"30"}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"), """
+            [{"id":71,"beginnerMissionV2Type":"challenge_live_clear","requirement":1},
+             {"id":72,"beginnerMissionV2Type":"any_live_clear","requirement":3}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "liveMissions.json"), """
+            [{"id":81,"liveMissionPeriodId":9,"liveMissionType":"free","requirement":30}]
             """);
         File.WriteAllText(Path.Combine(directory, "musicDifficulties.json"), """
             [{"id":1,"playLevel":5},{"id":2,"playLevel":6}]
@@ -84,6 +92,25 @@ internal static class ChallengeStageChecks
             challenges.AdvanceStage(1, point);
             return user.BuildRefresh();
         });
+        Reset();
+        void UpdateMissions() => challenges.UpdateMissions(new UserChallengeLiveStartRequest { characterId = 1 },
+            new UserChallengeLiveClearRequest { life = 1000 }, 9);
+        Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+        {
+            UpdateMissions();
+            return new BrokenResponse();
+        }), "挑战任务刷新编码失败");
+        Check.That(store.Read(1)!.Data.userLiveMissions?.Any() != true &&
+            store.Read(1)!.Data.userBeginnerMissionV2s?.Any() != true, "编码失败回滚挑战两类任务");
+        operations.Execute(1, () => { UpdateMissions(); return user.BuildRefresh(); });
+        Check.That(store.Read(1)!.Data.userLiveMissions.Single().progress == 30 &&
+            store.Read(1)!.Data.userBeginnerMissionV2s.Single().beginnerMissionV2Id == 71 &&
+            store.Read(1)!.Data.userMissionStatuses.Count(s => s.missionStatus == "achieved") == 2,
+            "挑战增加配置点数并达成两类任务，不推进普通 Live 新手任务");
+        operations.Execute(1, () => { UpdateMissions(); return user.BuildRefresh(); });
+        Check.That(store.Read(1)!.Data.userLiveMissions.Single().progress == 60 &&
+            store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 1,
+            "后续挑战累计 Live 点数，已达成新手任务不重复累计");
         Reset();
         operations.Execute(1, () =>
         {
