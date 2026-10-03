@@ -19,6 +19,35 @@ public sealed class LiveMasterQueries(MasterData master)
 
     public int GetChallengePlayableCount() => master.GetTable<MasterChallengeLive>("challengeLives").Rows.First().playableCount;
 
+    public MasterEvent? GetPlayableEvent(long timestamp) => master.GetTable<MasterEvent>("events").Rows
+        .SingleOrDefault(e => e.startAt <= timestamp && timestamp < e.aggregateAt);
+
+    public int GetEventItemId(int eventId) => master.GetTable<MasterEventItem>("eventItems").Rows
+        .Single(e => e.eventId == eventId).id;
+
+    public int GetEventBreakMaxPoint(int id) => master.GetTable<MasterEventBreakTime>("eventBreakTimes").Rows
+        .Single(e => e.id == id).maxPoint;
+
+    public MasterReleaseCondition[] GetEventPointConditions(int eventId, int before, int after) =>
+        master.GetTable<MasterReleaseCondition>("releaseConditions").Rows.Where(c =>
+            c.releaseConditionType == "event_point" && c.releaseConditionTypeId == eventId &&
+            c.releaseConditionTypeQuantity > before && c.releaseConditionTypeQuantity <= after).OrderBy(c => c.id).ToArray();
+
+    public (int Point, int Items) CalculateChallengeEventPoint(int score)
+    {
+        if (score < 0) throw new ArgumentOutOfRangeException(nameof(score));
+        var configs = master.GetTable<MasterConfig>("configs").Rows;
+        int Config(string key) => int.Parse(configs.Single(c => c.configKey == key).value,
+            System.Globalization.CultureInfo.InvariantCulture);
+        if (score > Config("event_score_ceiling"))
+            throw new NotSupportedException("Challenge score above the event ceiling is not verified.");
+        var rate = Config("challenge_live_event_point_rate");
+        var reduction = Config("event_item_reduction");
+        if (rate <= 0 || reduction <= 0) throw new InvalidOperationException("Invalid challenge event configuration.");
+        var point = checked((100 + score / 20000) * rate);
+        return (point, point / reduction);
+    }
+
     public int GetChallengeLivePoint() => int.Parse(master.GetTable<MasterConfig>("configs").Rows
         .Single(c => c.configKey == "obtain_live_point_for_challenge_live").value,
         System.Globalization.CultureInfo.InvariantCulture);

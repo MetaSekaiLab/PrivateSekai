@@ -14,7 +14,7 @@ internal static class ChallengeStageReplay
 {
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores", "configs", "liveMissions", "liveMissionPeriods", "beginnerMissionV2s", "characterMissionV2s", "characterMissionV2ParameterGroups", "birthdayParties" })
+        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores", "configs", "liveMissions", "liveMissionPeriods", "beginnerMissionV2s", "characterMissionV2s", "characterMissionV2ParameterGroups", "birthdayParties", "events", "eventItems", "eventBreakTimes", "releaseConditions" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -39,6 +39,11 @@ internal static class ChallengeStageReplay
             official["before"]!["userCharacters"]!.ToJsonString(), DumpJson.Options)!;
         state.Data.userChargedCurrency = new() { paidUnitPrices = [] };
         state.Data.userMaterials = official["before"]!["userMaterials"]!.Deserialize<UserMaterial[]>(DumpJson.Options);
+        state.Data.userEvents = official["before"]!["userEvents"]!.Deserialize<UserEvent[]>(DumpJson.Options);
+        state.Data.userEventItems = official["before"]!["userEventItems"]!.Deserialize<UserEventItem[]>(DumpJson.Options);
+        state.Data.userEventBreakTime = official["before"]?["userEventBreakTime"]?.Deserialize<UserEventBreakTime>(DumpJson.Options);
+        state.Data.userReleaseConditions = official["before"]!["userReleaseConditions"]!.Deserialize<UserReleaseCondition[]>(DumpJson.Options);
+        foreach (var condition in state.Data.userReleaseConditions ?? []) condition.userId = 1;
         state.Data.userColorfulPassV2 = official["before"]?["userColorfulPassV2"]?.Deserialize<UserColorfulPassV2>(DumpJson.Options);
         state.Data.userLiveMissions = official["before"]!["userLiveMissions"]!.Deserialize<UserLiveMission[]>(DumpJson.Options);
         state.Data.userMissionStatuses = official["before"]!["userMissionStatuses"]!.Deserialize<UserMissionStatus[]>(DumpJson.Options);
@@ -69,6 +74,7 @@ internal static class ChallengeStageReplay
             throw new InvalidOperationException("挑战评分与官方样本存在差异。");
         JsonObject actual = new();
         LimitedTermScoreRankRewardResult[] birthdayRewards = [];
+        JsonObject eventResult = new();
         var start = new UserChallengeLiveStartRequest
         {
             characterId = characterId, isAuto = playStatus["isAuto"]?.GetValue<bool>() ?? false
@@ -79,6 +85,12 @@ internal static class ChallengeStageReplay
             var result = service.AdvanceStage(start, clear);
             service.UpdateMissions(start, clear);
             birthdayRewards = service.GrantBirthdayRewards(start, clear, playStatus["playStartAt"]!.GetValue<long>());
+            var points = service.GainEventPoint(start, clear, playStatus["playStartAt"]!.GetValue<long>());
+            eventResult = new JsonObject
+            {
+                ["beforeEventPoint"] = points.BeforePoint, ["afterEventPoint"] = points.AfterPoint,
+                ["beforeEventItemQuantity"] = points.BeforeItems, ["afterEventItemQuantity"] = points.AfterItems
+            };
             if (!service.CompletePlay(sessionId, clear)) throw new InvalidOperationException("挑战会话未完成。");
             actual = JsonSerializer.SerializeToNode(result, DumpJson.Options)!.AsObject();
             return user.BuildRefresh();
@@ -93,6 +105,20 @@ internal static class ChallengeStageReplay
                 JsonSerializer.Deserialize<UserCharacter[]>(official["after"]!["userCharacters"]!.ToJsonString(), DumpJson.Options), DumpJson.Options),
             JsonSerializer.SerializeToNode(store.Read(1)!.Data.userCharacters, DumpJson.Options));
         var saved = store.Read(1)!.Data;
+        var expectedEventResult = new JsonObject(eventResult.Select(p =>
+            KeyValuePair.Create(p.Key, official["response"]![p.Key]?.DeepClone())));
+        var eventDifferences = Comparison.Diff(expectedEventResult, eventResult);
+        var expectedConditions = official["after"]!["userReleaseConditions"]!.Deserialize<UserReleaseCondition[]>(DumpJson.Options)!;
+        foreach (var condition in expectedConditions) condition.userId = 1;
+        var eventStateDifferences = Comparison.Diff(JsonSerializer.SerializeToNode(new
+        {
+            events = official["after"]!["userEvents"]!.Deserialize<UserEvent[]>(DumpJson.Options),
+            items = official["after"]!["userEventItems"]!.Deserialize<UserEventItem[]>(DumpJson.Options),
+            conditions = expectedConditions
+        }, DumpJson.Options), JsonSerializer.SerializeToNode(new
+        {
+            events = saved.userEvents, items = saved.userEventItems, conditions = saved.userReleaseConditions
+        }, DumpJson.Options));
         var birthdayDifferences = Comparison.Diff(JsonSerializer.SerializeToNode(
             official["response"]!["limitedTermScoreRankRewards"]!.Deserialize<LimitedTermScoreRankRewardResult[]>(DumpJson.Options), DumpJson.Options),
             JsonSerializer.SerializeToNode(birthdayRewards, DumpJson.Options));
@@ -131,14 +157,15 @@ internal static class ChallengeStageReplay
             JsonSerializer.SerializeToNode(actualMissions, DumpJson.Options));
         JsonFiles.Write(Path.Combine(output, "challenge-stage-compare.json"), new
         {
-            scope = "评分、点数、阶段、角色升级、任务及完成状态业务重放；按结算时间查询周期，不验证跨期演出或完整 HTTP 结算",
+            scope = "评分、点数、阶段、角色升级、任务、完成状态、生日奖励及活动业务重放；不验证跨期演出或完整 HTTP 结算",
             scoreRank,
             expected = projected, actual,
-            resultDifferences = differences, stageDifferences, characterDifferences, missionDifferences, playDifferences, characterMissionDifferences, birthdayDifferences,
+            resultDifferences = differences, stageDifferences, characterDifferences, missionDifferences, playDifferences, characterMissionDifferences, birthdayDifferences, eventDifferences, eventStateDifferences,
             actualStages = after
         });
         if (differences.Count != 0 || stageDifferences.Count != 0 || characterDifferences.Count != 0 || missionDifferences.Count != 0 ||
-            playDifferences.Count != 0 || characterMissionDifferences.Count != 0 || birthdayDifferences.Count != 0)
+            playDifferences.Count != 0 || characterMissionDifferences.Count != 0 || birthdayDifferences.Count != 0 ||
+            eventDifferences.Count != 0 || eventStateDifferences.Count != 0)
             throw new InvalidOperationException("挑战阶段与官方样本存在差异，见重放报告。");
         if (store.Read(1)!.Private.ChallengeLiveSessions.ContainsKey(sessionId))
             throw new InvalidOperationException("已完成的私有挑战会话未清理。");

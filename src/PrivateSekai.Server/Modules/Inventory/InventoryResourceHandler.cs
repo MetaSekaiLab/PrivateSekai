@@ -41,6 +41,18 @@ public sealed class InventoryResourceHandler : IResourceHandler
                 user.Data.userBoostItems = items.OrderBy(i => i.boostItemId).ToArray();
                 user.MarkChanged(nameof(SuiteUser.userBoostItems));
                 break;
+            case "event_item":
+                var eventItems = (user.Data.userEventItems ?? []).ToList();
+                var eventItem = eventItems.SingleOrDefault(i => i.eventItemId == resource.resourceId);
+                if (eventItem == null)
+                {
+                    eventItem = new UserEventItem { eventItemId = resource.resourceId };
+                    eventItems.Add(eventItem);
+                }
+                eventItem.quantity = checked(eventItem.quantity + resource.quantity);
+                user.Data.userEventItems = eventItems.OrderBy(i => i.eventItemId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userEventItems));
+                break;
             default:
                 throw new NotSupportedException($"Resource '{resource.resourceType}' cannot be granted.");
         }

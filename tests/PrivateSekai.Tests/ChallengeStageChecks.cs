@@ -30,7 +30,18 @@ internal static class ChallengeStageChecks
             [{"configKey":"challenge_base_point","value":"17"},
              {"configKey":"challenge_point_calc_value","value":"13"},
              {"configKey":"obtain_live_point_for_challenge_live","value":"30"},
-             {"configKey":"challenge_live_limited_term_score_rank_reward_rate","value":"7"}]
+             {"configKey":"challenge_live_limited_term_score_rank_reward_rate","value":"7"},
+             {"configKey":"challenge_live_event_point_rate","value":"120"},
+             {"configKey":"event_item_reduction","value":"10"},
+             {"configKey":"event_score_ceiling","value":"5500000"}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "events.json"), """
+            [{"id":8,"eventType":"marathon","startAt":300,"aggregateAt":4102444800000}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "eventItems.json"), """[{"id":18,"eventId":8}]""");
+        File.WriteAllText(Path.Combine(directory, "releaseConditions.json"), """
+            [{"id":201,"releaseConditionType":"event_point","releaseConditionTypeId":8,"releaseConditionTypeQuantity":12000},
+             {"id":202,"releaseConditionType":"event_point","releaseConditionTypeId":8,"releaseConditionTypeQuantity":32000}]
             """);
         File.WriteAllText(Path.Combine(directory, "birthdayParties.json"), """
             [{"id":1,"startAt":100,"birthdayStartAt":150,"closedAt":200,"deliveryItemMaterialId":601},
@@ -88,6 +99,13 @@ internal static class ChallengeStageChecks
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
         var master = scope.ServiceProvider.GetRequiredService<LiveMasterQueries>();
         var missionMaster = scope.ServiceProvider.GetRequiredService<MissionMasterQueries>();
+        Check.That(master.GetPlayableEvent(299) == null && master.GetPlayableEvent(300)?.id == 8 &&
+            master.GetPlayableEvent(4102444799999)?.id == 8 && master.GetPlayableEvent(4102444800000) == null,
+            "活动计分包含开始时刻，排除结算截止时刻");
+        foreach (var (score, point) in new[] { (0, 12000), (19999, 12000), (20000, 12120), (100000, 12600) })
+            Check.That(master.CalculateChallengeEventPoint(score) == (point, point / 10), "挑战活动分数取整及道具换算");
+        Check.Throws<ArgumentOutOfRangeException>(() => master.CalculateChallengeEventPoint(-1), "拒绝负活动分数");
+        Check.Throws<NotSupportedException>(() => master.CalculateChallengeEventPoint(5500001), "不猜测超活动分数上限处理");
         Check.That(master.GetBirthdayParty(99) == null && master.GetBirthdayParty(100)?.id == 1 &&
             master.GetBirthdayParty(199)?.id == 1 && master.GetBirthdayParty(200) == null &&
             master.GetBirthdayParty(300)?.deliveryItemMaterialId == 602, "生日活动按开始与关闭时间选择，不等到生日当天");
@@ -117,6 +135,25 @@ internal static class ChallengeStageChecks
             challenges.AdvanceStage(1, point);
             return user.BuildRefresh();
         });
+        Reset();
+        Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+        {
+            challenges.GainEventPoint(new(), new() { life = 1000, score = 100000 }, 300);
+            return new BrokenResponse();
+        }), "挑战活动结算编码失败");
+        Check.That(store.Read(1)!.Data.userEvents?.Any() != true && store.Read(1)!.Data.userEventItems?.Any() != true &&
+            store.Read(1)!.Data.userReleaseConditions?.Any() != true, "回滚活动积分、道具与解锁条件");
+        operations.Execute(1, () =>
+        {
+            var result = challenges.GainEventPoint(new(), new() { life = 1000, score = 100000 }, 300);
+            Check.That(result == (0, 12600, 0, 1260), "活动结算返回前后积分和道具数量");
+            return user.BuildRefresh();
+        });
+        Check.That(store.Read(1)!.Data.userEvents.Single().eventPoint == 12600 &&
+            store.Read(1)!.Data.userEventItems.Single().eventItemId == 18 &&
+            store.Read(1)!.Data.userEventItems.Single().quantity == 1260 &&
+            store.Read(1)!.Data.userReleaseConditions.Single().releaseConditionId == 201,
+            "活动积分达到门槛写入对应条件，活动道具按 master 映射");
         Reset();
         Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
         {

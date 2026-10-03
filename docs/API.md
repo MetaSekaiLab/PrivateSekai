@@ -2061,6 +2061,12 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 
 Server 已接入手动成功 D／C 档的玩家与卡牌经验业务，复用普通 Live 的玩家升级处理和卡牌经验处理；自动挑战、失败结算、会员及其他评分仍待核验。Client 测试入口 `--replay-challenge-exp <record> <master> <output>` 比较经验响应、玩家经验持久状态和卡牌状态，D 档双卡及 C 档单／双卡样本通过。回放另检查后续卡牌发放失败时回滚玩家和领队经验。本组样本没有玩家升级，不据此宣称挑战升级奖励或体力联动已获官方核验；完整结算路由仍未接入。
 
+挑战活动积分业务已接入 marathon 活动：`(100 + floor(score / 20000)) × configs.challenge_live_event_point_rate`，道具数量为新增积分除以 `configs.event_item_reduction` 后向下取整。公式来自[公开分析](https://note.com/notnishikori_18/n/nd3b1719c555f)并经五份官方样本交叉验证：低于 20000 分增加 12000 积分／1200 道具，100000 分增加 12600／1260。活动道具按 `eventItems.eventId` 映射，通过资源服务发放；跨过 `releaseConditionType=event_point` 的 `releaseConditionTypeQuantity` 时记录解锁条件和结算时间，保留已有条件。
+
+活动有效期采用 `startAt <= timestamp < aggregateAt`，依据 `EventUtility.IsPlayableEvent`（RVA `0x4d91984`）。开局与结算须属于同一活动；仅支持 marathon 且不统计队长活动次数的分支。自动、失败、跨活动、休息点数达到 master 上限及超过活动分数上限暂不支持。休息上限判断来自 `EventBreakTimeUtility.IsEventBreakPointOverMaxValue`，不将任意正点数视作休息状态；休息点数随时间恢复和休息中的奖励仍待核验。
+
+Client 阶段回放已加入活动前后积分、道具数量及 `userEvents`、`userEventItems`、`userReleaseConditions` 的状态比较，五份样本一致。时间边界、首次创建活动记录和编码失败回滚另有本地检查；World Link、其他活动类型、排行榜及完整 HTTP 结算仍未接入。
+
 普通阶段及角色升级业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp`。角色等级按 `levels.levelType=character` 的累计门槛计算，更新 `userCharacters` 的等级、总经验和余经验；跨越的等级按 `characterRanks.rewardResourceBoxIds` 与 `character_rank_reward` 用途发奖。EX、角色满级及含额外解锁奖励的等级暂不支持。
 
 Server 的挑战评分查询按曲目难度的 `playLevel` 选择 `playLevelScores.liveType=challenge_live`，从 S 到 C 比较包含边界的门槛，低于 C 返回 D。证据为 `MusicUtility.GetScoreRankStr`、master 及四份官方 C 档样本；缺少对应表项时不回退普通 Live 的评分门槛。该查询尚未接入完整挑战结算路由。

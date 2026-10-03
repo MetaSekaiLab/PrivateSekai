@@ -24,6 +24,48 @@ public sealed class ChallengeLiveService(
     MissionService missions,
     MissionMasterQueries missionMaster)
 {
+    public (int BeforePoint, int AfterPoint, int BeforeItems, int AfterItems) GainEventPoint(
+        UserChallengeLiveStartRequest start, UserChallengeLiveClearRequest clear, long playStartAt)
+    {
+        if (start.isAuto || clear.life <= 0)
+            throw new NotSupportedException("Challenge event mode is not verified.");
+        if (playStartAt <= 0 || playStartAt > user.Now) throw new ArgumentOutOfRangeException(nameof(playStartAt));
+        var current = master.GetPlayableEvent(playStartAt);
+        if (current?.id != master.GetPlayableEvent(user.Now)?.id)
+            throw new NotSupportedException("Challenge across an event boundary is not verified.");
+        if (current == null) return (0, 0, 0, 0);
+        if (current.eventType != "marathon" || current.isCountLeaderCharacterPlay)
+            throw new NotSupportedException("Challenge event type is not verified.");
+        if (current.eventBreakTimeId is int breakId && user.Data.userEventBreakTime is { } breakTime &&
+            breakTime.eventId == current.id && breakTime.currentPoint >= master.GetEventBreakMaxPoint(breakId))
+            throw new NotSupportedException("Challenge during event break time is not verified.");
+        var (point, items) = master.CalculateChallengeEventPoint(clear.score);
+        var itemId = master.GetEventItemId(current.id);
+        var events = (user.Data.userEvents ?? []).ToList();
+        var progress = events.SingleOrDefault(e => e.eventId == current.id);
+        var beforePoint = progress?.eventPoint ?? 0;
+        var beforeItems = user.Data.userEventItems?.SingleOrDefault(i => i.eventItemId == itemId)?.quantity ?? 0;
+        if (progress == null)
+        {
+            progress = new UserEvent { eventId = current.id };
+            events.Add(progress);
+        }
+        progress.eventPoint = checked(beforePoint + point);
+        resources.Grant(new UserResource { resourceType = "event_item", resourceId = itemId, quantity = items });
+        var conditions = (user.Data.userReleaseConditions ?? []).ToList();
+        foreach (var condition in master.GetEventPointConditions(current.id, beforePoint, progress.eventPoint))
+            if (!conditions.Any(c => c.releaseConditionId == condition.id))
+                conditions.Add(new UserReleaseCondition { userId = user.UserId, releaseConditionId = condition.id, createdAt = user.Now });
+        user.Data.userEvents = events.OrderBy(e => e.eventId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userEvents));
+        if (conditions.Count != (user.Data.userReleaseConditions?.Length ?? 0))
+        {
+            user.Data.userReleaseConditions = conditions.OrderBy(c => c.releaseConditionId).ToArray();
+            user.MarkChanged(nameof(SuiteUser.userReleaseConditions));
+        }
+        return (beforePoint, progress.eventPoint, beforeItems, checked(beforeItems + items));
+    }
+
     public LimitedTermScoreRankRewardResult[] GrantBirthdayRewards(UserChallengeLiveStartRequest start,
         UserChallengeLiveClearRequest clear, long playStartAt)
     {
