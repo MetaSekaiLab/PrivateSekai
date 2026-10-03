@@ -84,8 +84,10 @@ public sealed class StoryService(
                 ?? throw new ArgumentException("Story episode is not available.");
             if (status.status == "already_read")
                 return [];
-            if (status.status != "released" && !(storyType == "unit_story" &&
-                status.status == "unreleased" && master.AreUnitEpisodeConditionsMet(episodeId, user.Data.userReleaseConditions)))
+            if (status.status != "released" && !(status.status == "unreleased" &&
+                (storyType == "unit_story"
+                    ? master.AreUnitEpisodeConditionsMet(episodeId, user.Data.userReleaseConditions)
+                    : master.AreSpecialEpisodeConditionsMet(episodeId, user.Data.userReleaseConditions))))
                 throw new ArgumentException("Story episode is locked.");
             var rewards = master.GetEpisodeRewardBoxIds(storyType, episodeId).SelectMany(id =>
             {

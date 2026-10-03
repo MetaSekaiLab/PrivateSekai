@@ -73,6 +73,16 @@ public sealed class StoryMasterQueries(MasterData master)
             (episode.andReleaseConditionId == 0 || IsClear(episode.andReleaseConditionId));
     }
 
+    public bool AreSpecialEpisodeConditionsMet(int episodeId, UserReleaseCondition[]? cleared)
+    {
+        var episode = master.GetTable<MasterSpecialStory>("specialStories").Rows
+            .SelectMany(s => s.episodes ?? []).SingleOrDefault(e => e.id == episodeId);
+        if (episode == null) return false;
+        return cleared?.Any(c => c.releaseConditionId == episode.releaseConditionId) == true ||
+            master.GetTable<MasterReleaseCondition>("releaseConditions", c => c.id)
+                .FindById(episode.releaseConditionId)?.releaseConditionType == "none";
+    }
+
     public int[] GetEpisodeRewardBoxIds(string type, int episodeId) => type switch
     {
         "unit_story" => master.GetTable<MasterUnitStory>("unitStories").Rows

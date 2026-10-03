@@ -53,7 +53,12 @@ internal static class StoryCollectionChecks
             File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"),
                 """[{"id":19,"beginnerMissionV2Type":"read_unit_story","conditionValue":4,"requirement":1}]""");
             File.WriteAllText(Path.Combine(directory, "specialStories.json"),
-                """[{"id":1,"episodes":[{"id":12,"rewardResourceBoxIds":[1]},{"id":13,"rewardResourceBoxIds":[99]}]}]""");
+                """
+                [{"id":1,"episodes":[{"id":12,"releaseConditionId":2,"rewardResourceBoxIds":[1]},
+                {"id":13,"rewardResourceBoxIds":[99]},
+                {"id":75,"releaseConditionId":1,"rewardResourceBoxIds":[]},
+                {"id":76,"releaseConditionId":1,"rewardResourceBoxIds":[1]}]}]
+                """);
             File.WriteAllText(Path.Combine(directory, "resourceBoxes.json"),
                 """[{"id":1,"resourceBoxPurpose":"episode_reward","details":[{"resourceType":"material","resourceId":10,"resourceQuantity":3}]}]""");
             var master = new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
@@ -169,11 +174,30 @@ internal static class StoryCollectionChecks
                     new() { episodeId = 14, status = "unreleased" }, new() { episodeId = 15, status = "unreleased" },
                     new() { episodeId = 81, status = "can_not_read" }];
                 user.Data.userSpecialEpisodeStatuses = [new() { episodeId = 12, status = "unreleased" },
-                    new() { episodeId = 13, status = "released" }];
+                    new() { episodeId = 13, status = "released" },
+                    new() { storyType = "special_story", episodeId = 75, status = "unreleased" },
+                    new() { episodeId = 76, status = "can_not_read" }];
                 return new EmptyResponse();
             });
             Check.Throws<ArgumentException>(() => operations.Execute(1, () => stories.CompleteStoryEpisode("special_story", 12)),
                 "锁定剧情不可领取首读奖励");
+            Check.Throws<ArgumentException>(() => operations.Execute(1, () => stories.CompleteStoryEpisode("special_story", 76)),
+                "特殊剧情不绕过 can_not_read 状态");
+            Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+            {
+                stories.CompleteStoryEpisode("special_story", 75, true);
+                return new BrokenResponse();
+            }), "无奖励登录剧情编码失败仍回滚阅读状态");
+            Check.That(store.Read(1)!.Data.userSpecialEpisodeStatuses.Single(s => s.episodeId == 75).status == "unreleased",
+                "登录剧情失败后保持未读");
+            var loginStory = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () =>
+                stories.CompleteStoryEpisode("special_story", 75, true)));
+            var loginStoryRepeat = DumpSerializer.Deserialize<UserResource[]>(operations.Execute(1, () =>
+                stories.CompleteStoryEpisode("special_story", 75, true)));
+            Check.That(loginStory.Length == 0 && loginStoryRepeat.Length == 0 &&
+                store.Read(1)!.Data.userSpecialEpisodeStatuses.Single(s => s.episodeId == 75) is
+                    { status: "already_read", isNotSkipped: true },
+                "无条件 unreleased 登录剧情允许结算，空奖励合法且重复结算不发奖");
             Check.Throws<ArgumentException>(() => operations.Execute(1, () => stories.CompleteStoryEpisode("unit_story", 15)),
                 "无主条件的剧情仍须核对附加解锁条件");
             operations.Execute(1, () =>
