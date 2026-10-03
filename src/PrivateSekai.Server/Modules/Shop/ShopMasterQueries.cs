@@ -2,12 +2,19 @@ extern alias game;
 
 using System.Linq;
 using game::Sekai;
+using game::Sekai.ApiData;
 using PrivateSekai.Shared.Master;
 
 namespace PrivateSekai.Modules.Shop;
 
 public sealed class ShopMasterQueries(MasterData master)
 {
+    public MasterMaterialExchange? GetMaterialExchange(int id) =>
+        master.GetTable<MasterMaterialExchange>("materialExchanges", e => e.id).FindById(id);
+
+    public MasterMaterialExchangeSummary? GetMaterialExchangeSummary(int id) =>
+        master.GetTable<MasterMaterialExchangeSummary>("materialExchangeSummaries", s => s.Id).FindById(id);
+
     public MasterAreaItem? GetAreaItem(int id) =>
         master.GetTable<MasterAreaItem>("areaItems", i => i.id).FindById(id);
 

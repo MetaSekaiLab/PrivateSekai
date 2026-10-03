@@ -2046,6 +2046,8 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 - Query：`costGroupId` 为消耗组，`count` 为兑换次数；不发送 body。客户端构造函数将次数限制为至少 1。
 - Response：`updatedResources`、`releasedActionSetIds`。成功回调合并资源；兑换页据此更新库存及兑换状态。
 - 证据：`PutUserMaterialExchangeAPI.Execute` 使用 PUT，按用户、兑换项、消耗组和次数拼接请求；`OnCallBack` 合并 `UserExchangeResponse.updatedResources`。
-- 官方样本：兑换项 2、成本组 1、次数 2，扣除材料 15 共 200，增加中级练习券 30；新增兑换记录，`exchangeCount=2`、`totalExchangeCount=2`、`exchangeStatus=exchangeable`，并记录 `lastExchangedAt`。数值均与 master 消耗组及 `material_exchange` 资源盒一致。
+- 官方样本：兑换项 2、成本组 1、次数 2，扣除材料 15 共 200，增加中级练习券 30；兑换记录变为 `exchangeCount=2`、`totalExchangeCount=2`、`exchangeStatus=exchangeable`，并记录 `lastExchangedAt`。数值均与 master 消耗组及 `material_exchange` 资源盒一致。
+- 再兑换一次后，两种次数均从 2 增至 3，更新时间改变，状态仍为 `exchangeable`。材料不足时官方返回 HTTP 409；重新认证回读确认材料、练习券、兑换记录不变，错误正文尚未对齐。
+- 无上限样本省略 `exchangeRemaining`；未发生的 `lastExchangedAt`、`refreshedAt` 也省略，不发送零值。
 
-Client 已支持 `material-exchange` 和示例场景，要求明确提供整数消耗组与正整数次数。Server 尚未接入；周期刷新、限量、关联兑换和失败行为仍待核验。示例兑换项须按当前 master 和账号库存确认。
+Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchange`，要求明确提供整数消耗组与正整数次数。Server 已接入 normal 商店中无刷新、无限量、无关联或附加奖励的材料换练习券分支；成本和奖励按 master 倍乘，次数累计、材料不足无副作用。未核验分支返回本地 501，不代表官方状态码。首次及再次兑换的相关 HTTP、基线、响应与增量对拍一致；周期刷新、限量、关联兑换及其他奖励仍待核验。示例兑换项须按当前 master 和账号库存确认。

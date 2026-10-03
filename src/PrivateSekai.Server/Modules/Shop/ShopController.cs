@@ -11,6 +11,18 @@ namespace PrivateSekai.Modules.Shop;
 
 public sealed class ShopController(UserOperation operations, UserSession user, ShopService shop, MissionMasterQueries missionMaster) : PrskController
 {
+    [HttpPut("api/user/{userId}/material-exchange/{materialExchangeId}")]
+    public IActionResult ExchangeMaterial(long userId, int materialExchangeId, [FromQuery] int costGroupId, [FromQuery] int count = 1)
+    {
+        var status = 200;
+        var encoded = operations.Execute(userId, () =>
+        {
+            status = shop.ExchangeMaterial(materialExchangeId, costGroupId, count);
+            return status == 200 ? new UserExchangeResponse { updatedResources = user.BuildRefresh(), releasedActionSetIds = [] } : null;
+        });
+        return status == 200 ? Encoded(encoded) : StatusCode(status);
+    }
+
     /// <summary>
     /// <p>[POST] 购买商店项目。客户端把 `shopId` 和 `shopItemId` 拼入 path，不发送请求体；成功后合并返回的用户资源差异，并由对应购买弹窗继续关闭、刷新或展示购买结果。</p>
     /// <p>[PUT] 更新已有区域商店项目，主要用于区域商店的升级/强化分支。它和购买接口使用同一路径，但 method 为 PUT；客户端同样不发送请求体，成功后合并用户资源差异。</p>

@@ -17,6 +17,9 @@ internal static class UserResponseSerializer
             new IMessagePackFormatter[]
             {
                 new ChallengeStartFormatter(),
+                new FieldFilterFormatter<UserMaterialExchange>((s, key) =>
+                    (key == "lastExchangedAt" && s.lastExchangedAt == 0) || (key == "refreshedAt" && s.refreshedAt == 0) ||
+                    (key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0 && s.refreshedAt == 0)),
                 new FieldFilterFormatter<UserCharacterMissionV2>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserReleaseCondition>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" && s.missionType == "beginner_mission_v2"),

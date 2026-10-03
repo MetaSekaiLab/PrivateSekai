@@ -56,6 +56,7 @@ StoryHttpChecks.WriteMaster(directory);
 BookmarkHttpChecks.WriteMaster(directory);
 FavoriteHttpChecks.WriteMaster(directory);
 ChallengeDeckHttpChecks.WriteMaster(directory);
+MaterialExchangeHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
@@ -65,6 +66,8 @@ if (args is ["--replay-area-shop", _, var areaMaster, _])
     AreaShopReplay.ImportMaster(areaMaster, directory);
 if (args is ["--replay-card-practice" or "--replay-special-training", _, var practiceMaster, _])
     CardPracticeReplay.ImportMaster(practiceMaster, directory);
+if (args is ["--replay-material-exchange", _, var exchangeMaster, _])
+    MaterialExchangeReplay.ImportMaster(exchangeMaster, directory);
 if (args is ["--replay-live", _, _, var liveMaster, _])
     LiveReplay.ImportMaster(liveMaster, directory);
 if (args is ["--replay-challenge-deck" or "--replay-challenge-unlock" or "--replay-challenge-start", _, var challengeMaster, _])
@@ -101,6 +104,8 @@ if (args is ["--replay-live", _, var liveCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(LiveReplay.Clock(liveCapture));
 if (args is ["--replay-challenge-unlock" or "--replay-challenge-start", var challengeClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(challengeClockCapture));
+if (args is ["--replay-material-exchange", var exchangeClockCapture, _, _])
+    builder.Services.AddSingleton<TimeProvider>(MaterialExchangeReplay.Clock(exchangeClockCapture));
 builder.Services.AddControllers().AddApplicationPart(typeof(DeckController).Assembly)
     .ConfigureApplicationPartManager(manager => manager.FeatureProviders.Add(new TestedControllers()));
 await using var app = builder.Build();
@@ -185,6 +190,11 @@ try
     if (args is ["--replay-card-practice" or "--replay-special-training", var practicePath, _, var practiceOutput])
     {
         await CardPracticeReplay.Run(client, store, practicePath, practiceOutput);
+        return;
+    }
+    if (args is ["--replay-material-exchange", var exchangePath, _, var exchangeOutput])
+    {
+        await MaterialExchangeReplay.Run(client, store, exchangePath, exchangeOutput);
         return;
     }
     if (args is ["--replay-area-shop", var areaPath, _, var areaOutput])
@@ -311,6 +321,7 @@ try
     await AccountReadHttpChecks.Run(client, store, directory, Check);
     await InheritHttpChecks.Run(client, config, store, directory, Check);
     await ChallengeDeckHttpChecks.Run(client, config, store, directory, Check);
+    await MaterialExchangeHttpChecks.Run(client, config, store, directory, Check);
     Fails(() => Operations.Path(Operations.All["custom-profile-card-delete"], new() { Args = new() { ["customProfileId"] = "1" } }, 1),
         "名片删除必须提供卡片 ID 列表");
     Fails(() => ScenarioRunner.Validate(new() { Steps = [new() { Operation = "live-clear", UseLiveSession = true, Body = new() }] },

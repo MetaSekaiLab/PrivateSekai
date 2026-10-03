@@ -17,6 +17,50 @@ public sealed class ShopService(
     ResourceMasterQueries resourceMaster,
     ResourceService resourceService)
 {
+    public int ExchangeMaterial(int id, int costGroupId, int count)
+    {
+        if (count <= 0 || costGroupId < 0) throw new ArgumentException("Invalid material exchange parameters.");
+        var definition = master.GetMaterialExchange(id) ?? throw new ArgumentException("Unknown material exchange.");
+        var summary = master.GetMaterialExchangeSummary(definition.materialExchangeSummaryId)
+            ?? throw new InvalidOperationException("Missing material exchange summary.");
+        if (definition.refreshCycle != "none" || definition.exchangeLimit != 0 ||
+            definition.materialExchangeRelationParents?.Count > 0 || summary.materialExchangeType != "normal" ||
+            summary.materialExchangeFreebieGroupJson != null || summary.materialExchangeFreebies?.Length > 0)
+            return 501;
+        if (user.Now < definition.startAt || (definition.endAt > 0 && user.Now >= definition.endAt) ||
+            user.Now < summary.StartAt || (summary.EndAt > 0 && user.Now >= summary.EndAt))
+            throw new ArgumentException("Material exchange is not available.");
+        var costs = (definition.costs ?? []).Where(c => c.costGroupId == costGroupId).ToArray();
+        if (costs.Length == 0) throw new ArgumentException("Unknown material exchange cost group.");
+        if (costs.Any(c => c.resourceType != "material" || c.resourceId <= 0 || c.quantity <= 0)) return 501;
+        var amounts = costs.GroupBy(c => c.resourceId).ToDictionary(g => g.Key, g => checked(g.Sum(c => c.quantity) * count));
+        if (amounts.Any(c => ((user.Data.userMaterials ?? []).SingleOrDefault(m => m.materialId == c.Key)?.quantity ?? 0) < c.Value))
+            return 409;
+        var rewards = resourceMaster.BuildResourcesFromBox("material_exchange", definition.resourceBoxId);
+        if (rewards.Length == 0) throw new InvalidOperationException("Missing material exchange rewards.");
+        // 先接入已核验的练习券兑换，不推定其他资源的附加联动。
+        if (rewards.Any(r => r.resourceType != "practice_ticket" || r.quantity <= 0)) return 501;
+        foreach (var reward in rewards) reward.quantity = checked(reward.quantity * count);
+        var exchanges = (user.Data.userMaterialExchanges ?? []).ToList();
+        var record = exchanges.SingleOrDefault(e => e.materialExchangeId == id);
+        var nextCount = checked((record?.exchangeCount ?? 0) + count);
+        var nextTotal = checked((record?.totalExchangeCount ?? 0) + count);
+        foreach (var cost in amounts) resourceService.Consume("material", cost.Key, cost.Value);
+        resourceService.Grant(rewards);
+        if (record == null)
+        {
+            record = new UserMaterialExchange { userId = user.UserId, materialExchangeId = id };
+            exchanges.Add(record);
+        }
+        record.exchangeCount = nextCount;
+        record.totalExchangeCount = nextTotal;
+        record.lastExchangedAt = user.Now;
+        record.exchangeStatus = "exchangeable";
+        user.Data.userMaterialExchanges = exchanges.OrderBy(e => e.materialExchangeId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userMaterialExchanges));
+        return 200;
+    }
+
     public UserCharacterMissionV2Status[] PurchaseShopItem(int shopId, int shopItemId)
     {
         var shopItem = master.GetMasterShopItem(shopId, shopItemId);

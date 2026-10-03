@@ -46,6 +46,7 @@ public static class Comparison
     private static readonly Dictionary<string, string[]> IdentityKeys = new()
     {
         ["userCards"] = ["cardId"], ["userMaterials"] = ["materialId"],
+        ["userMaterialExchanges"] = ["materialExchangeId"], ["userPracticeTickets"] = ["practiceTicketId"],
         ["userSkillPracticeTickets"] = ["skillPracticeTicketId"], ["userDecks"] = ["deckId"],
         ["userShops"] = ["shopId"], ["userShopItems"] = ["shopItemId"], ["userAreaItems"] = ["areaItemId"],
         ["userStoryFavorites"] = ["shareNo"], ["userBookmarkedStories"] = ["storyType", "storyId"],
