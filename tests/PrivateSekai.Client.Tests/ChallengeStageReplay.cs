@@ -14,7 +14,7 @@ internal static class ChallengeStageReplay
 {
     public static void ImportMaster(string source, string destination)
     {
-        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks" })
+        foreach (var table in new[] { "challengeLiveStages", "resourceBoxes", "levels", "characterRanks", "musicDifficulties", "playLevelScores" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
     }
 
@@ -29,8 +29,9 @@ internal static class ChallengeStageReplay
             throw new InvalidOperationException("需要成功的官方挑战结算记录。");
         var expected = official["response"]!["userChallengeLiveStageResult"]!;
         var sessionId = official["args"]!["userChallengeLiveId"]!.GetValue<string>();
-        var characterId = official["before"]!["userChallengeLivePlayStatuses"]!.AsArray()
-            .Single(s => s!["userChallengeLiveId"]!.GetValue<string>() == sessionId)!["characterId"]!.GetValue<int>();
+        var playStatus = official["before"]!["userChallengeLivePlayStatuses"]!.AsArray()
+            .Single(s => s!["userChallengeLiveId"]!.GetValue<string>() == sessionId)!;
+        var characterId = playStatus["characterId"]!.GetValue<int>();
         var state = store.Read(1)!;
         state.Data.userChallengeLiveSoloStages = JsonSerializer.Deserialize<UserChallengeLiveSoloStage[]>(
             official["before"]!["userChallengeLiveSoloStages"]!.ToJsonString(), DumpJson.Options)!;
@@ -42,6 +43,11 @@ internal static class ChallengeStageReplay
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
         var service = scope.ServiceProvider.GetRequiredService<ChallengeLiveService>();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+        var master = scope.ServiceProvider.GetRequiredService<LiveMasterQueries>();
+        var scoreRank = master.GetChallengeScoreRank(playStatus["musicDifficultyId"]!.GetValue<int>(),
+            official["request"]!["score"]!.GetValue<int>());
+        if (scoreRank != official["response"]!["scoreRank"]!.GetValue<string>())
+            throw new InvalidOperationException("挑战评分与官方样本存在差异。");
         JsonObject actual = new();
         operations.Execute(1, () =>
         {
@@ -60,7 +66,8 @@ internal static class ChallengeStageReplay
             JsonSerializer.SerializeToNode(store.Read(1)!.Data.userCharacters, DumpJson.Options));
         JsonFiles.Write(Path.Combine(output, "challenge-stage-compare.json"), new
         {
-            scope = "阶段及角色升级业务重放；点数取官方响应，不验证点数公式或完整 HTTP 结算",
+            scope = "评分、阶段及角色升级业务重放；点数取官方响应，不验证点数公式或完整 HTTP 结算",
+            scoreRank,
             expected = projected, actual,
             resultDifferences = differences, stageDifferences, characterDifferences,
             actualStages = after

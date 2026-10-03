@@ -20,6 +20,13 @@ internal static class ChallengeStageChecks
     {
         var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../obj/challenge-stage-fixtures", Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "musicDifficulties.json"), """
+            [{"id":1,"playLevel":5},{"id":2,"playLevel":6}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "playLevelScores.json"), """
+            [{"liveType":"solo","playLevel":5,"c":10,"b":20,"a":30,"s":40},
+             {"liveType":"challenge_live","playLevel":5,"c":100,"b":200,"a":300,"s":400}]
+            """);
         File.WriteAllText(Path.Combine(directory, "levels.json"), """
             [{"levelType":"character","level":1,"totalExp":0},
              {"levelType":"character","level":2,"totalExp":1},
@@ -50,6 +57,15 @@ internal static class ChallengeStageChecks
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
         var challenges = scope.ServiceProvider.GetRequiredService<ChallengeLiveService>();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+        var master = scope.ServiceProvider.GetRequiredService<LiveMasterQueries>();
+        foreach (var (score, expected) in new[]
+                 { (0, "rank_d"), (99, "rank_d"), (100, "rank_c"), (199, "rank_c"),
+                   (200, "rank_b"), (299, "rank_b"), (300, "rank_a"), (399, "rank_a"), (400, "rank_s") })
+            Check.That(master.GetChallengeScoreRank(1, score) == expected, "挑战评分使用独立表并包含门槛值");
+        var missingThresholdRejected = false;
+        try { master.GetChallengeScoreRank(2, 100); }
+        catch (InvalidOperationException) { missingThresholdRejected = true; }
+        Check.That(missingThresholdRejected, "挑战缺少评分表时不回退到普通演出门槛");
         void Reset()
         {
             var state = TestUsers.Create(1);

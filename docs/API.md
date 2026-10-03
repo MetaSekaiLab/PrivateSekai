@@ -2051,7 +2051,9 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 
 普通阶段及角色升级业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp`。角色等级按 `levels.levelType=character` 的累计门槛计算，更新 `userCharacters` 的等级、总经验和余经验；跨越的等级按 `characterRanks.rewardResourceBoxIds` 与 `character_rank_reward` 用途发奖。EX、角色满级及含额外解锁奖励的等级暂不支持。
 
-Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 使用官方响应的 `addPoint` 重放阶段业务。四份样本的阶段记录、角色状态及解码后的完整 `userChallengeLiveStageResult` 一致，涵盖角色 1 和 21 从等级 1 升至 3 的经验与奖励；该检查不覆盖点数公式、网络字段省略规则或完整 HTTP 结算。样本新增的释放条件来自活动积分，不属于角色升级。
+Server 的挑战评分查询按曲目难度的 `playLevel` 选择 `playLevelScores.liveType=challenge_live`，从 S 到 C 比较包含边界的门槛，低于 C 返回 D。证据为 `MusicUtility.GetScoreRankStr`、master 及四份官方 C 档样本；缺少对应表项时不回退普通 Live 的评分门槛。该查询尚未接入完整挑战结算路由。
+
+Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 从请求分数核验评分，并使用官方响应的 `addPoint` 重放阶段业务。四份样本的评分、阶段记录、角色状态及解码后的完整 `userChallengeLiveStageResult` 一致，涵盖角色 1 和 21 从等级 1 升至 3 的经验与奖励；该检查不覆盖点数公式、网络字段省略规则或完整 HTTP 结算。样本新增的释放条件来自活动积分，不属于角色升级。
 
 高分业务已实现：保存角色最高分，按 master 门槛发放未记录的奖励，保存 `complete` 记录。四份样本经 `--replay-challenge-high-score` 重放，覆盖未达门槛和首次达到单个门槛，解码后响应、最高分及已领记录一致。一次跨越多门槛、较低成绩和重复成绩只有本地检查，仍需官方样本。
 
