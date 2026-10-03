@@ -2123,7 +2123,9 @@ Client 提供 `event-exchange`、示例场景和 `--replay-event-exchange`。示
 - 官方首次更换样本：返回完整 `userCharacterCostume3ds`，其中组合名为小写；只修改对应角色与组合的穿戴。新手任务 `change_any_character_costume` 达成，当次进度响应 `isNewAchieved=true`，Suite 回读为 false。未刷新服装持有列表，未发现角色任务变化。
 - 官方 Suite 中，`userCostume3dStatuses` 的 `forbidden` 和 `sale` 状态省略未设置的 `obtainedAt`；`available` 的已有取得时间保留。
 
-Server 已接入已有穿戴槽位保存、角色与部位匹配、持有检查及新手任务联动；当前支持 master 明确绑定该角色的服装。Client 提供 `character-costume-save` 和 `--replay-costume`。一次身体服装更换样本在穿戴、持有列表、新手进度与任务状态范围 HTTP 对拍无差异；跨角色共用服装、重复保存、发型或配饰切换及无效请求的官方响应仍待核验。
+Server 已接入已有穿戴槽位保存、角色与部位匹配、持有检查及新手任务联动；当前支持 master 明确绑定该角色的服装。Client 提供 `character-costume-save` 和 `--replay-costume`。首次身体服装更换、同值保存、换回原服装三个样本在穿戴、持有列表、新手进度与任务状态范围 HTTP 对拍无差异。
+
+官方同值保存返回 200，仍刷新穿戴和新手任务进度。服装任务已达成但未领奖时，每次保存仍加 1，已观察到进度 1 → 2 → 3；不会重复设置达成提示，也不刷新未变的任务状态。这与普通 Live 任务达到门槛后停止累加的行为不同。跨角色共用服装、发型或配饰切换、领奖后的计数及无效请求的官方响应仍待核验。
 
 证据：`PutUserCharacterCostume3DAPI` 构造、Execute 与回调，请求和穿戴模型契约、`costume3ds`、`beginnerMissionV2s`，以及官方更换和 Suite 回读样本。
 

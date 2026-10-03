@@ -61,5 +61,12 @@ internal static class CostumeHttpChecks
         var response = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "costume/001.json")))!["response"]!["updatedResources"]!;
         check(response["userBeginnerMissionV2s"]![0]!["isNewAchieved"]!.GetValue<bool>() && response["userCostume3dStatuses"] == null,
             "服装保存响应包含任务达成提示，不重复刷新持有列表");
+        await ScenarioRunner.Run(client, scenario, Path.Combine(directory, "costume-repeat"));
+        var repeated = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "costume-repeat/001.json")))!["response"]!["updatedResources"]!;
+        check(store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 2 &&
+            repeated["userBeginnerMissionV2s"]![0]!["progress"]!.GetValue<int>() == 2 &&
+            !repeated["userBeginnerMissionV2s"]![0]!["isNewAchieved"]!.GetValue<bool>() &&
+            repeated["userMissionStatuses"] == null,
+            "同值服装保存仍累计进度，但不重复提示达成或刷新任务状态");
     }
 }
