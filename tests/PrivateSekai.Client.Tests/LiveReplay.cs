@@ -88,6 +88,8 @@ internal static class LiveReplay
                     ScenarioRunner.Compare(SelectMissionRecord(official), SelectMissionRecord(local)));
                 JsonFiles.Write(Path.Combine(output, "leader-usage-compare.json"),
                     ScenarioRunner.Compare(SelectLeaderRecord(official), SelectLeaderRecord(local)));
+                JsonFiles.Write(Path.Combine(output, "character-usage-compare.json"),
+                    ScenarioRunner.Compare(SelectLeaderRecord(official, false), SelectLeaderRecord(local, false)));
                 foreach (var record in new[] { official, local })
                 {
                     foreach (var side in new[] { "before", "after" })
@@ -117,12 +119,12 @@ internal static class LiveReplay
         return selected;
     }
 
-    private static JsonObject SelectLeaderRecord(JsonObject record)
+    private static JsonObject SelectLeaderRecord(JsonObject record, bool leaderOnly = true)
     {
         JsonObject? Project(JsonNode? source)
         {
             var selected = Select(source, ["userCharacterLiveUsageCounts", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"]);
-            if (selected?["userCharacterLiveUsageCounts"] is JsonArray counts)
+            if (leaderOnly && selected?["userCharacterLiveUsageCounts"] is JsonArray counts)
                 selected["userCharacterLiveUsageCounts"] = new JsonArray(counts
                     .Where(c => c?["characterLiveUsageType"]?.GetValue<string>() == "leader")
                     .Select(c => c!.DeepClone()).ToArray());

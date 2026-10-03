@@ -44,6 +44,9 @@ internal static class LiveHttpChecks
         ] };
         ScenarioRunner.Validate(scenario, [config], new HashSet<string>());
         var firstState = store.Read(1)!;
+        var liveDeck = firstState.Data.userDecks.Single(d => d.deckId == 1);
+        liveDeck.leader = liveDeck.member1 = 1;
+        liveDeck.subLeader = liveDeck.member2 = liveDeck.member3 = liveDeck.member4 = liveDeck.member5 = 0;
         firstState.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         firstState.Data.userMusicResults = [];
         firstState.Data.userLiveMissions = [];

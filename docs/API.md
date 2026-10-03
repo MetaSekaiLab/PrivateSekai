@@ -2231,11 +2231,15 @@ Server 已接入总任务未达门槛时的领奖计数，Client 提供 `--repla
 
 Server 已实现上述普通手动 Live 联动，Client 结算重放覆盖新手任务进度。首次、达成时及达成后的三个官方样本，在新手任务、Live 任务进度与任务状态范围 HTTP 对拍无差异。Auto、失败演出、挑战 Live 和其他新手任务类型不属于本次核验范围。
 
-### 普通 Live 结算：队长次数与角色任务
+### 普通 Live 结算：角色次数与角色任务
 
 同一结算接口的手动成功样本中，按编队 `leader` 卡牌对应的 `cards.characterId` 累计 `userCharacterLiveUsageCounts`：`characterLiveUsageType=leader` 的 `usageCount` 从 4 增至 5；对应 `play_live` 角色任务也从 4 增至 5。刷新保留次数数组中的其他记录。客户端 `ScreenLayerChallengeLiveCharacterSelect` 使用队长次数和 `challengeLiveCharacters.releaseConditionId` 对应的数量门槛显示挑战解锁进度。
 
-Server 已接入手动成功结算的队长次数及角色演出任务，二者与其他结算状态共同提交；编码失败回滚，重复结算不再次计数。Client 的 `--replay-live` 新增 `leader-usage-compare.json`，上述样本的队长次数、角色任务基线、响应及状态增量一致。成员次数、失败／Auto 的计数规则及达到挑战解锁门槛后的联动仍待核验；报告仅筛选队长次数，不代表全部成员计数已实现。
+Server 已接入手动成功结算的队长次数及角色演出任务，二者与其他结算状态共同提交；编码失败回滚，重复结算不再次计数。Client 的 `--replay-live` 输出 `leader-usage-compare.json`，上述样本的队长次数、角色任务基线、响应及状态增量一致。
+
+五个不同角色的编队另有换位对照：原顺序仅前四位增加 `member` 次数；交换第四、第五位后，新第四位角色从无记录变为 1，新第五位保持原次数，前三位及队长各加 1。两次均为普通手动成功结算，换位样本开局后等待 180 秒再结算，随后删除临时编队并回读确认恢复。Server 按该结果累计前四个成员位，队长同时保留独立 `leader` 记录；`character-usage-compare.json` 检查完整次数数组及角色任务，两份 HTTP 重放无差异。
+
+重复角色编队的官方保存尝试返回 400，未进入演出，拒绝原因及其计数规则尚未确认；本地该结算分支暂不支持。失败／Auto 的次数规则及达到挑战解锁门槛后的联动仍待核验。
 
 ## PUT `/api/user/{userId}/mission/live_mission`
 

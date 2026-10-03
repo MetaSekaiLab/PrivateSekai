@@ -179,12 +179,14 @@ internal static class FeatureChecks
             result.updatedResources.userCards.Single().level == 3,
             "演出卡牌经验使用卡牌等级上限");
         Check.That(!store.Read(3)!.Private.UserLiveSessions.ContainsKey(liveId), "Live 成功后移除会话");
-        Check.That(result.updatedResources.userCharacterLiveUsageCounts.Single().usageCount == 1 &&
-            result.updatedResources.userCharacterLiveUsageCounts.Single().characterId == 1 &&
+        Check.That(result.updatedResources.userCharacterLiveUsageCounts.Single(c => c.characterLiveUsageType == "leader").usageCount == 1 &&
+            result.updatedResources.userCharacterLiveUsageCounts.Single(c => c.characterLiveUsageType == "leader").characterId == 1 &&
             store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 1,
             "普通手动成功结算累计队长次数与对应角色演出任务");
+        Check.That(result.updatedResources.userCharacterLiveUsageCounts.Single(c => c.characterLiveUsageType == "member").usageCount == 1,
+            "队长位同时累计成员次数");
         operation.Execute(3, () => live.ClearUserLive(liveId, clearRequest));
-        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.Single().usageCount == 1,
+        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.All(c => c.usageCount == 1),
             "重复普通结算不重复累计队长次数");
         Check.That(store.Read(3)!.Data.userGamedata.coin == 105 && store.Read(3)!.Data.userLiveMissions.Single().progress == 3 &&
             store.Read(3)!.Data.userGamedata.totalExp == 200 && store.Read(3)!.Data.userChargedCurrency.free == 50,
@@ -250,7 +252,7 @@ internal static class FeatureChecks
         Check.That(auto.userExpResult.afterTotalExp == 600 && auto.updatedResources.userAutoLive.count == 1 &&
             auto.updatedResources.userBoost.current == 10, "Auto C 档经验、次数与体力在结算中提交");
         operation.Execute(3, () => live.ClearUserLive(autoId, autoRequest));
-        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.Single().usageCount == 1 &&
+        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.All(c => c.usageCount == 1) &&
             store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 1,
             "失败及 Auto 结算暂不累计手动队长记录");
         Check.That(store.Read(3)!.Data.userAutoLive.count == 1 && store.Read(3)!.Data.userGamedata.totalExp == 600 &&

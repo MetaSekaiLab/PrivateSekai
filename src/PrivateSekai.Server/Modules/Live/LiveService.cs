@@ -138,7 +138,7 @@ public sealed class LiveService(
             if (!session.IsAuto)
                 missions.RecordManualLiveClear();
             if (!session.IsAuto && request.life > 0)
-                RecordLeaderLiveClear(session.DeckId);
+                RecordDeckLiveClear(session.DeckId);
             if (session.IsAuto)
             {
                 user.Data.userAutoLive ??= new UserAutoLive();
@@ -193,18 +193,29 @@ public sealed class LiveService(
         MergeLiveCharacterArchiveVoiceGroups([liveResultCharacterArchiveVoiceGroupId]);
     }
 
-    private void RecordLeaderLiveClear(int deckId)
+    private void RecordDeckLiveClear(int deckId)
     {
         var deck = GetUserDeck(deckId) ?? throw new ArgumentException("Live deck is missing.");
         var characterId = master.GetCardCharacter(deck.leader);
+        var memberCharacters = new[] { deck.member1, deck.member2, deck.member3, deck.member4, deck.member5 }
+            .Where(id => id > 0).Select(master.GetCardCharacter).ToArray();
+        if (memberCharacters.Distinct().Count() != memberCharacters.Length)
+            throw new NotSupportedException("Live usage counts for repeated characters are not verified.");
         var counts = (user.Data.userCharacterLiveUsageCounts ?? []).ToList();
-        var count = counts.SingleOrDefault(c => c.characterId == characterId && c.characterLiveUsageType == "leader");
-        if (count == null)
+        void Increment(int id, string usageType)
         {
-            count = new UserCharacterLiveUsageCount { characterId = characterId, characterLiveUsageType = "leader" };
-            counts.Add(count);
+            var count = counts.SingleOrDefault(c => c.characterId == id && c.characterLiveUsageType == usageType);
+            if (count == null)
+            {
+                count = new UserCharacterLiveUsageCount { characterId = id, characterLiveUsageType = usageType };
+                counts.Add(count);
+            }
+            count.usageCount = checked(count.usageCount + 1);
         }
-        count.usageCount = checked(count.usageCount + 1);
+        Increment(characterId, "leader");
+        // 官方五人编队换位样本仅累计前四个成员位。
+        foreach (var cardId in new[] { deck.member1, deck.member2, deck.member3, deck.member4 }.Where(id => id > 0))
+            Increment(master.GetCardCharacter(cardId), "member");
         user.Data.userCharacterLiveUsageCounts = counts.OrderBy(c => c.characterId)
             .ThenBy(c => c.characterLiveUsageType, StringComparer.Ordinal).ToArray();
         user.MarkChanged(nameof(SuiteUser.userCharacterLiveUsageCounts));
