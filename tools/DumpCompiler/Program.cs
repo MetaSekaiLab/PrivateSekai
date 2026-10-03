@@ -115,6 +115,19 @@ grantedAtKey.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSys
 grantedAt.CustomAttributes.Add(grantedAtKey);
 presentData.Fields.Add(grantedAt);
 
+// 官方称号及名片包含所属用户；仅补充构建副本。
+foreach (var name in new[] { "Sekai.UserHonor", "Sekai.UserProfile" })
+{
+    var type = module.GetType(name);
+    if (type.Fields.Any(f => f.Name == "userId"))
+        throw new InvalidDataException("用户字段 dump 已变化，请重新核验。");
+    var field = new FieldDefinition("userId", FieldAttributes.Public, module.TypeSystem.Int64);
+    var key = new CustomAttribute(vocalKey.Constructor);
+    key.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, "userId"));
+    field.CustomAttributes.Add(key);
+    type.Fields.Add(field);
+}
+
 Directory.CreateDirectory(output);
 var dll = Path.Combine(output, "Assembly-CSharp.dll");
 assembly.Write(dll + ".tmp");
@@ -125,7 +138,8 @@ File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(
     protocolAdjustments = new[]
     {
         "Sekai.UserChallengeLivePlayStatus: musicVoiceId key -> musicVocalId; add isAuto:Boolean",
-        "Sekai.UserPresentData: add grantedAt:Int64"
+        "Sekai.UserPresentData: add grantedAt:Int64",
+        "Sekai.UserHonor, Sekai.UserProfile: add userId:Int64"
     },
     models = models.Select(t => t.FullName.Replace('/', '+')).Order(StringComparer.Ordinal)
 }, new JsonSerializerOptions { WriteIndented = true }));

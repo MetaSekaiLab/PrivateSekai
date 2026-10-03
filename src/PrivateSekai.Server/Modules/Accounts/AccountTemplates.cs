@@ -62,6 +62,9 @@ public sealed class AccountTemplates
             data.userRegistration.registeredAt = (ulong)now;
         }
         if (data.userGamedata != null) data.userGamedata.userId = userId;
+        if (data.userProfile != null) data.userProfile.userId = userId;
+        if (data.userHonors != null)
+            foreach (var honor in data.userHonors) honor.userId = userId;
         if (data.userCards != null)
             foreach (var card in data.userCards) { card.userId = userId; card.createdAt = now; }
         if (data.userDecks != null)

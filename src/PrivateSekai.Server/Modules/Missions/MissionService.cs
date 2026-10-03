@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
+using PrivateSekai.Modules.Characters;
 using PrivateSekai.Modules.Inventory;
 using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
@@ -14,9 +15,35 @@ public sealed class MissionService(
     UserSession user,
     MissionMasterQueries master,
     ResourceMasterQueries resourceMaster,
-    ResourceService resourceService)
+    ResourceService resourceService,
+    CharacterService characters)
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
+
+    public UserCharacterMissionV2Status[] ReceiveCharacterMissions(int characterId, string type)
+    {
+        if (type != "COLLECT_COSTUME_3D")
+            throw new NotSupportedException("Character mission type is not verified.");
+        var definitions = master.GetCostumeCollectionMissions(characterId).ToDictionary(m => m.id);
+        var statuses = (user.Data.userCharacterMissionStatuses ?? []).Where(s => s.characterId == characterId &&
+            s.missionStatus == "achieved" && definitions.ContainsKey(s.missionId)).ToArray();
+        if (statuses.Length == 0) throw new ArgumentException("No achieved character missions.");
+        var experience = 0;
+        foreach (var status in statuses)
+        {
+            var definition = definitions[status.missionId];
+            var parameter = master.GetCharacterMissionParameters(definition.parameterGroupId)
+                .SingleOrDefault(p => p.id == status.parameterGroupId && p.seq == status.seq)
+                ?? throw new InvalidOperationException("Missing character mission parameter.");
+            if (parameter.exp <= 0 || parameter.quantity != 0)
+                throw new NotSupportedException("Character mission reward is not verified.");
+            experience = checked(experience + parameter.exp);
+        }
+        characters.Gain(characterId, experience);
+        foreach (var status in statuses) status.missionStatus = "received";
+        user.MarkChanged(nameof(SuiteUser.userCharacterMissionStatuses));
+        return statuses;
+    }
 
     public void RecordInitialLogin()
     {

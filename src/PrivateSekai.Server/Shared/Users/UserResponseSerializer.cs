@@ -20,6 +20,11 @@ internal static class UserResponseSerializer
                 new EventExchangeFormatter(),
                 new MissionReceiveFormatter(),
                 new CostumeShopFormatter(),
+                new CharacterMissionFormatter(),
+                new FieldFilterFormatter<UserHonor>((s, key) => key == "userId" && s.userId == 0),
+                new FieldFilterFormatter<UserProfile>((s, key) => (key == "userId" && s.userId == 0) ||
+                    (key == "profileImageId" && s.profileImageType == "leader" && s.profileImageId == 0)),
+                new FieldFilterFormatter<UserCharacter>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserEventExchange>((s, key) =>
                     key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0),
                 new FieldFilterFormatter<UserMaterialExchange>((s, key) =>
@@ -77,6 +82,25 @@ internal static class UserResponseSerializer
 
         public UserMissionReceiveResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
             DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserMissionReceiveResponse>().Deserialize(ref reader, DumpSerializer.Options);
+    }
+
+    internal sealed class CharacterMissionFormatter : IMessagePackFormatter<UserCharacterMissionV2Response?>
+    {
+        public void Serialize(ref MessagePackWriter writer, UserCharacterMissionV2Response? value, MessagePackSerializerOptions options)
+        {
+            if (value == null) { writer.WriteNil(); return; }
+            writer.WriteMapHeader(2);
+            writer.Write("updatedResources");
+            MessagePackSerializer.Serialize(ref writer, value.updatedResources, options);
+            writer.Write("reportedMissionStatuses");
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserCharacterMissionV2Status>((_, key) => key == "userId") },
+                new[] { options.Resolver }));
+            MessagePackSerializer.Serialize(ref writer, value.reportedMissionStatuses, scoped);
+        }
+
+        public UserCharacterMissionV2Response? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserCharacterMissionV2Response>().Deserialize(ref reader, DumpSerializer.Options);
     }
 
     internal sealed class CostumeShopFormatter : IMessagePackFormatter<UserCostume3DShopResponse?>

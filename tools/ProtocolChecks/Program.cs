@@ -51,6 +51,11 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
                 ? "musicVoiceId:System.Int32:musicVocalId" : s)
             .Append("isAuto:System.Boolean:isAuto").Order(StringComparer.Ordinal).ToArray();
     }
+    if (type == typeof(Sekai.UserHonor) || type == typeof(Sekai.UserProfile))
+    {
+        Check(!expectedSignature.Any(s => s.StartsWith("userId:", StringComparison.Ordinal)), "称号及名片原始契约前置");
+        expectedSignature = expectedSignature.Append("userId:System.Int64:userId").Order(StringComparer.Ordinal).ToArray();
+    }
     if (type == typeof(Sekai.UserPresentData))
     {
         Check(!expectedSignature.Any(s => s.StartsWith("grantedAt:", StringComparison.Ordinal)), "礼物原始契约前置");
@@ -198,6 +203,8 @@ var userBytes = operations.Create(accounts.CreateUser, () =>
 var newUser = DumpSerializer.Deserialize<Sekai.SuiteUser>(userBytes);
 var userId = newUser.userRegistration.userId;
 Check(newUser.userRegistration.userId == userId && userId != 0, "新用户 ID");
+Check(newUser.userProfile?.userId == userId && (newUser.userHonors ?? []).All(h => h.userId == userId),
+    "新用户名片和称号绑定新用户 ID");
 Check(users.Read(0)!.Data.userRegistration.userId == 0, "模板用户未被修改");
 Check(DumpSerializer.Deserialize<Sekai.SuiteUser>(DumpSerializer.Serialize(newUser)).userRegistration.userId == userId, "新用户协议往返");
 var restoredUserId = userId + 10;

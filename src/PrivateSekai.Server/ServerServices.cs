@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PrivateSekai.Config;
 using PrivateSekai.Modules.Accounts;
 using PrivateSekai.Modules.Cards;
+using PrivateSekai.Modules.Characters;
 using PrivateSekai.Modules.Gacha;
 using PrivateSekai.Modules.Home;
 using PrivateSekai.Modules.Inventory;
@@ -38,6 +39,8 @@ public static class ServerServices
 
         services.AddSingleton(_ => new MasterData(ServerConfig.MasterCache, ServerConfig.SekaiMasterDbDiffPath));
         services.AddSingleton<CardMasterQueries>();
+        services.AddSingleton<CharacterMasterQueries>();
+        services.AddScoped<CharacterService>();
         services.AddSingleton<GachaMasterQueries>();
         services.AddSingleton<LiveMasterQueries>();
         services.AddSingleton<MissionMasterQueries>();
@@ -52,6 +55,7 @@ public static class ServerServices
         services.AddSingleton<IResourceHandler, GachaResourceHandler>();
         services.AddSingleton<IResourceHandler, MusicResourceHandler>();
         services.AddSingleton<IResourceHandler, ProfileResourceHandler>();
+        services.AddSingleton<IResourceHandler, HonorResourceHandler>();
         services.AddSingleton<IResourceHandler, MysekaiResourceHandler>();
         services.AddSingleton<IResourceHandler, AreaItemResourceHandler>();
 

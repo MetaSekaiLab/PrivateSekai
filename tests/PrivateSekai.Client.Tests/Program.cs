@@ -82,8 +82,11 @@ ChallengeDeckHttpChecks.WriteMaster(directory);
 MaterialExchangeHttpChecks.WriteMaster(directory);
 EventExchangeHttpChecks.WriteMaster(directory);
 CostumeHttpChecks.WriteCraftMaster(directory);
+CharacterMissionHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 LiveHttpChecks.WriteBoostMaster(directory);
+if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
+    CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
     CostumeReplay.ImportMaster(costumeMaster, directory);
 if (args is ["--replay-live-mission" or "--replay-beginner-mission" or "--replay-beginner-repeat", _, var missionMaster, _])
@@ -139,6 +142,8 @@ store.Save(1, new UserState { Data = new SuiteUser
 builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
     .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
+if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
+    builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(craftCapture));
 if (args is ["--replay-login-bonus", var loginCapture, _, _])
@@ -248,6 +253,11 @@ try
     JsonFiles.Write(Path.Combine(directory, "headers.json"), new Dictionary<string, string> { ["Accept"] = "application/octet-stream" });
     var config = new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = 1, RequireRotatingToken = true, HeadersFile = "headers.json" };
     using var client = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+    if (args is ["--replay-character-mission", var characterMissionPath, _, var characterMissionOutput])
+    {
+        await CharacterMissionReplay.Run(client, store, characterMissionPath, characterMissionOutput);
+        return;
+    }
     if (args is ["--replay-costume" or "--replay-costume-craft", var costumePath, _, var costumeOutput])
     {
         await CostumeReplay.Run(client, store, costumePath, costumeOutput);
@@ -504,6 +514,7 @@ try
     await ChallengeDeckHttpChecks.Run(client, config, store, directory, Check);
     await MaterialExchangeHttpChecks.Run(client, config, store, directory, Check);
     await EventExchangeHttpChecks.Run(client, config, store, directory, Check);
+    await CharacterMissionHttpChecks.Run(client, store, app.Services, directory, Check);
     Fails(() => Operations.Path(Operations.All["custom-profile-card-delete"], new() { Args = new() { ["customProfileId"] = "1" } }, 1),
         "名片删除必须提供卡片 ID 列表");
     Fails(() => ScenarioRunner.Validate(new() { Steps = [new() { Operation = "live-clear", UseLiveSession = true, Body = new() }] },

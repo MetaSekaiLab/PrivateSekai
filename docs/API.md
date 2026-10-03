@@ -965,7 +965,9 @@ Server 已补卡面和任务联动，Client 支持 `--replay-special-training`�
 - Response：`UserCharacterMissionV2Response`，含 `updatedResources` 和 `reportedMissionStatuses`。已核验的报告项为本次领取的状态，包含 `missionId`、`parameterGroupId`、`seq`、`characterId`、`missionStatus=received`，不带 `userId`。
 - 官方 `COLLECT_COSTUME_3D` 样本一次领取 8 条达成项，按参数组每条 1 点增加角色累计经验 8，角色等级 3 → 6。按各等级奖励箱累计获得免费宝石 400、材料 44×1、称号 1（等级 1）、称号背景和文字各 10101；后续 Suite 回读持久化。没有改动角色任务进度，也没有新增邮箱礼物。
 
-Client 已提供 `character-mission-receive` 和 `character-mission-receive-all`。Server 尚未接入；需要一并实现角色升级的称号资源与刷新集，不能仅更新任务状态。全部领取、重复领取、其他任务类型及称号升级仍待核验。
+Client 已提供 `character-mission-receive`、`character-mission-receive-all` 和 `--replay-character-mission`。Server 已接入服装收集指定类型领取，经验与等级奖励走共用角色服务，称号、背景及文字走资源处理器；对应官方样本的相关 HTTP、基线、响应和状态增量一致。事务失败不保留已发奖励或任务状态。
+
+全部领取、其他任务类型、重复领取的官方响应、已有称号升级及满角色等级仍待核验；当前不执行未核验的领奖类型和称号升级。`reportedMissionStatuses` 省略 `userId`，`updatedResources.userCharacterMissionV2Statuses` 保留。称号与名片的所属用户字段已补入模型构建副本；角色记录省略 `userId`，leader 名片省略零值 `profileImageId`。
 
 证据：`PutUserCharacterMissionReceiveAPI` 的两个构造、Execute 与回调，`ScreenLayerCharacterRankMission.ExecuteApi`、响应契约、角色任务参数和等级奖励 master，以及官方指定类型领取与 Suite 回读样本。
 

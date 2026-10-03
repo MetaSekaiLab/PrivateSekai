@@ -9,6 +9,14 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionController(UserOperation operations, UserSession user, MissionService missions) : PrskController
 {
+    [HttpPut("api/user/{userId}/character/{characterId}/mission/{characterMissionType}")]
+    public IActionResult ReceiveCharacterMission(long userId, int characterId, string characterMissionType) =>
+        Encoded(operations.Execute(userId, () => new UserCharacterMissionV2Response
+        {
+            reportedMissionStatuses = missions.ReceiveCharacterMissions(characterId, characterMissionType),
+            updatedResources = user.BuildRefresh()
+        }));
+
     [HttpPut("api/user/{userId}/mission/live_mission")]
     public IActionResult ReceiveLiveMission(long userId, [FromBody] UserMissionReceiveRequest request) =>
         Encoded(operations.Execute(userId, () => new UserMissionReceiveResponse
