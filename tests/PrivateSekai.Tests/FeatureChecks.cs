@@ -151,6 +151,9 @@ internal static class FeatureChecks
             "Live 失败恢复会话、体力及奖励");
         Check.That(!(rolledBack.Data.userReleaseConditions ?? []).Any(c => c.releaseConditionId == 92002),
             "结算编码失败回滚等级解锁记录");
+        Check.That(!(rolledBack.Data.userCharacterLiveUsageCounts ?? []).Any() &&
+            !(rolledBack.Data.userCharacterMissions ?? []).Any(m => m.characterMissionType == "play_live"),
+            "结算编码失败回滚队长次数与角色演出任务");
 
         var cleared = operation.Execute(3, () =>
         {
@@ -176,7 +179,13 @@ internal static class FeatureChecks
             result.updatedResources.userCards.Single().level == 3,
             "演出卡牌经验使用卡牌等级上限");
         Check.That(!store.Read(3)!.Private.UserLiveSessions.ContainsKey(liveId), "Live 成功后移除会话");
+        Check.That(result.updatedResources.userCharacterLiveUsageCounts.Single().usageCount == 1 &&
+            result.updatedResources.userCharacterLiveUsageCounts.Single().characterId == 1 &&
+            store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 1,
+            "普通手动成功结算累计队长次数与对应角色演出任务");
         operation.Execute(3, () => live.ClearUserLive(liveId, clearRequest));
+        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.Single().usageCount == 1,
+            "重复普通结算不重复累计队长次数");
         Check.That(store.Read(3)!.Data.userGamedata.coin == 105 && store.Read(3)!.Data.userLiveMissions.Single().progress == 3 &&
             store.Read(3)!.Data.userGamedata.totalExp == 200 && store.Read(3)!.Data.userChargedCurrency.free == 50,
             "重复提交结束的 Live 不重复发奖或累计任务");
@@ -241,6 +250,9 @@ internal static class FeatureChecks
         Check.That(auto.userExpResult.afterTotalExp == 600 && auto.updatedResources.userAutoLive.count == 1 &&
             auto.updatedResources.userBoost.current == 10, "Auto C 档经验、次数与体力在结算中提交");
         operation.Execute(3, () => live.ClearUserLive(autoId, autoRequest));
+        Check.That(store.Read(3)!.Data.userCharacterLiveUsageCounts.Single().usageCount == 1 &&
+            store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 1,
+            "失败及 Auto 结算暂不累计手动队长记录");
         Check.That(store.Read(3)!.Data.userAutoLive.count == 1 && store.Read(3)!.Data.userGamedata.totalExp == 600 &&
             store.Read(3)!.Data.userBoost.current == 10, "重复 Auto 结算不重复计数、发经验或扣体力");
     }
@@ -375,15 +387,15 @@ internal static class FeatureChecks
                 ]
                 """,
             ["cards"] = """
-                [{"id":1,"cardRarityType":"rarity_1"},
+                [{"id":1,"characterId":1,"cardRarityType":"rarity_1"},
                  {"id":2,"characterId":1,"cardRarityType":"rarity_3","specialTrainingPower1BonusFixed":100,
                   "specialTrainingRewardResourceBoxId":90,
                   "specialTrainingCosts":[{"cardId":2,"cost":{"resourceType":"material","resourceId":10,"quantity":100}},
                                           {"cardId":2,"cost":{"resourceType":"material","resourceId":14,"quantity":50}}]}]
                 """,
             ["cardEpisodes"] = "[]",
-            ["characterMissionV2s"] = """[{"id":12,"characterId":1,"characterMissionType":"collect_member","parameterGroupId":14}]""",
-            ["characterMissionV2ParameterGroups"] = """[{"id":14,"seq":1,"requirement":1}]""",
+            ["characterMissionV2s"] = """[{"id":12,"characterId":1,"characterMissionType":"collect_member","parameterGroupId":14},{"id":13,"characterId":1,"characterMissionType":"play_live","parameterGroupId":15}]""",
+            ["characterMissionV2ParameterGroups"] = """[{"id":14,"seq":1,"requirement":1},{"id":15,"seq":1,"requirement":10}]""",
             ["cardCostume3ds"] = """[{"cardId":10,"costume3dId":20}]""",
             ["gachas"] = """
                 [{"id":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":10,"weight":1}],

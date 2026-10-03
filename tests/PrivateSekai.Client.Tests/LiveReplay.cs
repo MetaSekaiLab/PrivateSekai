@@ -13,12 +13,14 @@ internal static class LiveReplay
     private static HashSet<int> rankReleaseIds = [];
     private static readonly string[] Fields = ["userGamedata", "userCards", "userDecks", "userBoost",
         "userMaterials", "userChargedCurrency", "userMusicResults", "userMusicAchievements", "userLiveMissions",
-        "userMissionStatuses", "userBeginnerMissionV2s", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive", "userReleaseConditions"];
+        "userMissionStatuses", "userBeginnerMissionV2s", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive", "userReleaseConditions",
+        "userCharacterLiveUsageCounts", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
 
     public static void ImportMaster(string source, string destination)
     {
         foreach (var table in new[] { "cards", "cardRarities", "musicDifficulties", "playLevelScores",
-            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPeriods", "liveMissions", "beginnerMissionV2s", "levels", "playerRankRewards", "configs", "releaseConditions" })
+            "boosts", "musicAchievements", "resourceBoxes", "liveMissionPeriods", "liveMissions", "beginnerMissionV2s", "levels", "playerRankRewards", "configs", "releaseConditions",
+            "characterMissionV2s", "characterMissionV2ParameterGroups" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
         rankReleaseIds = JsonNode.Parse(File.ReadAllText(Path.Combine(source, "releaseConditions.json")))!.AsArray()
             .Where(c => c?["releaseConditionType"]?.GetValue<string>() == "user_rank")
@@ -84,6 +86,8 @@ internal static class LiveReplay
                     ScenarioRunner.Compare(SelectBoostRecord(official), SelectBoostRecord(local)));
                 JsonFiles.Write(Path.Combine(output, "live-mission-compare.json"),
                     ScenarioRunner.Compare(SelectMissionRecord(official), SelectMissionRecord(local)));
+                JsonFiles.Write(Path.Combine(output, "leader-usage-compare.json"),
+                    ScenarioRunner.Compare(SelectLeaderRecord(official), SelectLeaderRecord(local)));
                 foreach (var record in new[] { official, local })
                 {
                     foreach (var side in new[] { "before", "after" })
@@ -111,6 +115,23 @@ internal static class LiveReplay
             ["updatedResources"] = Select(record["response"]?["updatedResources"], ["userBoost"])
         };
         return selected;
+    }
+
+    private static JsonObject SelectLeaderRecord(JsonObject record)
+    {
+        JsonObject? Project(JsonNode? source)
+        {
+            var selected = Select(source, ["userCharacterLiveUsageCounts", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"]);
+            if (selected?["userCharacterLiveUsageCounts"] is JsonArray counts)
+                selected["userCharacterLiveUsageCounts"] = new JsonArray(counts
+                    .Where(c => c?["characterLiveUsageType"]?.GetValue<string>() == "leader")
+                    .Select(c => c!.DeepClone()).ToArray());
+            return selected;
+        }
+        var result = record.DeepClone().AsObject();
+        foreach (var side in new[] { "before", "after" }) result[side] = Project(record[side]);
+        result["response"] = new JsonObject { ["updatedResources"] = Project(record["response"]?["updatedResources"]) };
+        return result;
     }
 
     private static JsonObject SelectMissionRecord(JsonObject record)

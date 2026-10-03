@@ -137,6 +137,8 @@ public sealed class LiveService(
             missions.UpdateLiveMissionProgress(userLivePoint);
             if (!session.IsAuto)
                 missions.RecordManualLiveClear();
+            if (!session.IsAuto && request.life > 0)
+                RecordLeaderLiveClear(session.DeckId);
             if (session.IsAuto)
             {
                 user.Data.userAutoLive ??= new UserAutoLive();
@@ -189,6 +191,24 @@ public sealed class LiveService(
             return;
 
         MergeLiveCharacterArchiveVoiceGroups([liveResultCharacterArchiveVoiceGroupId]);
+    }
+
+    private void RecordLeaderLiveClear(int deckId)
+    {
+        var deck = GetUserDeck(deckId) ?? throw new ArgumentException("Live deck is missing.");
+        var characterId = master.GetCardCharacter(deck.leader);
+        var counts = (user.Data.userCharacterLiveUsageCounts ?? []).ToList();
+        var count = counts.SingleOrDefault(c => c.characterId == characterId && c.characterLiveUsageType == "leader");
+        if (count == null)
+        {
+            count = new UserCharacterLiveUsageCount { characterId = characterId, characterLiveUsageType = "leader" };
+            counts.Add(count);
+        }
+        count.usageCount = checked(count.usageCount + 1);
+        user.Data.userCharacterLiveUsageCounts = counts.OrderBy(c => c.characterId)
+            .ThenBy(c => c.characterLiveUsageType, StringComparer.Ordinal).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userCharacterLiveUsageCounts));
+        missions.RecordCharacterLiveClear(characterId);
     }
 
     private bool UpdateUserMusicResult(
