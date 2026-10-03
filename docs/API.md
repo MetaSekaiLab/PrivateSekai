@@ -2137,7 +2137,9 @@ Server 已接入已有穿戴槽位保存、角色与部位匹配、持有检查�
 - 同步推进 `make_any_costume`、对应角色的 `collect_costume_3d` 和荣誉收集进度。新手 `isNewAchieved` 和角色 `achievedMissions` 为当次响应提示，不持久化。
 - 材料消耗省略零值 `resourceLevel`，服装奖励保留 `resourceLevel=0`。
 
-Server 当前接入普通身体服装制作，Client 提供 `costume-craft` 和 `--replay-costume-craft`。已取得样本的材料、服装、商店及三类任务字段 HTTP 对拍一致。含头饰的组合商品、荣誉任务达到门槛后的变化，以及失败请求的官方错误码仍待核验；需要对应制作响应和前后 Suite。未核验的组合商品及荣誉达成暂不执行，事务失败不保留扣材。
+Server 当前接入普通身体服装及同角色头饰组合制作，Client 提供 `costume-craft` 和 `--replay-costume-craft`。官方组合样本按头饰、身体顺序发放，两件取得时间相同；只扣一次商品材料，角色服装收集和荣誉进度各加 1。两类样本的材料、服装、商店及三类任务字段 HTTP 对拍一致。
+
+荣誉任务达到门槛后的变化、部分组件已持有时的处理，以及失败请求的官方错误码仍待核验；需要对应制作响应和前后 Suite。未核验的荣誉达成暂不执行，事务失败不保留扣材。
 
 证据：`PostUserCostume3DShopAPI`、`UserCostume3DShopResponse`、服装商店和任务 master，以及官方制作与 Suite 回读样本。
 

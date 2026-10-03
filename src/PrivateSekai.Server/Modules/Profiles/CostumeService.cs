@@ -18,13 +18,21 @@ public sealed class CostumeService(UserSession user, CostumeMasterQueries master
         if (offer?.status != "sale" || user.Now < definition.startAt ||
             (definition.endAt.HasValue && user.Now >= definition.endAt.Value))
             throw new ArgumentException("Costume shop item is unavailable.");
-        if (definition.headCostume3dId != 0 || definition.bodyCostume3dId <= 0)
-            throw new NotSupportedException("Costume bundles with accessories are not verified.");
+        if (definition.bodyCostume3dId <= 0)
+            throw new NotSupportedException("Costume crafting without a body is not verified.");
         var costume = master.GetCostume(definition.bodyCostume3dId) ?? throw new InvalidOperationException("Missing costume definition.");
         if (costume.partType != "body" || costume.costume3dType != "normal")
             throw new NotSupportedException("Costume crafting type is not verified.");
         if (user.Data.userCostume3dStatuses?.Any(c => c.costume3dId == costume.id && c.status == "sale") != true)
             throw new ArgumentException("Costume is not on sale.");
+        if (definition.headCostume3dId != 0)
+        {
+            var head = master.GetCostume(definition.headCostume3dId) ?? throw new InvalidOperationException("Missing head costume definition.");
+            if (head.partType != "head" || head.costume3dType != "normal" || head.characterId != costume.characterId)
+                throw new NotSupportedException("Costume accessory type is not verified.");
+            if (user.Data.userCostume3dStatuses?.Any(c => c.costume3dId == head.id && c.status == "sale") != true)
+                throw new ArgumentException("Head costume is not on sale.");
+        }
         if (definition.costs == null || definition.costs.Length == 0)
             throw new InvalidOperationException("Missing costume costs.");
         var costs = definition.costs.Select(c => new UserResource
@@ -37,7 +45,8 @@ public sealed class CostumeService(UserSession user, CostumeMasterQueries master
             if ((user.Data.userMaterials?.SingleOrDefault(m => m.materialId == group.Key)?.quantity ?? 0) < group.Sum(c => (long)c.quantity))
                 throw new ArgumentException("Insufficient costume materials.");
         foreach (var cost in costs) resources.Consume(cost.resourceType, cost.resourceId, cost.quantity);
-        UserResource[] rewards = [new() { resourceType = "costume_3d", resourceId = costume.id, quantity = 1 }];
+        var rewards = new[] { definition.headCostume3dId, costume.id }.Where(id => id > 0)
+            .Select(id => new UserResource { resourceType = "costume_3d", resourceId = id, quantity = 1 }).ToArray();
         resources.Grant(rewards);
         offer.status = "sold_out";
         user.MarkChanged(nameof(SuiteUser.userCostume3dShopItems));

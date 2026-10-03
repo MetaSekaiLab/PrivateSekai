@@ -84,6 +84,8 @@ internal static class CostumeHttpChecks
         foreach (var (table, row) in new[]
         {
             ("costume3ds", """{"id":1002,"characterId":1,"partType":"body","costume3dType":"normal"}"""),
+            ("costume3ds", """{"id":18001,"characterId":1,"partType":"head","costume3dType":"normal"}"""),
+            ("costume3ds", """{"id":18002,"characterId":1,"partType":"body","costume3dType":"normal"}"""),
             ("beginnerMissionV2s", """{"id":4,"beginnerMissionV2Type":"make_any_costume","requirement":1}"""),
             ("characterMissionV2s", """{"id":1003,"characterId":1,"characterMissionType":"collect_costume_3d","parameterGroupId":3}"""),
             ("characterMissionV2ParameterGroups", """{"id":3,"seq":1,"requirement":1}""")
@@ -96,6 +98,9 @@ internal static class CostumeHttpChecks
         }
         File.WriteAllText(Path.Combine(directory, "costume3dShopItems.json"), """
             [{"id":1001,"bodyCostume3dId":1002,"costs":[
+              {"resourceType":"material","resourceId":11,"resourceQuantity":300},
+              {"resourceType":"material","resourceId":12,"resourceQuantity":30}]},
+             {"id":18001,"headCostume3dId":18001,"bodyCostume3dId":18002,"costs":[
               {"resourceType":"material","resourceId":11,"resourceQuantity":300},
               {"resourceType":"material","resourceId":12,"resourceQuantity":30}]}]
             """);
@@ -162,5 +167,22 @@ internal static class CostumeHttpChecks
         catch (ArgumentException) { rejected = true; }
         check(rejected && store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 11).quantity == 10,
             "已售罄服装不能重复制作扣材");
+        state = store.Read(1)!;
+        state.Data.userMaterials = [new() { materialId = 11, quantity = 310 }, new() { materialId = 12, quantity = 32 }];
+        state.Data.userCostume3dStatuses = [new() { costume3dId = 18001, status = "sale" }, new() { costume3dId = 18002, status = "sale" }];
+        state.Data.userCostume3dShopItems = [new() { costume3dShopItemId = 18001, status = "sale" }];
+        store.Save(1, state);
+        await ScenarioRunner.Run(client, new() { Steps = [new()
+        {
+            Operation = "costume-craft", Args = new() { ["shopItemId"] = "18001" }
+        }] }, Path.Combine(directory, "costume-bundle"));
+        saved = store.Read(1)!.Data;
+        response = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "costume-bundle/001.json")))!["response"]!;
+        check(response["obtainedResources"]!.AsArray().Select(r => r!["resourceId"]!.GetValue<int>()).SequenceEqual(new[] { 18001, 18002 }) &&
+            saved.userCostume3dStatuses.All(c => c.status == "available") && saved.userCostume3dStatuses.Select(c => c.obtainedAt).Distinct().Count() == 1 &&
+            saved.userMaterials.Single(m => m.materialId == 11).quantity == 10 && saved.userMaterials.Single(m => m.materialId == 12).quantity == 2,
+            "组合制作按头饰、身体顺序发放，两件取得时间相同且只扣一次材料");
+        check(saved.userCharacterMissions.Single().progress == 2 && saved.userHonorMissions.Single().progress == 2,
+            "一次组合制作只增加一次角色服装收集与荣誉进度");
     }
 }
