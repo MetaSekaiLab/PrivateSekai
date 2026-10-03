@@ -596,6 +596,18 @@ try
     Fails(() => new TargetConfiguration { BaseUrl = "https://example.invalid" }.Validate(), "不能将远端伪装为 local");
     Fails(() => ScenarioRunner.Validate(scenario, [new() { Kind = "official", BaseUrl = "https://example.invalid" }], new HashSet<string>()), "官方写入需显式列出操作");
     Fails(() => Operations.Path(Operations.All["favorite-delete"], new() { Args = new() { ["shareNo"] = "../auth" } }, 1), "拒绝路径注入");
+    Check(Operations.Path(Operations.All["character-mission-receive-all"],
+        new() { Args = new() { ["characterId"] = "1" } }, 1) == "/api/user/1/character/1/mission",
+        "角色任务全部领取无额外路径和请求体");
+    foreach (var type in new[] { "COLLECT_COSTUME_3D", "achievement" })
+        Check(Operations.Path(Operations.All["character-mission-receive"],
+            new() { Args = new() { ["characterId"] = "1", ["characterMissionType"] = type } }, 1) ==
+            "/api/user/1/character/1/mission/" + type, "角色任务类型遵循大写枚举与 achievement 特例");
+    foreach (var type in new[] { "OTHER", "collect_costume_3d", "../auth", "UNKNOWN" })
+        Fails(() => Operations.Path(Operations.All["character-mission-receive"],
+            new() { Args = new() { ["characterId"] = "1", ["characterMissionType"] = type } }, 1),
+            "角色任务拒绝错误大小写、未映射枚举和路径注入");
+    Fails(() => Operations.EncodeBody(Operations.All["character-mission-receive"], new()), "角色任务领取不接受请求体");
     Console.WriteLine($"Client：通过 {count} 项检查；隔离 HTTP 服务即将关闭。");
 }
 finally

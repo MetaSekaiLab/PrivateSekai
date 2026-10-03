@@ -958,6 +958,17 @@ Server 已补卡面和任务联动，Client 支持 `--replay-special-training`�
 
 `ScreenLayerCardDetail.CheckAndExecuteDefaultImageAPI` 比较当前显示与进入页面时的备份，仅在发生切换时发送。Server 只修改已持有卡牌，并限制上述两种卡面值；未持有卡牌、非法值及未特训卡牌请求特训卡面的官方失败行为仍待核验。Client 已有 `card-default-image`，新增 `--replay-card-image` 对拍入口。
 
+## PUT `/api/user/{userId}/character/{characterId}/mission[/{characterMissionType}]`
+
+- Path：当前 `userId`、角色 `characterId`；不带类型表示领取该角色全部可领奖任务。指定类型使用 `CharacterMissionType` 的大写名称，`other` 特例映射为小写 `achievement`。
+- 无 query 和 body。客户端在角色任务页领取时调用，成功后合并用户数据并展示领取及等级变化。
+- Response：`UserCharacterMissionV2Response`，含 `updatedResources` 和 `reportedMissionStatuses`。已核验的报告项为本次领取的状态，包含 `missionId`、`parameterGroupId`、`seq`、`characterId`、`missionStatus=received`，不带 `userId`。
+- 官方 `COLLECT_COSTUME_3D` 样本一次领取 8 条达成项，按参数组每条 1 点增加角色累计经验 8，角色等级 3 → 6。按各等级奖励箱累计获得免费宝石 400、材料 44×1、称号 1（等级 1）、称号背景和文字各 10101；后续 Suite 回读持久化。没有改动角色任务进度，也没有新增邮箱礼物。
+
+Client 已提供 `character-mission-receive` 和 `character-mission-receive-all`。Server 尚未接入；需要一并实现角色升级的称号资源与刷新集，不能仅更新任务状态。全部领取、重复领取、其他任务类型及称号升级仍待核验。
+
+证据：`PutUserCharacterMissionReceiveAPI` 的两个构造、Execute 与回调，`ScreenLayerCharacterRankMission.ExecuteApi`、响应契约、角色任务参数和等级奖励 master，以及官方指定类型领取与 Suite 回读样本。
+
 ## PUT `/api/user/{userId}/mission/beginner_mission_v2`
 
 > 审计版本: jp-6.5.5

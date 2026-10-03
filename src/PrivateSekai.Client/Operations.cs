@@ -64,6 +64,8 @@ public static class Operations
         ["card-practice"] = new("POST", "/api/user/{userId}/card/{cardId}/practice-ticket", typeof(UserCardPracticeTicketRequest), "updateExpResult"),
         ["card-master-lesson"] = new("POST", "/api/user/{userId}/card/{cardId}/master-lesson", typeof(PostUserCardMasterLessonAPIRequest), "obtainedRewards"),
         ["card-default-image"] = new("PUT", "/api/user/{userId}/card/{cardId}?behavior=set_default_image", typeof(UserCardDefaultImageRequest), "updatedResources"),
+        ["character-mission-receive"] = new("PUT", "/api/user/{userId}/character/{characterId}/mission/{characterMissionType}", null, "updatedResources"),
+        ["character-mission-receive-all"] = new("PUT", "/api/user/{userId}/character/{characterId}/mission", null, "updatedResources"),
         ["card-exchange"] = new("PUT", "/api/user/{userId}/card?behavior=exchange", typeof(UserCardExchangeRequest), "updatedResources"),
         ["deck-save"] = new("PUT", "/api/user/{userId}/deck", typeof(PutUserDeckRequest), "updatedResources"),
         ["live-start"] = new("POST", "/api/user/{userId}/live", typeof(UserLiveRequest), "userLiveId"),
@@ -106,6 +108,11 @@ public static class Operations
             {
                 if (!Enum.GetNames<StoryType>().Contains(pair.Value, StringComparer.Ordinal))
                     throw new InvalidOperationException("无效剧情类型。");
+            }
+            else if (pair.Key == "characterMissionType")
+            {
+                if (pair.Value != "achievement" && !Enum.GetNames<CharacterMissionType>().Any(t => t != "other" && t.ToUpperInvariant() == pair.Value))
+                    throw new InvalidOperationException("无效角色任务类型。");
             }
             else if (pair.Key == "unit")
             {
