@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
+using game::Sekai.ApiData;
 using PrivateSekai.Shared.Master;
 
 namespace PrivateSekai.Modules.Live;
@@ -20,6 +21,18 @@ public sealed class LiveMasterQueries(MasterData master)
 
     public int GetChallengeLivePoint() => int.Parse(master.GetTable<MasterConfig>("configs").Rows
         .Single(c => c.configKey == "obtain_live_point_for_challenge_live").value,
+        System.Globalization.CultureInfo.InvariantCulture);
+
+    public MasterBirthdayParty? GetBirthdayParty(long timestamp)
+    {
+        var active = master.GetTable<MasterBirthdayParty>("birthdayParties").Rows
+            .Where(p => p.startAt <= timestamp && (p.closedAt > timestamp || p.closedAt == 0 && p.startAt != 0)).ToArray();
+        if (active.Length > 1) throw new NotSupportedException("Overlapping birthday rewards are not verified.");
+        return active.SingleOrDefault();
+    }
+
+    public int GetChallengeLimitedRewardRate() => int.Parse(master.GetTable<MasterConfig>("configs").Rows
+        .Single(c => c.configKey == "challenge_live_limited_term_score_rank_reward_rate").value,
         System.Globalization.CultureInfo.InvariantCulture);
 
     public int CalculateChallengeBasePoint(int score)

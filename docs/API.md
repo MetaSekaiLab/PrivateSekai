@@ -2057,6 +2057,8 @@ Client 的 `challenge-restart.json` 在角色 1 已解锁、持有卡牌 1 且�
 
 新增 3999 分成功样本为 D 档：挑战点 200，玩家经验增加 400，两张卡各增加 1200 经验；评分奖励仅金币 10000、材料 1×40。首次出勤仍给水晶 20，Live 任务仍增加 30，样本活动积分及道具分别增加 12000、1200；限时生日奖励仍为材料 297×3。不得将此样本的材料属性固定为通用奖励。该样本的评分、阶段与角色升级、高分记录、首次出勤业务回放均通过，完整 HTTP 结算尚未接通。
 
+生日限时奖励已接入业务层：材料取 `birthdayParties.deliveryItemMaterialId`，数量取 `configs.challenge_live_limited_term_score_rank_reward_rate`，通过资源服务发放；响应类型为 `birthday`。当前五份 D／C 档样本的 `limitedTermScoreRankRewards` 和对应材料库存一致。活动时间参考 `MysekaiBirthdayPartyUtility.IsWithinBirthdayTime`（RVA `0x571b310`）与 `TimeUtility.IsWithinTime`（RVA `0x4df8d20`），使用 `startAt <= timestamp < closedAt`，不使用 `birthdayStartAt` 作为掉落起点。此为客户端活动判断与当前样本的交叉验证，发奖起止边界未获官方实测；重叠生日活动、跨活动结算、自动、失败、会员及其他限时奖励仍未核验。无活动及时间边界只有本地检查，不代表完整结算接口已接通。
+
 Server 已接入手动成功 D／C 档的玩家与卡牌经验业务，复用普通 Live 的玩家升级处理和卡牌经验处理；自动挑战、失败结算、会员及其他评分仍待核验。Client 测试入口 `--replay-challenge-exp <record> <master> <output>` 比较经验响应、玩家经验持久状态和卡牌状态，D 档双卡及 C 档单／双卡样本通过。回放另检查后续卡牌发放失败时回滚玩家和领队经验。本组样本没有玩家升级，不据此宣称挑战升级奖励或体力联动已获官方核验；完整结算路由仍未接入。
 
 普通阶段及角色升级业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp`。角色等级按 `levels.levelType=character` 的累计门槛计算，更新 `userCharacters` 的等级、总经验和余经验；跨越的等级按 `characterRanks.rewardResourceBoxIds` 与 `character_rank_reward` 用途发奖。EX、角色满级及含额外解锁奖励的等级暂不支持。

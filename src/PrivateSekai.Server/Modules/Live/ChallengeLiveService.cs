@@ -24,6 +24,24 @@ public sealed class ChallengeLiveService(
     MissionService missions,
     MissionMasterQueries missionMaster)
 {
+    public LimitedTermScoreRankRewardResult[] GrantBirthdayRewards(UserChallengeLiveStartRequest start,
+        UserChallengeLiveClearRequest clear, long playStartAt)
+    {
+        if (start.isAuto || clear.life <= 0 || user.Data.userColorfulPassV2?.colorfulPassId > 0)
+            throw new NotSupportedException("Challenge birthday reward mode is not verified.");
+        if (playStartAt <= 0 || playStartAt > user.Now) throw new ArgumentOutOfRangeException(nameof(playStartAt));
+        var party = master.GetBirthdayParty(playStartAt);
+        if (party?.id != master.GetBirthdayParty(user.Now)?.id)
+            throw new NotSupportedException("Challenge across a birthday reward boundary is not verified.");
+        if (party == null) return [];
+        var quantity = master.GetChallengeLimitedRewardRate();
+        if (party.deliveryItemMaterialId <= 0 || quantity <= 0)
+            throw new InvalidOperationException("Invalid birthday reward configuration.");
+        var reward = new UserResource { resourceType = "material", resourceId = party.deliveryItemMaterialId, quantity = quantity };
+        resources.Grant(reward);
+        return [new LimitedTermScoreRankRewardResult { scoreRankRewardType = "birthday", obtainedRewards = [reward] }];
+    }
+
     public bool CompletePlay(string sessionId, UserChallengeLiveClearRequest clear)
     {
         if (!user.Private.ChallengeLiveSessions.TryGetValue(sessionId, out var start)) return false;

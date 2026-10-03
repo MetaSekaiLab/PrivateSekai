@@ -29,7 +29,12 @@ internal static class ChallengeStageChecks
         File.WriteAllText(Path.Combine(directory, "configs.json"), """
             [{"configKey":"challenge_base_point","value":"17"},
              {"configKey":"challenge_point_calc_value","value":"13"},
-             {"configKey":"obtain_live_point_for_challenge_live","value":"30"}]
+             {"configKey":"obtain_live_point_for_challenge_live","value":"30"},
+             {"configKey":"challenge_live_limited_term_score_rank_reward_rate","value":"7"}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "birthdayParties.json"), """
+            [{"id":1,"startAt":100,"birthdayStartAt":150,"closedAt":200,"deliveryItemMaterialId":601},
+             {"id":2,"startAt":300,"birthdayStartAt":4100000000000,"closedAt":4102444800000,"deliveryItemMaterialId":602}]
             """);
         File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"), """
             [{"id":71,"beginnerMissionV2Type":"challenge_live_clear","requirement":1},
@@ -83,6 +88,9 @@ internal static class ChallengeStageChecks
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
         var master = scope.ServiceProvider.GetRequiredService<LiveMasterQueries>();
         var missionMaster = scope.ServiceProvider.GetRequiredService<MissionMasterQueries>();
+        Check.That(master.GetBirthdayParty(99) == null && master.GetBirthdayParty(100)?.id == 1 &&
+            master.GetBirthdayParty(199)?.id == 1 && master.GetBirthdayParty(200) == null &&
+            master.GetBirthdayParty(300)?.deliveryItemMaterialId == 602, "生日活动按开始与关闭时间选择，不等到生日当天");
         foreach (var (time, period) in new[] { (99L, 0), (100L, 99), (199L, 99), (200L, 0), (299L, 0),
                      (300L, 9), (4102444799999L, 9), (4102444800000L, 100), (4105123200000L, 0) })
             Check.That(missionMaster.GetLiveMissionPeriodId(time) == period,
@@ -109,6 +117,25 @@ internal static class ChallengeStageChecks
             challenges.AdvanceStage(1, point);
             return user.BuildRefresh();
         });
+        Reset();
+        Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+        {
+            challenges.GrantBirthdayRewards(new(), new() { life = 1000 }, 300);
+            return new BrokenResponse();
+        }), "生日奖励编码失败");
+        Check.That(store.Read(1)!.Data.userMaterials.Length == 0, "编码失败回滚生日材料");
+        Check.Throws<NotSupportedException>(() => operations.Execute(1, () =>
+            challenges.GrantBirthdayRewards(new(), new() { life = 1000 }, 100)), "跨生日活动不猜测奖励归属");
+        operations.Execute(1, () =>
+        {
+            var rewards = challenges.GrantBirthdayRewards(new(), new() { life = 1000 }, 300);
+            Check.That(rewards.Single().scoreRankRewardType == "birthday" &&
+                rewards.Single().obtainedRewards.Single().resourceId == 602 &&
+                rewards.Single().obtainedRewards.Single().quantity == 7, "生日材料与挑战数量均读取 master");
+            return user.BuildRefresh();
+        });
+        Check.That(store.Read(1)!.Data.userMaterials.Single().materialId == 602 &&
+            store.Read(1)!.Data.userMaterials.Single().quantity == 7, "生日奖励写入材料库存");
         Reset();
         var playing = store.Read(1)!;
         playing.Private.ChallengeLiveSessions["session"] = new UserChallengeLiveStartRequest { characterId = 1, musicId = 1 };
