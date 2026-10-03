@@ -166,7 +166,7 @@ public sealed class CardController(UserOperation operations, UserSession user, C
                                 ? achieved.Where(s => s.characterId == m.characterId).ToArray() : []
                         }).ToArray();
                     // 无特殊奖励的官方样本返回空数组；非空奖励字段仍待核验。
-                    return (object)new SpecialTrainingResponse { UpdatedResources = refresh, IncludeEmptyResources = rewards.Length == 0 };
+                    return (object)new CardUpdateResponse { UpdatedResources = refresh, IncludeEmptyResources = rewards.Length == 0 };
                 case "set_default_image":
                     var defaultImageRequest =
                         DumpSerializer.Deserialize<UserCardDefaultImageRequest>(request);
@@ -174,9 +174,9 @@ public sealed class CardController(UserOperation operations, UserSession user, C
                     break;
             }
 
-            return new SuiteUserCommonResponse
+            return new CardUpdateResponse
             {
-                updatedResources = user.BuildRefresh()
+                UpdatedResources = user.BuildRefresh(), IncludeEmptyResources = true
             };
         });
         return alreadyTrained ? StatusCode(409) : Encoded(encoded);

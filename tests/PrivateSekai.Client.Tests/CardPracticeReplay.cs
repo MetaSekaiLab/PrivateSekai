@@ -26,7 +26,7 @@ internal static class CardPracticeReplay
         var operation = official["operation"]?.GetValue<string>();
         var rejected = official["status"]?.GetValue<string>() == "stopped" &&
             official["failurePhase"]?.GetValue<string>() == "request" && official["lastHttpStatus"]?.GetValue<int>() == 409;
-        if (operation is not ("card-practice" or "special-training" or "skill-material" or "skill-ticket") ||
+        if (operation is not ("card-practice" or "special-training" or "skill-material" or "skill-ticket" or "card-default-image") ||
             (official["status"]?.GetValue<string>() != "completed" && !rejected))
             throw new InvalidOperationException("需要成功或明确返回 409 的卡牌养成记录。");
         if (readbackPath != null)
@@ -77,7 +77,12 @@ internal static class CardPracticeReplay
             if (record["response"]?["updatedResources"] is { } resources)
                 record["response"]!["updatedResources"] = Select(resources);
         }
-        JsonFiles.Write(Path.Combine(output, operation + "-compare.json"), ScenarioRunner.Compare(official, local));
+        var report = ScenarioRunner.Compare(official, local);
+        JsonFiles.Write(Path.Combine(output, operation + "-compare.json"), report);
+        if (operation == "card-default-image" && (!report["complete"]!.GetValue<bool>() ||
+            new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
+                .Any(k => report[k]!.AsArray().Count != 0)))
+            throw new InvalidOperationException("卡面切换与官方样本存在差异，见报告。");
     }
 
     private static JsonObject Select(JsonNode? source) => new(Fields.Select(field => KeyValuePair.Create(field, source?[field]?.DeepClone())));

@@ -7,16 +7,16 @@ using MessagePack.Formatters;
 
 namespace PrivateSekai.Models;
 
-[MessagePackFormatter(typeof(SpecialTrainingResponseFormatter))]
-public sealed class SpecialTrainingResponse
+[MessagePackFormatter(typeof(CardUpdateResponseFormatter))]
+public sealed class CardUpdateResponse
 {
     public required SuiteUser UpdatedResources { get; init; }
     public bool IncludeEmptyResources { get; init; }
 }
 
-public sealed class SpecialTrainingResponseFormatter : IMessagePackFormatter<SpecialTrainingResponse?>
+public sealed class CardUpdateResponseFormatter : IMessagePackFormatter<CardUpdateResponse?>
 {
-    public void Serialize(ref MessagePackWriter writer, SpecialTrainingResponse? value, MessagePackSerializerOptions options)
+    public void Serialize(ref MessagePackWriter writer, CardUpdateResponse? value, MessagePackSerializerOptions options)
     {
         if (value == null) { writer.WriteNil(); return; }
         writer.WriteMapHeader(value.IncludeEmptyResources ? 2 : 1);
@@ -29,6 +29,6 @@ public sealed class SpecialTrainingResponseFormatter : IMessagePackFormatter<Spe
         }
     }
 
-    public SpecialTrainingResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+    public CardUpdateResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
         throw new NotSupportedException("Response-only formatter.");
 }

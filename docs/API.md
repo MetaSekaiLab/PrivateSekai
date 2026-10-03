@@ -952,6 +952,12 @@ Server 已补卡面和任务联动，Client 支持 `--replay-special-training`�
 - `Sekai.PutUserCardDefaultImageAPI.Execute`: 确认 path 为 `user/{userId}/card/{cardId}?behavior=set_default_image`，method 为 PUT，request 为 `UserCardDefaultImageRequest`，response 为 `SuiteUserCommonResponse`。
 - `Sekai.UserCardDefaultImageRequest`: 确认 request body 字段为 `defaultImage`。
 
+### 官方核验与实现
+
+已特训卡牌切回 `original`、恢复 `special_training`、同值保存三个样本均返回 200 和顶层 `obtainedResources=[]`。改变卡面时返回 `userCards`；同值保存时不返回该字段。相关卡牌、材料及任务状态未出现额外变化，HTTP 重放对拍一致。
+
+`ScreenLayerCardDetail.CheckAndExecuteDefaultImageAPI` 比较当前显示与进入页面时的备份，仅在发生切换时发送。Server 只修改已持有卡牌，并限制上述两种卡面值；未持有卡牌、非法值及未特训卡牌请求特训卡面的官方失败行为仍待核验。Client 已有 `card-default-image`，新增 `--replay-card-image` 对拍入口。
+
 ## PUT `/api/user/{userId}/mission/beginner_mission_v2`
 
 > 审计版本: jp-6.5.5

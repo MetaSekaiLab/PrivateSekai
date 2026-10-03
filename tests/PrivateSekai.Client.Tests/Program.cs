@@ -94,7 +94,7 @@ if (args is ["--replay-story", _, var storyMaster, _])
     StoryReplay.ImportMaster(storyMaster, directory);
 if (args is ["--replay-area-shop" or "--replay-music-shop", _, var areaMaster, _])
     AreaShopReplay.ImportMaster(areaMaster, directory);
-if (args is ["--replay-card-practice" or "--replay-special-training", _, var practiceMaster, _])
+if (args is ["--replay-card-practice" or "--replay-special-training" or "--replay-card-image", _, var practiceMaster, _])
     CardPracticeReplay.ImportMaster(practiceMaster, directory);
 if (args is ["--replay-skill-practice", _, _, var skillMaster, _])
     CardPracticeReplay.ImportMaster(skillMaster, directory);
@@ -288,7 +288,7 @@ try
         await FavoriteReplay.Run(client, store, favoriteCaptures, favoriteOutput);
         return;
     }
-    if (args is ["--replay-card-practice" or "--replay-special-training", var practicePath, _, var practiceOutput])
+    if (args is ["--replay-card-practice" or "--replay-special-training" or "--replay-card-image", var practicePath, _, var practiceOutput])
     {
         await CardPracticeReplay.Run(client, store, practicePath, practiceOutput);
         return;
@@ -481,7 +481,7 @@ try
         && receipt["seq"]!.GetValue<long>() == store.Read(1)!.Private.PresentHistories.Last().seq
         && receipt["expiredAt"]!.GetValue<long>() - receipt["receivedAt"]!.GetValue<long>() == 30L * 24 * 60 * 60 * 1000,
         "练习券领取排序值、历史排序值及记录期限与官方两次样本一致");
-    await CardHttpChecks.Run(client, config, store, directory, Check);
+    await CardHttpChecks.Run(client, config, store, directory, Check, app.Services);
     await ShopHttpChecks.Run(client, store, directory, Check);
     Check(shopRequests.SequenceEqual(new (string, long?)[] { ("POST", 0), ("PUT", 0), ("POST", 0) }),
         "商店购买与升级分别使用 POST 和 PUT，均不发送 body");

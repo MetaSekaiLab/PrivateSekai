@@ -1,5 +1,8 @@
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.DependencyInjection;
 using PrivateSekai.Client;
+using PrivateSekai.Modules.Cards;
+using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
 
 internal static class CardHttpChecks
@@ -22,7 +25,7 @@ internal static class CardHttpChecks
         foreach (var (table, json) in tables) File.WriteAllText(Path.Combine(directory, table + ".json"), json);
     }
 
-    public static async Task Run(ProtocolClient client, TargetConfiguration config, MemoryUserStore store, string directory, Action<bool, string> check)
+    public static async Task Run(ProtocolClient client, TargetConfiguration config, MemoryUserStore store, string directory, Action<bool, string> check, IServiceProvider provider)
     {
         var state = store.Read(1)!;
         state.Data.userCards = [new() { cardId = 1, level = 1, duplicateCount = 2, defaultImage = "special_training" }];
@@ -34,6 +37,20 @@ internal static class CardHttpChecks
         state.Data.userPracticeTickets = [new() { practiceTicketId = 1, quantity = 2 }];
         state.Data.userMaterials = [new() { materialId = 1, quantity = 10 }];
         store.Save(1, state);
+        using (var scope = provider.CreateScope())
+        {
+            var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
+            var cards = scope.ServiceProvider.GetRequiredService<CardService>();
+            foreach (var (id, image) in new (int, string?)[] { (999, "original"), (1, null), (1, "unknown") })
+            {
+                var imageRejected = false;
+                try { operation.Execute(1, () => { cards.SetCardDefaultImage(id, image); return true; }); }
+                catch (ArgumentException) { imageRejected = true; }
+                check(imageRejected && store.Read(1)!.Data.userCards.Length == 1 &&
+                    store.Read(1)!.Data.userCards.Single().defaultImage == "special_training",
+                    "未持有卡牌或无效卡面不能创建卡牌、修改现有卡面");
+            }
+        }
         var steps = new[]
         {
             Step("card-practice", """{"costs":[{"resourceType":"practice_ticket","resourceId":1,"quantity":1}]}"""),
@@ -51,6 +68,11 @@ internal static class CardHttpChecks
         check(card.masterRank == 1 && saved.userMaterials.Single().quantity == 11,
             "突破消耗与等待室转换奖励共同生效，readonly 请求字段正确编码");
         check(card.defaultImage == "original" && card.duplicateCount == 1, "卡面切换与重复卡转换路由正确");
+        await ScenarioRunner.Run(client, new() { Steps = [Step("card-default-image", """{"defaultImage":"original"}""")] },
+            Path.Combine(directory, "card-image-repeat"));
+        var repeatedImage = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "card-image-repeat/001.json")))!["response"]!;
+        check(repeatedImage["obtainedResources"]!.AsArray().Count == 0 && repeatedImage["updatedResources"]!["userCards"] == null,
+            "同值卡面保存返回空奖励列表，不重复刷新卡牌");
         check(card.episodes.Single().scenarioStatusReasons.Length == 2,
             "未达到等级门槛时保留剧情阻挡原因");
         var record = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "cards/001.json")))!;

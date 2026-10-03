@@ -254,9 +254,12 @@ public sealed class CardService(
 
     public void SetCardDefaultImage(int cardId, string? defaultImage)
     {
-        var card = FindOrCreateUserCard(cardId);
-        if (!string.IsNullOrWhiteSpace(defaultImage))
-            card.defaultImage = defaultImage;
+        if (defaultImage is not ("original" or "special_training"))
+            throw new ArgumentException("Invalid card image.");
+        var card = user.Data.userCards?.SingleOrDefault(c => c.cardId == cardId)
+            ?? throw new ArgumentException("Card is not owned.");
+        if (card.defaultImage == defaultImage) return;
+        card.defaultImage = defaultImage;
 
         user.MarkChanged(nameof(SuiteUser.userCards));
     }
