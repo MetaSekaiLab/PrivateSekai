@@ -958,6 +958,12 @@ Server 已补卡面和任务联动，Client 支持 `--replay-special-training`�
 
 `ScreenLayerCardDetail.CheckAndExecuteDefaultImageAPI` 比较当前显示与进入页面时的备份，仅在发生切换时发送。Server 只修改已持有卡牌，并限制上述两种卡面值；未持有卡牌、非法值及未特训卡牌请求特训卡面的官方失败行为仍待核验。Client 已有 `card-default-image`，新增 `--replay-card-image` 对拍入口。
 
+## GET `/api/user/{userId}/story-favorite/comment`
+
+读取当前用户的剧情评论，无 query 和 body。返回 `GetStoryFavoriteCommentResponse.userStoryFavorites`，元素为 `UserStoryComment`，字段包括 `storyType`、`storyId`、`comment`、`isSpoiler`，没有 `shareNo`；不能与 Suite 中的收藏槽位记录混用。
+
+证据为 `GetStoryFavoriteCommentAPI.Execute`、路径字符串及响应模型。自建账号尚未评论时，官方返回 200 和 `userStoryFavorites=[]`。Client 已提供 `favorite-comment-list`；非空记录及首次评论与收藏联动仍待核验，Server 尚未接入该接口。
+
 ## PUT `/api/user/{userId}/character/{characterId}/mission[/{characterMissionType}]`
 
 - Path：当前 `userId`、角色 `characterId`；不带类型表示领取该角色全部可领奖任务。指定类型使用 `CharacterMissionType` 的大写名称，`other` 特例映射为小写 `achievement`。

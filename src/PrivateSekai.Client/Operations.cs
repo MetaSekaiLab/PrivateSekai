@@ -81,6 +81,7 @@ public static class Operations
         ["bookmark-rename"] = new("PATCH", "/api/user/{userId}/story-episode-bookmark/{storyType}/story/{storyId}/episode/{episodeId}/talk/{talkId}", typeof(PatchStoryEpisodeBookmarkRequest), "storyId"),
         ["bookmark-delete"] = new("DELETE", "/api/user/{userId}/story-episode-bookmark/{storyType}/story/{storyId}/episode/{episodeId}/talk/{talkId}", null, "userStoryEpisodeBookmarks"),
         ["bookmark-click"] = new("POST", "/api/user/{userId}/story-episode-bookmark/{storyType}/story/{storyId}/episode/{episodeId}/talk/{talkId}/click", null, null),
+        ["favorite-comment-list"] = new("GET", "/api/user/{userId}/story-favorite/comment", null, "userStoryFavorites", false),
         ["favorite-set"] = new("POST", "/api/user/{userId}/story-favorite/{shareNo}/{storyType}/{storyId}", typeof(game::Sekai.StoryFavorite.PostShareStoryFavoriteRequest), "updatedResources"),
         ["favorite-delete"] = new("DELETE", "/api/user/{userId}/story-favorite/{shareNo}", typeof(game::Sekai.StoryFavorite.DeleteShareStoryFavoriteRequest), "updatedResources"),
         ["story-read"] = new("POST", "/api/user/{userId}/story/{storyType}/episode/{episodeId}", null, "obtainedResources"),
