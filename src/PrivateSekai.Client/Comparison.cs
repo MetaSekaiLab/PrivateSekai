@@ -16,7 +16,7 @@ public sealed class Redactor
     public JsonNode? Clean(JsonNode? node, string field = "")
     {
         if (node == null) return null;
-        if (IsSensitive(field) || field is "userId" or "friendId" or "targetUserId" or "name" or "word" or "twitterId" or "text" or "thumbnail")
+        if (IsSensitive(field) || field is "userId" or "friendId" or "targetUserId" or "name" or "tabName" or "word" or "twitterId" or "text" or "thumbnail")
             return JsonValue.Create("<redacted>");
         if (node is JsonObject obj)
         {
@@ -52,6 +52,7 @@ public static class Comparison
         ["userBoostItems"] = ["boostItemId"],
         ["userStamps"] = ["stampId"],
         ["userMusics"] = ["musicId"], ["userMusicVocals"] = ["musicVocalId"],
+        ["userStampFavoriteTabs"] = ["tabNum"], ["userStampFavorites"] = ["tabNum", "num"],
         ["userSkillPracticeTickets"] = ["skillPracticeTicketId"], ["userDecks"] = ["deckId"],
         ["userShops"] = ["shopId"], ["userShopItems"] = ["shopItemId"], ["userAreaItems"] = ["areaItemId"],
         ["userStoryFavorites"] = ["shareNo"], ["userBookmarkedStories"] = ["storyType", "storyId"],

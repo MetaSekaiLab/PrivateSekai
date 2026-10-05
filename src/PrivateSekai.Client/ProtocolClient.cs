@@ -196,6 +196,16 @@ public sealed class ProtocolClient : IDisposable
                         throw new InvalidOperationException("编队请求的账号与当前目标不一致。");
                     deck["userId"] = UserId;
                 }
+            if (step.Operation == "stamp-favorite-save" && body?["userStampFavoriteResource"] is JsonObject favoriteResource)
+                foreach (var field in new[] { "userStampFavoriteTabs", "userStampFavorites" })
+                    foreach (var item in favoriteResource[field]?.AsArray() ?? [])
+                    {
+                        var record = item?.AsObject() ?? throw new InvalidOperationException("表情收藏记录不能为空。");
+                        var recordUserId = record["userId"]?.GetValue<long>() ?? 0;
+                        if (recordUserId != 0 && recordUserId != UserId)
+                            throw new InvalidOperationException("表情收藏请求的账号与当前目标不一致。");
+                        record["userId"] = UserId;
+                    }
             var packed = Operations.EncodeBody(definition, body);
             var path = Operations.Path(definition, step, UserId);
             using var request = new HttpRequestMessage(new HttpMethod(definition.Method), path);

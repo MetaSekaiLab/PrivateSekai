@@ -1,5 +1,6 @@
 extern alias game;
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
@@ -11,6 +12,47 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore thumbnails)
 {
+    public void SaveStampFavorites(UserStampFavoriteRequest request)
+    {
+        var resource = request.UserStampFavoriteResource ?? throw new ArgumentException("缺少表情收藏配置。");
+        var tabs = resource.UserStampFavoriteTabs ?? throw new ArgumentException("缺少表情收藏页签。");
+        var favorites = resource.userStampFavorites ?? throw new ArgumentException("缺少表情收藏列表。");
+        if (tabs.Any(t => t == null || t.TabNum is < 0 or >= 3 || t.TabName == null ||
+                (t.userId != 0 && t.userId != user.UserId)) ||
+            tabs.Select(t => t.TabNum).Distinct().Count() != tabs.Length)
+            throw new ArgumentException("表情收藏页签无效。");
+        var owned = (user.Data.userStamps ?? []).Select(s => s.stampId).ToHashSet();
+        if (favorites.Any(f => f == null || f.TabNum is < 0 or >= 3 || f.num is < 0 or >= 20 ||
+                (f.userId != 0 && f.userId != user.UserId) || !owned.Contains(f.stampId)) ||
+            favorites.Select(f => (f.TabNum, f.num)).Distinct().Count() != favorites.Length ||
+            favorites.Select(f => (f.TabNum, f.stampId)).Distinct().Count() != favorites.Length)
+            throw new ArgumentException("表情收藏记录无效。");
+        var savedTabs = (user.Data.UserStampFavoriteTabs ?? []).ToDictionary(t => t.TabNum);
+        var tabsChanged = false;
+        foreach (var tab in tabs)
+        {
+            if (savedTabs.TryGetValue(tab.TabNum, out var current) && current.TabName == tab.TabName) continue;
+            savedTabs[tab.TabNum] = new() { userId = user.UserId, TabNum = tab.TabNum, TabName = tab.TabName };
+            tabsChanged = true;
+        }
+        if (tabsChanged)
+        {
+            user.Data.UserStampFavoriteTabs = savedTabs.Values.OrderBy(t => t.TabNum).ToArray();
+            user.MarkChanged(nameof(SuiteUser.UserStampFavoriteTabs));
+        }
+        var savedFavorites = favorites.OrderBy(f => f.stampId).ThenBy(f => f.TabNum).ThenBy(f => f.num)
+            .Select(f => new UserStampFavorite
+            {
+                userId = user.UserId, stampId = f.stampId, TabNum = f.TabNum, num = f.num
+            }).ToArray();
+        if (!(user.Data.userStampFavorites ?? []).OrderBy(f => f.stampId).ThenBy(f => f.TabNum).ThenBy(f => f.num)
+            .Select(f => (f.stampId, f.TabNum, f.num)).SequenceEqual(savedFavorites.Select(f => (f.stampId, f.TabNum, f.num))))
+        {
+            user.Data.userStampFavorites = savedFavorites;
+            user.MarkChanged(nameof(SuiteUser.userStampFavorites));
+        }
+    }
+
     public void UpdateProfile(UserProfile newProfile)
     {
         if (user.Data.userProfile == null) return;

@@ -10,6 +10,14 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileController(UserOperation operations, UserSession user, ProfileService profiles, CostumeService costumes) : PrskController
 {
+    [HttpPatch("api/user/{userId}/stamp-favorite")]
+    public IActionResult SaveStampFavorites(long userId, [FromBody] UserStampFavoriteRequest request) =>
+        Encoded(operations.Execute(userId, () =>
+        {
+            profiles.SaveStampFavorites(request);
+            return new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() };
+        }));
+
     [HttpPost("api/user/{userId}/costume-3d-shop/{shopItemId}")]
     public IActionResult CraftCostume(long userId, int shopItemId) => Encoded(operations.Execute(userId, () =>
     {

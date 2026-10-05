@@ -399,6 +399,20 @@ Client 复用 `shop-purchase`，专项重放使用 `--replay-stamp-shop`。证�
 
 Client 复用 `shop-purchase`；成功样本重放使用 `--replay-vocal-shop <record> <master> <output>`，拒绝样本使用 `--replay-vocal-rejection`。贴图拒绝另有 `--replay-stamp-rejection`。证据为 `AnotherVocalPurchaseConfirmDialog`、`PostUserShopAPI`、音源及商店 master 和官方请求及 Suite 回读。
 
+## PATCH `/api/user/{userId}/stamp-favorite`
+
+请求无 query，body 使用 dump 的 `UserStampFavoriteRequest`：`userStampFavoriteResource` 包含 `userStampFavoriteTabs`（`userId`、`tabNum`、`tabName`）和 `userStampFavorites`（`userId`、`stampId`、`tabNum`、`num`）。客户端离开表情设置页时提交，成功后合并 `updatedResources`。
+
+- 客户端生成 3 个页签（0～2），每页 20 个槽位（0～19），只提交非空收藏；同一页内移动表情会清掉旧位置。
+- 官方保存、重复保存、移动、清空及单页签修改样本确认：收藏列表整体替换，未提交的收藏删除；同一表情可出现在不同页签，最后一个槽位可用。
+- 页签按 `tabNum` 更新，未提交的页签保留；空页签数组不能删除已有页签。名称变化时刷新完整页签列表。
+- 两组资源分别判断变化，仅刷新发生变化的组；重复保存不返回这两组字段。返回记录均保留 `userId`。清空收藏不改变持有表情。
+- Server 拒绝槽位越界、同位置冲突、同页重复表情、未持有表情及其他账号记录；这些输入检查尚未核验官方拒绝状态和错误体。名称长度、过滤及非法输入边界仍待样本。
+
+Client 操作为 `stamp-favorite-save`，发送时填入当前账号，不改共享场景；页签名称在记录中脱敏。专项重放入口为 `--replay-stamp-favorite <record> <output>`，只比较收藏、页签和持有表情，其他背景字段不在核验范围内。
+
+证据为 `PatchUserStampFavoriteAPI`、`ScreenLayerStampSetting.CreateRequest` / `OnClickItem` 的调用链、dump 请求模型与官方请求及 Suite 回读。
+
 ## PUT `/api/user/{userId}/shop/{shopId}/item/{shopItemId}`
 
 > 审计版本: jp-6.5.5

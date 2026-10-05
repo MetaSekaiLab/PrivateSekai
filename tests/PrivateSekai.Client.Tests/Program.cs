@@ -265,6 +265,11 @@ try
         await CharacterMissionReplay.Run(client, store, characterMissionPath, characterMissionOutput);
         return;
     }
+    if (args is ["--replay-stamp-favorite", var stampFavoritePath, var stampFavoriteOutput])
+    {
+        await StampFavoriteReplay.Run(client, store, stampFavoritePath, stampFavoriteOutput);
+        return;
+    }
     if (args is ["--replay-costume" or "--replay-costume-craft", var costumePath, _, var costumeOutput])
     {
         await CostumeReplay.Run(client, store, costumePath, costumeOutput);
@@ -516,6 +521,7 @@ try
     await BookmarkHttpChecks.Run(client, store, directory, Check);
     await FavoriteHttpChecks.Run(client, store, directory, Check);
     await ProfileHttpChecks.Run(client, store, directory, Check);
+    await StampFavoriteHttpChecks.Run(client, store, directory, Check);
     await CostumeHttpChecks.Run(client, store, app.Services, directory, Check);
     await CostumeHttpChecks.RunCraft(client, store, app.Services, directory, Check);
     await CustomProfileHttpChecks.Run(client, store, directory, Check);
