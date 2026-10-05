@@ -6,6 +6,22 @@
 
 [MetaSekaiLab/PrivateSekai](https://github.com/MetaSekaiLab/PrivateSekai) by [MetaMiku](https://github.com/MetaMikuAI)
 
+## PUT / PATCH `/api/user/{userId}/myList/{listNo}`
+
+- Path：当前 `userId`、列表号 `listNo`。客户端提供 1～5 号列表；无 query。
+- PUT body：`PutUserMusicMyListRequest`，包含名称 `name` 和歌曲数组 `musicIds`。Client 操作为 `music-my-list-save`。
+- PATCH 不发送 body，清空指定列表的歌曲。Client 操作为 `music-my-list-reset`。
+- Response：分别使用 `PutUserMusicMyListResponse`、`PatchUserMusicMyListResponse`；资源键为 **`updateResources`**，其中 `userMyLists` 包含 `listNo`、`name`、`musicIds`。C# 字段名分别为 `updatedResources` 和 `userMusicMyList`，以 dump 序列化契约为准。
+- 请求时机：歌单编辑与改名使用 PUT；重置确认后使用 PATCH。成功回调通过 `UserDataManager.UpdateAll` 合并资源，刷新歌曲、数量与重置按钮。客户端改名流程拒绝空名称和禁用词，发送前去除换行。
+
+官方样本确认：PUT 按歌曲 ID 升序保存，保留重复项，允许未持有歌曲但不解锁歌曲；更新单个列表保留其他列表，响应返回全部已有列表。名称和排序后的歌曲均未变化时返回 400。空歌曲列表可以改名。
+
+PATCH 保留名称和列表记录，只清空歌曲；重复重置空列表返回 404。上述 400、404 的错误体为 `httpStatus` 与空字符串 `errorCode`、`errorMessage`。Server 在同一用户操作中修改状态，编码失败回滚。
+
+证据：两项 API 的 Execute 与成功回调、请求响应模型、`MusicUtility` 和 `MusicMyListLayer`，以及官方保存、改名、多列表、清空和拒绝样本。12 份成功记录的列表、音乐持有状态及响应专项 HTTP 重放无差异；两份拒绝记录的状态码、错误体及基线一致，本地独立会话回读不变，官方后续登录回读也未改变列表。名称另以测试场景和在线响应断言核对。
+
+非法列表号、名称长度和禁用词的服务端错误格式、歌曲数量上限及无效歌曲 ID 尚未采样；现有检查不代表完整输入边界或全部 Suite 字段已对齐。
+
 ## GET `/api/system`
 
 > 审计版本: jp-6.5.5

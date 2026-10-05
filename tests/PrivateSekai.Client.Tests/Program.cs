@@ -18,6 +18,7 @@ using PrivateSekai.Modules.Gacha;
 using PrivateSekai.Modules.Home;
 using PrivateSekai.Modules.Live;
 using PrivateSekai.Modules.Missions;
+using PrivateSekai.Modules.Music;
 using PrivateSekai.Modules.Presents;
 using PrivateSekai.Modules.Profiles;
 using PrivateSekai.Modules.Shop;
@@ -39,6 +40,7 @@ void Fails(Action action, string name)
     try { action(); } catch (InvalidOperationException) { count++; return; }
     throw new InvalidOperationException(name);
 }
+MusicMyListContractChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
     "sensitive-diagnostic-placeholder", new IOException("sensitive-diagnostic-placeholder")))!;
 Check(networkFailure["httpRequestError"]!.GetValue<string>() == "SecureConnectionError" &&
@@ -268,6 +270,12 @@ try
     if (args is ["--replay-stamp-favorite", var stampFavoritePath, var stampFavoriteOutput])
     {
         await StampFavoriteReplay.Run(client, store, stampFavoritePath, stampFavoriteOutput);
+        return;
+    }
+    if (args is ["--replay-music-my-list", var myListPath, var myListOutput])
+    {
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await MusicMyListReplay.Run(client, readback, store, myListPath, myListOutput);
         return;
     }
     if (args is ["--replay-costume" or "--replay-costume-craft", var costumePath, _, var costumeOutput])
@@ -522,6 +530,7 @@ try
     await FavoriteHttpChecks.Run(client, store, directory, Check);
     await ProfileHttpChecks.Run(client, store, directory, Check);
     await StampFavoriteHttpChecks.Run(client, store, directory, Check);
+    await MusicMyListHttpChecks.Run(client, config, store, directory, Check);
     await CostumeHttpChecks.Run(client, store, app.Services, directory, Check);
     await CostumeHttpChecks.RunCraft(client, store, app.Services, directory, Check);
     await CustomProfileHttpChecks.Run(client, store, directory, Check);
@@ -651,7 +660,7 @@ sealed class TestedControllers : Microsoft.AspNetCore.Mvc.ApplicationParts.IAppl
     public void PopulateFeature(IEnumerable<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPart> parts,
         Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)
     {
-        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
+        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
         foreach (var controller in feature.Controllers.Where(c => !tested.Contains(c.AsType())).ToArray())
             feature.Controllers.Remove(controller);
     }

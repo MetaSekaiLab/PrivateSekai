@@ -68,6 +68,7 @@ public static class ServerServices
         services.AddScoped<LiveService>();
         services.AddScoped<BoostService>();
         services.AddScoped<DeckService>();
+        services.AddScoped<MusicMyListService>();
         services.AddScoped<ChallengeLiveService>();
         services.AddScoped<MissionService>();
         services.AddScoped<PresentService>();

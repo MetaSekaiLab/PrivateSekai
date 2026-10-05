@@ -55,6 +55,8 @@ public static class Operations
         ["user-name"] = new("PATCH", "/api/user/{userId}", typeof(UserNameAPIRequest), "updatedResources"),
         ["profile-save"] = new("PUT", "/api/user/{userId}/profile", typeof(PutUserProfileRequest), "updatedResources"),
         ["stamp-favorite-save"] = new("PATCH", "/api/user/{userId}/stamp-favorite", typeof(UserStampFavoriteRequest), "updatedResources"),
+        ["music-my-list-save"] = new("PUT", "/api/user/{userId}/myList/{listNo}", typeof(PutUserMusicMyListRequest), "updateResources"),
+        ["music-my-list-reset"] = new("PATCH", "/api/user/{userId}/myList/{listNo}", null, "updateResources"),
         ["custom-profile-save"] = new("PUT", "/api/user/{userId}/custom-profile/{customProfileId}", typeof(UserSaveCustomProfileRequest), "updatedResources"),
         ["custom-profile-card-create"] = new("POST", "/api/user/{userId}/custom-profile/{customProfileId}/custom-profile-card/{customProfileCardId}", typeof(UserSaveCustomProfileCardRequest), "updatedResources"),
         ["custom-profile-card-update"] = new("PUT", "/api/user/{userId}/custom-profile/{customProfileId}/custom-profile-card/{customProfileCardId}", typeof(UserSaveCustomProfileCardRequest), "updatedResources"),
