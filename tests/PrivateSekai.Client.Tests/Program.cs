@@ -95,7 +95,7 @@ if (args is ["--replay-favorites", _, var favoriteMaster, _])
     FavoriteReplay.ImportMaster(favoriteMaster, directory);
 if (args is ["--replay-story", _, var storyMaster, _])
     StoryReplay.ImportMaster(storyMaster, directory);
-if (args is ["--replay-area-shop" or "--replay-music-shop", _, var areaMaster, _])
+if (args is ["--replay-area-shop" or "--replay-music-shop" or "--replay-stamp-shop" or "--replay-vocal-shop" or "--replay-vocal-rejection" or "--replay-stamp-rejection", _, var areaMaster, _])
     AreaShopReplay.ImportMaster(areaMaster, directory);
 if (args is ["--replay-card-practice" or "--replay-special-training" or "--replay-card-image", _, var practiceMaster, _])
     CardPracticeReplay.ImportMaster(practiceMaster, directory);
@@ -154,7 +154,7 @@ if (args is ["--replay-present", var replayCapture, _])
     builder.Services.AddSingleton<TimeProvider>(PresentReplay.Clock(replayCapture));
 if (args is ["--replay-story", var storyCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(StoryReplay.Clock(storyCapture));
-if (args is ["--replay-area-shop", var areaCapture, _, _])
+if (args is ["--replay-area-shop" or "--replay-stamp-shop" or "--replay-vocal-shop", var areaCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(AreaShopReplay.Clock(areaCapture));
 if (args is ["--replay-live", _, var liveCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(LiveReplay.Clock(liveCapture));
@@ -321,9 +321,15 @@ try
         await MaterialExchangeReplay.Run(client, store, exchangePath, exchangeOutput);
         return;
     }
-    if (args is ["--replay-area-shop" or "--replay-music-shop", var areaPath, _, var areaOutput])
+    if (args is ["--replay-vocal-rejection" or "--replay-stamp-rejection", var rejectionPath, _, var rejectionOutput])
     {
-        await AreaShopReplay.Run(client, store, areaPath, areaOutput, args[0] == "--replay-music-shop");
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await AreaShopReplay.RunRejected(client, readback, store, rejectionPath, rejectionOutput, args[0] == "--replay-vocal-rejection");
+        return;
+    }
+    if (args is ["--replay-area-shop" or "--replay-music-shop" or "--replay-stamp-shop" or "--replay-vocal-shop", var areaPath, _, var areaOutput])
+    {
+        await AreaShopReplay.Run(client, store, areaPath, areaOutput, args[0] == "--replay-music-shop", args[0] == "--replay-stamp-shop", args[0] == "--replay-vocal-shop");
         return;
     }
     if (args is ["--replay-live", var liveStartPath, var liveClearPath, _, var liveOutput])

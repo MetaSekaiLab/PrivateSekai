@@ -9,6 +9,9 @@ namespace PrivateSekai.Modules.Shop;
 
 public sealed class ShopMasterQueries(MasterData master)
 {
+    public MasterStamp? GetStamp(int id) =>
+        master.GetTable<MasterStamp>("stamps", s => s.id).FindById(id);
+
     public MasterEventExchangeSummary? GetEventExchangeSummary(int exchangeId) =>
         master.GetTable<MasterEventExchangeSummary>("eventExchangeSummaries").Rows
             .SingleOrDefault(s => s.eventExchanges?.Any(e => e.id == exchangeId) == true);

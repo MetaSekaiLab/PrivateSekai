@@ -50,6 +50,8 @@ public static class Comparison
         ["userEventItems"] = ["eventItemId"], ["userEventExchanges"] = ["eventId", "eventExchangeId"],
         ["userEventMissions"] = ["eventId", "eventMissionId"],
         ["userBoostItems"] = ["boostItemId"],
+        ["userStamps"] = ["stampId"],
+        ["userMusics"] = ["musicId"], ["userMusicVocals"] = ["musicVocalId"],
         ["userSkillPracticeTickets"] = ["skillPracticeTicketId"], ["userDecks"] = ["deckId"],
         ["userShops"] = ["shopId"], ["userShopItems"] = ["shopItemId"], ["userAreaItems"] = ["areaItemId"],
         ["userStoryFavorites"] = ["shareNo"], ["userBookmarkedStories"] = ["storyType", "storyId"],

@@ -16,6 +16,8 @@ internal static class Program
         ChallengePlayDayChecks.Run();
         ChallengeHighScoreChecks.Run();
         AreaShopChecks.Run();
+        StampShopChecks.Run();
+        VocalShopChecks.Run();
         SkillPracticeChecks.Run();
         StoryCollectionChecks.Run();
         LoginBonusChecks.Run();

@@ -11,7 +11,7 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileResourceHandler : IResourceHandler
 {
-    public IReadOnlyCollection<string> ResourceTypes { get; } = ["costume_3d", "avatar_motion"];
+    public IReadOnlyCollection<string> ResourceTypes { get; } = ["costume_3d", "avatar_motion", "stamp"];
 
     public void Grant(UserSession user, UserResource resource)
     {
@@ -20,6 +20,13 @@ public sealed class ProfileResourceHandler : IResourceHandler
 
         switch (resource.resourceType)
         {
+            case "stamp":
+                var stamps = (user.Data.userStamps ?? []).ToList();
+                if (stamps.Any(s => s.stampId == resource.resourceId)) return;
+                stamps.Add(new UserStamp { userId = user.UserId, stampId = resource.resourceId, obtainedAt = checked((ulong)user.Now) });
+                user.Data.userStamps = stamps.OrderBy(s => s.stampId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userStamps));
+                break;
             case "costume_3d":
                 var costumes = (user.Data.userCostume3dStatuses ?? []).ToList();
                 var costume = costumes.SingleOrDefault(c => c.costume3dId == resource.resourceId);

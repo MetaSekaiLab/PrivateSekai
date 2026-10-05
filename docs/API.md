@@ -378,6 +378,27 @@
 - `Sekai.AnotherVocalPurchaseConfirmDialog.OnClickOK` / `OnFinishedPostUserShopAPI`: Another Vocal 购买入口和完成回调。
 - `Sekai.AreaShopDetailDialog.OnClickOK` / `OnFinishedPostUserShopAPI`: 区域商店购买分支入口和完成回调。
 
+### 贴图购买实现与核验
+
+- 普通单角色 illustration 贴图：按 `shopItems` 的材料成本扣券，通过 `resourceBoxes` 发放贴图，持有记录保存 `stampId` 和 `obtainedAt`，省略 `userId`。重复授予保留原取得时间。
+- 官方首次购买样本同步推进该角色的 `collect_stamp` 任务与同名荣誉进度；角色任务当次达成项仅放入响应，不持久化提示。
+- 商品状态持久化为 `sold_out`，购买响应省略 `userShops`；后续 Suite 回读显示售罄。材料、贴图、商店及相关任务的专项 HTTP 重放无差异，不覆盖其他背景字段。
+- 已售罄商品重复购买、缺少兑换券均采得官方 HTTP 409，Server 已对应拒绝且不改变库存和任务。使用 `ClientErrorResponse`：缺券为 `not_enough_resource`，重复购买为空错误码，`errorMessage` 为空；两类错误响应与独立会话回读已完成 HTTP 对拍。
+- 多角色贴图、其他成本、荣誉达成领奖仍待官方样本，当前不扩展这些分支。
+
+Client 复用 `shop-purchase`，专项重放使用 `--replay-stamp-shop`。证据为贴图商店调用链、贴图与商店 master、首次购买及拒绝样本。
+
+### Another Vocal 购买实现与核验
+
+- 请求复用本节 POST 路由，无 query 和 body。成本来自 `shopItems.costs`，所选音源来自 `resourceBoxes` 与 `musicVocals`；已有兑换券按实际成本扣除，不把角色编号当作材料编号。
+- 单角色与双角色 `another_vocal` 官方样本均新增 `userMusicVocals`（`musicId`、`musicVocalId`），商品持久化为 `sold_out`，响应刷新完整 `userShops`。基础歌曲未持有时仍可购买音源，不隐式解锁歌曲。
+- 每个参与角色的 `collect_another_vocal` 进度各加 1，荣誉同名进度按购买的一个音源加 1；双角色版本不把荣誉加 2。角色任务的当次达成项只出现在响应，Suite 回读为空提示列表。
+- 缺券与重复购买均返回 HTTP 409；分别使用 `not_enough_resource` 和空错误码，错误消息为空。拒绝后库存、音源和相关任务不变。
+- 单角色、双角色购买及两种拒绝的专项 HTTP 对拍无差异，范围为音源、歌曲、商店、材料及相关任务。新手任务未变化；其他背景字段不在核验范围内。
+- 当前接入 `characters` 为 `game_character` 的版本和材料成本。其他音源类型、角色类型、荣誉达成门槛及对应奖励仍待样本；未核验的荣誉达成暂不执行购买，事务失败不保留扣券。
+
+Client 复用 `shop-purchase`；成功样本重放使用 `--replay-vocal-shop <record> <master> <output>`，拒绝样本使用 `--replay-vocal-rejection`。贴图拒绝另有 `--replay-stamp-rejection`。证据为 `AnotherVocalPurchaseConfirmDialog`、`PostUserShopAPI`、音源及商店 master 和官方请求及 Suite 回读。
+
 ## PUT `/api/user/{userId}/shop/{shopId}/item/{shopItemId}`
 
 > 审计版本: jp-6.5.5
@@ -983,6 +1004,7 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 - `AREA_ITEM_LEVEL_UP_CHARACTER`：领取 2 条区域道具任务，共增加 2 点经验，样本未升级。
 - `PLAY_LIVE`：领取首条队长 Live 次数任务增加 1 点经验，角色等级 1 → 2，累计经验 0 → 1，并发放等级奖励。
 - `WAITING_ROOM`：领取首条休息室收集任务增加 1 点经验，累计经验 8 → 9，样本未升级。
+- `COLLECT_ANOTHER_VOCAL`：首次收集任务按 master 增加 1 点经验，角色等级 4 → 5，累计经验 6 → 7，并发放等级奖励；指定类型重复领取返回空报告且不重复发奖。首次和重复样本的专项 HTTP 对拍一致。
 
 上述样本均回读确认任务已领取，相关基线、响应和状态增量一致；对拍范围为角色、任务和奖励资源，不包含无关背景字段。其余任务类型、已有称号升级及满角色等级仍待核验；全部领取遇到未核验类型或缺失定义的达成项时整次拒绝，不静默跳过。`reportedMissionStatuses` 省略 `userId`，`updatedResources.userCharacterMissionV2Statuses` 保留。称号与名片的所属用户字段已补入模型构建副本；角色记录省略 `userId`，leader 名片省略零值 `profileImageId`。
 

@@ -25,6 +25,7 @@ internal static class UserResponseSerializer
                 new FieldFilterFormatter<UserProfile>((s, key) => (key == "userId" && s.userId == 0) ||
                     (key == "profileImageId" && s.profileImageType == "leader" && s.profileImageId == 0)),
                 new FieldFilterFormatter<UserCharacter>((_, key) => key == "userId"),
+                new FieldFilterFormatter<UserStamp>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserEventExchange>((s, key) =>
                     key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0),
                 new FieldFilterFormatter<UserMaterialExchange>((s, key) =>

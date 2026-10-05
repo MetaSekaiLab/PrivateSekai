@@ -27,10 +27,12 @@ internal static class CharacterMissionHttpChecks
         parameters.Single(r => r!["id"]!.GetValue<int>() == 3)!["exp"] = 4;
         parameters.Add(JsonNode.Parse("""{"id":3,"seq":2,"requirement":2,"exp":4}"""));
         parameters.Add(JsonNode.Parse("""{"id":19,"seq":1,"requirement":1,"exp":1}"""));
+        parameters.Add(JsonNode.Parse("""{"id":8,"seq":1,"requirement":1,"exp":1}"""));
         JsonFiles.Write(parameterPath, parameters);
         var missionPath = Path.Combine(directory, "characterMissionV2s.json");
         var missions = JsonNode.Parse(File.ReadAllText(missionPath))!.AsArray();
         missions.Add(JsonNode.Parse("""{"id":1019,"characterId":1,"characterMissionType":"collect_character_archive_voice","parameterGroupId":19}"""));
+        missions.Add(JsonNode.Parse("""{"id":1008,"characterId":1,"characterMissionType":"collect_another_vocal","parameterGroupId":8}"""));
         JsonFiles.Write(missionPath, missions);
     }
 
@@ -120,5 +122,23 @@ internal static class CharacterMissionHttpChecks
         catch (InvalidOperationException) { rejected = true; }
         check(rejected && store.Read(1)!.Data.userCharacters.Single().totalExp == 9,
             "全部领取遇到缺失定义的达成项时拒绝，不静默遗漏");
+        state = store.Read(1)!;
+        state.Data.userCharacterMissionStatuses = [.. state.Data.userCharacterMissionStatuses,
+            new() { userId = 1, characterId = 1, missionId = 1008, parameterGroupId = 8, seq = 1, missionStatus = "achieved" }];
+        store.Save(1, state);
+        var vocal = new Scenario { Steps = [new()
+        {
+            Operation = "character-mission-receive", Args = new() { ["characterId"] = "1", ["characterMissionType"] = "COLLECT_ANOTHER_VOCAL" }
+        }] };
+        await ScenarioRunner.Run(client, vocal, Path.Combine(directory, "vocal-mission"));
+        saved = store.Read(1)!.Data;
+        check(saved.userCharacters.Single().totalExp == 10 &&
+            saved.userCharacterMissionStatuses.Single(s => s.missionId == 1008).missionStatus == "received" &&
+            saved.userCharacterMissionStatuses.Single(s => s.missionId == 999999).missionStatus == "achieved",
+            "指定 Vocal 收集任务增加 master 经验并领取，不触及其他任务");
+        await ScenarioRunner.Run(client, vocal, Path.Combine(directory, "vocal-mission-repeat"));
+        response = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "vocal-mission-repeat/001.json")))!["response"]!;
+        check(response["reportedMissionStatuses"]!.AsArray().Count == 0 && store.Read(1)!.Data.userCharacters.Single().totalExp == 10,
+            "重复 Vocal 任务领奖返回空报告，不再次增加经验");
     }
 }

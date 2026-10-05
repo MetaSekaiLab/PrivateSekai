@@ -47,13 +47,17 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
     [HttpPut("api/user/{userId}/shop/{shopId}/item/{shopItemId}")]
     public IActionResult HandleShopItemPurchase(long userId, int shopId, int shopItemId)
     {
-        return Encoded(operations.Execute(userId, () =>
+        var status = 200;
+        var encoded = operations.Execute(userId, () =>
         {
             var achievedBefore = (user.Data.userMissionStatuses ?? [])
                 .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
                 .Select(s => s.missionId).ToHashSet();
-            var achieved = shop.PurchaseShopItem(shopId, shopItemId);
-            var refresh = user.BuildRefresh();
+            var result = shop.PurchaseShopItem(shopId, shopItemId);
+            status = result.Status;
+            if (status != 200)
+                return new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = result.ErrorCode, ErrorMessage = "" };
+            var refresh = user.BuildRefresh(result.ExcludeShop ? [nameof(SuiteUser.userShops)] : null);
             if (refresh.userBeginnerMissionV2s != null)
             {
                 var newlyAchieved = (user.Data.userMissionStatuses ?? [])
@@ -69,7 +73,7 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
                 refresh.userCharacterMissions = refresh.userCharacterMissions.Select(m => new UserCharacterMissionV2
                 {
                     userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType,
-                    progress = m.progress, achievedMissions = achieved.Where(s => s.characterId == m.characterId &&
+                    progress = m.progress, achievedMissions = result.Achieved.Where(s => s.characterId == m.characterId &&
                         m.characterMissionType == missionMaster.GetCharacterMissionType(s.missionId)).ToArray()
                 }).ToArray();
 
@@ -77,6 +81,8 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
             {
                 updatedResources = refresh
             };
-        }));
+        });
+        Response.StatusCode = status;
+        return Encoded(encoded);
     }
 }

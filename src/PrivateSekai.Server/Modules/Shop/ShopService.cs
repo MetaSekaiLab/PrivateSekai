@@ -92,18 +92,69 @@ public sealed class ShopService(
         return 200;
     }
 
-    public UserCharacterMissionV2Status[] PurchaseShopItem(int shopId, int shopItemId)
+    public (int Status, UserCharacterMissionV2Status[] Achieved, bool ExcludeShop, string ErrorCode) PurchaseShopItem(int shopId, int shopItemId)
     {
         var shopItem = master.GetMasterShopItem(shopId, shopItemId);
         if (shopItem != null)
         {
             var areaRewards = resourceMaster.BuildResourcesFromBox("shop_item", shopItem.resourceBoxId);
+            if (areaRewards.Any(r => r.resourceType == "music_vocal"))
+            {
+                if (areaRewards.Length != 1 || areaRewards[0].quantity != 1)
+                    throw new NotSupportedException("Vocal shop reward combination is not verified.");
+                var vocal = resourceMaster.GetMasterMusicVocal(areaRewards[0].resourceId)
+                    ?? throw new InvalidOperationException("Missing music vocal definition.");
+                if (vocal.musicVocalType != "another_vocal" || vocal.characters?.Length is null or 0 ||
+                    vocal.characters.Any(c => c.characterType != "game_character" || c.characterId <= 0))
+                    throw new NotSupportedException("Vocal character mapping is not verified.");
+                var offer = user.Data.userShops?.SingleOrDefault(s => s.shopId == shopId)?.userShopItems?
+                    .SingleOrDefault(i => i.shopItemId == shopItemId);
+                if (offer?.status != "sale" || user.Data.userMusicVocals?.Any(v => v.musicVocalId == vocal.id) == true)
+                    return (409, [], false, "");
+                if (shopItem.costs == null || shopItem.costs.Length == 0)
+                    throw new InvalidOperationException("Missing vocal shop costs.");
+                var costs = shopItem.costs.Select(c => c.cost ?? throw new InvalidOperationException("Missing vocal shop cost.")).ToArray();
+                if (costs.Any(c => c.resourceType != "material" || c.resourceId <= 0 || c.quantity <= 0))
+                    throw new NotSupportedException("Vocal shop costs are not verified.");
+                foreach (var group in costs.GroupBy(c => c.resourceId))
+                    if ((user.Data.userMaterials?.SingleOrDefault(m => m.materialId == group.Key)?.quantity ?? 0) < group.Sum(c => (long)c.quantity))
+                        return (409, [], false, "not_enough_resource");
+                foreach (var cost in costs) resourceService.Consume(cost.resourceType, cost.resourceId, cost.quantity);
+                resourceService.Grant(areaRewards);
+                MarkShopItemSoldOut(shopId, shopItemId);
+                return (200, missions.RecordAnotherVocalPurchase(vocal.characters.Select(c => c.characterId).Distinct().ToArray()), false, "");
+            }
+            if (areaRewards.Any(r => r.resourceType == "stamp"))
+            {
+                if (areaRewards.Length != 1 || areaRewards[0].quantity != 1)
+                    throw new NotSupportedException("Stamp shop reward combination is not verified.");
+                var stamp = master.GetStamp(areaRewards[0].resourceId) ?? throw new InvalidOperationException("Missing stamp definition.");
+                if (stamp.stampType != "illustration" || stamp.characterId1 <= 0 ||
+                    new[] { stamp.characterId2, stamp.characterId3, stamp.characterId4, stamp.characterId5 }.Any(id => id > 0))
+                    throw new NotSupportedException("Stamp character mapping is not verified.");
+                var offer = user.Data.userShops?.SingleOrDefault(s => s.shopId == shopId)?.userShopItems?
+                    .SingleOrDefault(i => i.shopItemId == shopItemId);
+                if (offer?.status != "sale" || user.Data.userStamps?.Any(s => s.stampId == stamp.id) == true)
+                    return (409, [], true, "");
+                if (shopItem.costs == null || shopItem.costs.Length == 0)
+                    throw new InvalidOperationException("Missing stamp shop costs.");
+                var costs = shopItem.costs.Select(c => c.cost ?? throw new InvalidOperationException("Missing stamp shop cost.")).ToArray();
+                if (costs.Any(c => c.resourceType != "material" || c.resourceId <= 0 || c.quantity <= 0))
+                    throw new NotSupportedException("Stamp shop costs are not verified.");
+                foreach (var group in costs.GroupBy(c => c.resourceId))
+                    if ((user.Data.userMaterials?.SingleOrDefault(m => m.materialId == group.Key)?.quantity ?? 0) < group.Sum(c => (long)c.quantity))
+                        return (409, [], true, "not_enough_resource");
+                foreach (var cost in costs) resourceService.Consume(cost.resourceType, cost.resourceId, cost.quantity);
+                resourceService.Grant(areaRewards);
+                MarkShopItemSoldOut(shopId, shopItemId);
+                return (200, missions.RecordStampPurchase(stamp.characterId1), true, "");
+            }
             if (areaRewards.Any(r => r.resourceType == "area_item"))
             {
                 PurchaseAreaItem(shopId, shopItem, areaRewards);
                 if (areaRewards[0].resourceLevel == 1)
                     missions.RecordAreaItemPurchase();
-                return missions.RecordAreaItemUpgrade(areaRewards[0].resourceId);
+                return (200, missions.RecordAreaItemUpgrade(areaRewards[0].resourceId), false, "");
             }
             if (areaRewards.Any(r => r.resourceType == "music"))
             {
@@ -123,7 +174,7 @@ public sealed class ShopService(
                 resourceService.Grant(areaRewards);
                 MarkShopItemSoldOut(shopId, shopItemId);
                 missions.RecordMusicPurchase();
-                return [];
+                return (200, [], false, "");
             }
         }
         var wasSoldOut = IsShopItemSoldOut(shopId, shopItemId);
@@ -145,7 +196,7 @@ public sealed class ShopService(
         resourceService.Grant(rewards.Where(r => r.resourceType is
             "music" or "music_vocal" or "jewel" or "coin" or "virtual_coin" or
             "material" or "practice_ticket" or "costume_3d"));
-        return [];
+        return (200, [], false, "");
     }
 
     private void PurchaseAreaItem(int shopId, MasterShopItem definition, UserResource[] rewards)

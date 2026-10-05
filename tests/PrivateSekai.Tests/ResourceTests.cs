@@ -162,6 +162,10 @@ internal static class ResourceTests
         resources.Grant(Reward("avatar_motion", 5));
         Check.That(session.Data.userCostume3dStatuses!.Single().obtainedAt == session.Now &&
                    session.Data.userAvatarMotions!.Length == 1, "服装与动作重复授予保持唯一");
+        resources.Grant(Reward("stamp", 38));
+        resources.Grant(Reward("stamp", 38));
+        Check.That(session.Data.userStamps!.Length == 1 && session.Data.userStamps[0].obtainedAt == (ulong)session.Now &&
+                   session.Data.userStamps[0].userId == session.UserId, "表情授予保留所属用户及取得时间，不重复新增");
         resources.Grant(Reward("music", 7));
         Check.That(session.Data.userMusics!.Single().musicId == 7 &&
                    session.Data.userMusicVocals!.Single().musicVocalId == 71,
