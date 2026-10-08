@@ -144,7 +144,7 @@ internal static class FriendChecks
             "删除失败不丢失关系");
         var removed = operations.ExecutePair(1, 2, peer =>
         {
-            Check.That(service.Remove(peer, "release_friend") == 200, "删除好友成功");
+            Check.That(service.Remove(peer, "release_friend").Status == 200, "删除好友成功");
             return queries.Project(user.BuildRefresh());
         });
         Check.That(DumpSerializer.Deserialize<SuiteUser>(removed).userFriends.Single().opponentUserId == 3 &&
@@ -152,7 +152,7 @@ internal static class FriendChecks
         Request(1, 2);
         operations.ExecutePair(1, 2, peer =>
         {
-            Check.That(service.Remove(peer, "cancel_friend_request") == 200, "发起方取消申请成功");
+            Check.That(service.Remove(peer, "cancel_friend_request").Status == 200, "发起方取消申请成功");
             return user.BuildRefresh();
         });
         Check.That(store.Read(1)!.Data.userFriends.Single().opponentUserId == 3 && store.Read(2)!.Data.userFriends.Length == 0,
@@ -160,7 +160,7 @@ internal static class FriendChecks
         Request(1, 2);
         operations.ExecutePair(2, 1, peer =>
         {
-            Check.That(service.Remove(peer, "reject_friend_request") == 200, "接收方拒绝申请成功");
+            Check.That(service.Remove(peer, "reject_friend_request").Status == 200, "接收方拒绝申请成功");
             return user.BuildRefresh();
         });
         Check.That(store.Read(1)!.Data.userFriends.Single().opponentUserId == 3 && store.Read(2)!.Data.userFriends.Length == 0,
@@ -168,7 +168,7 @@ internal static class FriendChecks
         foreach (var type in new[] { "cancel_friend_request", "reject_friend_request", "release_friend" })
             operations.ExecutePair(1, 2, peer =>
             {
-                Check.That(service.Remove(peer, type) == 200 && user.BuildRefresh().userFriends == null,
+                Check.That(service.Remove(peer, type).Status == 200 && user.BuildRefresh().userFriends == null,
                     "无关系时删除类操作成功且不刷新好友列表");
                 return null;
             });
@@ -233,5 +233,42 @@ internal static class FriendChecks
                 user.BuildRefresh().userFriends == null, "已有好友时来源范围错误优先于关系冲突");
             return null;
         });
+        operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Remove(peer, "cancel_friend_request").Status == 200, "好友状态下取消申请仍删除关系");
+            return user.BuildRefresh();
+        });
+        Check.That(store.Read(1)!.Data.userFriends.Single().opponentUserId == 3 && store.Read(2)!.Data.userFriends.Length == 0,
+            "取消好友关系移除双方并保留其他好友");
+        request.sentLocation = "id_search";
+        Request(1, 2);
+        operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Remove(peer, "reject_friend_request") == (409, "") && user.BuildRefresh().userFriends == null,
+                "发起方拒绝自己的申请返回冲突且不刷新");
+            return null;
+        });
+        Check.That(store.Read(1)!.Data.userFriends.Single(f => f.opponentUserId == 2).friendStatus == "sent_request" &&
+            store.Read(2)!.Data.userFriends.Single().friendStatus == "pending_request", "错方向拒绝保留双方申请");
+        foreach (var item in new[] { (From: 1L, To: 2L, Type: "release_friend", Error: ""),
+            (From: 2L, To: 1L, Type: "cancel_friend_request", Error: ""),
+            (From: 2L, To: 1L, Type: "release_friend", Error: "exists_pending_friend_request") })
+            operations.ExecutePair(item.From, item.To, peer =>
+            {
+                Check.That(service.Remove(peer, item.Type) == (409, item.Error) && user.BuildRefresh().userFriends == null,
+                    "申请状态中的不匹配删除返回对应错误码且不刷新");
+                return null;
+            });
+        Check.That(store.Read(1)!.Data.userFriends.Single(f => f.opponentUserId == 2).friendStatus == "sent_request" &&
+            store.Read(2)!.Data.userFriends.Single().friendStatus == "pending_request", "不匹配删除不改变双方申请");
+        operations.ExecutePair(2, 1, peer => { service.Approve(peer); return user.BuildRefresh(); });
+        operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Remove(peer, "reject_friend_request") == (409, "") && user.BuildRefresh().userFriends == null,
+                "好友状态下拒绝动作返回空错误码冲突");
+            return null;
+        });
+        Check.That(store.Read(1)!.Data.userFriends.Single(f => f.opponentUserId == 2).friendStatus == "friend" &&
+            store.Read(2)!.Data.userFriends.Single().friendStatus == "friend", "好友状态下拒绝失败保留双方关系");
     }
 }

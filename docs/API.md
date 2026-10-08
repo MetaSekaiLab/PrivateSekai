@@ -2356,9 +2356,20 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 - 双方已经没有该关系时，三个 type 都返回 200，但 `updatedResources` 不包含 `userFriends`。不能为了返回空列表而清除其他好友，也不应伪造一次好友刷新。
 - Client 操作为 `friend-cancel`、`friend-reject`、`friend-release`。Server 复用双账号事务；响应编码失败时回滚双方删除。
 
+动作与当前关系的实测组合如下；关系状态以发起本次 DELETE 的账号为准，对方记录与之配对。
+
+| 当前状态 | cancel_friend_request | reject_friend_request | release_friend |
+| --- | --- | --- | --- |
+| sent_request | 200，删除双方 | 409，空错误码 | 409，空错误码 |
+| pending_request | 409，空错误码 | 200，删除双方 | 409，exists_pending_friend_request |
+| friend | 200，删除双方 | 409，空错误码 | 200，删除双方 |
+| 双方均无关系 | 200，不刷新好友 | 200，不刷新好友 | 200，不刷新好友 |
+
+上述 409 均使用 `ClientErrorResponse`，errorMessage 为空，关系保持不变。不能把三个动作统一成无条件删除，也不能按界面动作名称推断“取消”必定拒绝已建立的好友。
+
 证据：`DeleteFriendRejectAPI.Execute`（RVA `0x6178ed4`）、`UseCase` 枚举顺序、地址 `0xB09FC88` 起三个重定位项与字符串表交叉确认类型映射，回调 `OnReceivecResponce`（RVA `0x617910c`），以及官方写入和双方独立回读。
 
-6 组 HTTP 对拍覆盖正常取消／拒绝／删除及无关系时重复操作，验证好友字段存在性、完整列表和双方回读。在线状态的回读排除规则与上一节相同。类型与关系不匹配、自身或未知目标、非法 type、过期关系仍待采样；实现对未确认的状态组合保留不支持分支。
+6 组 HTTP 对拍覆盖正常取消／拒绝／删除及无关系时重复操作，另 6 组覆盖表中的错方向或错状态动作，验证错误体、好友字段存在性、完整列表和双方回读。在线状态的回读排除规则与上一节相同。自身或未知目标、非法 type、过期关系及双方记录不一致仍待采样；实现对未确认的状态组合保留不支持分支。
 
 ## POST `/api/user/{userId}/config`
 

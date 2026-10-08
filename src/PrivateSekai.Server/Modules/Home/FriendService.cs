@@ -9,16 +9,24 @@ namespace PrivateSekai.Modules.Home;
 
 public sealed class FriendService(UserSession user, FriendMasterQueries master)
 {
-    public int Remove(UserState peer, string type)
+    public (int Status, string ErrorCode) Remove(UserState peer, string type)
     {
         var peerId = peer.Data.userRegistration!.userId;
         var own = (user.Data.userFriends ?? []).SingleOrDefault(f => f.opponentUserId == peerId);
         var other = (peer.Data.userFriends ?? []).SingleOrDefault(f => f.opponentUserId == user.UserId);
         if (own == null && other == null && (type is "cancel_friend_request" or "reject_friend_request" or "release_friend"))
-            return 200;
+            return (200, "");
+        if (own?.friendStatus == "sent_request" && other?.friendStatus == "pending_request" &&
+            (type is "reject_friend_request" or "release_friend")) return (409, "");
+        if (own?.friendStatus == "pending_request" && other?.friendStatus == "sent_request" &&
+            (type is "cancel_friend_request" or "release_friend"))
+            return (409, type == "release_friend" ? "exists_pending_friend_request" : "");
+        if (type == "reject_friend_request" && own?.friendStatus == "friend" && other?.friendStatus == "friend")
+            return (409, "");
         var supported = type switch
         {
-            "cancel_friend_request" => own?.friendStatus == "sent_request" && other?.friendStatus == "pending_request",
+            "cancel_friend_request" => (own?.friendStatus == "sent_request" && other?.friendStatus == "pending_request") ||
+                (own?.friendStatus == "friend" && other?.friendStatus == "friend"),
             "reject_friend_request" => own?.friendStatus == "pending_request" && other?.friendStatus == "sent_request",
             "release_friend" => own?.friendStatus == "friend" && other?.friendStatus == "friend",
             _ => false
@@ -27,7 +35,7 @@ public sealed class FriendService(UserSession user, FriendMasterQueries master)
         user.Data.userFriends = user.Data.userFriends!.Where(f => f.opponentUserId != peerId).ToArray();
         peer.Data.userFriends = peer.Data.userFriends!.Where(f => f.opponentUserId != user.UserId).ToArray();
         user.MarkChanged(nameof(SuiteUser.userFriends));
-        return 200;
+        return (200, "");
     }
 
     public (int Status, string ErrorCode) Request(UserState peer, PostUserFriendRequest request)
