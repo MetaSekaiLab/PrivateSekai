@@ -43,6 +43,7 @@ void Fails(Action action, string name)
 MusicMyListContractChecks.Run(Check);
 ProfileHonorContractChecks.Run(Check);
 MusicVideoContractChecks.Run(Check);
+UserConfigContractChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
     "sensitive-diagnostic-placeholder", new IOException("sensitive-diagnostic-placeholder")))!;
 Check(networkFailure["httpRequestError"]!.GetValue<string>() == "SecureConnectionError" &&
@@ -282,6 +283,12 @@ try
     {
         using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await MusicVideoReplay.Run(client, readback, store, videoPath, videoOutput);
+        return;
+    }
+    if (args is ["--replay-user-config", var configPath, var configOutput])
+    {
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await UserConfigReplay.Run(client, readback, store, configPath, configOutput);
         return;
     }
     if (args is ["--replay-profile-honor", var honorPath, _, var honorOutput])
@@ -678,7 +685,7 @@ sealed class TestedControllers : Microsoft.AspNetCore.Mvc.ApplicationParts.IAppl
     public void PopulateFeature(IEnumerable<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPart> parts,
         Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)
     {
-        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(MusicVideoController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(ProfileHonorController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
+        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(MusicVideoController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(ProfileHonorController), typeof(UserConfigController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
         foreach (var controller in feature.Controllers.Where(c => !tested.Contains(c.AsType())).ToArray())
             feature.Controllers.Remove(controller);
     }

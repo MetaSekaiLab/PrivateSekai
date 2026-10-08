@@ -2313,6 +2313,18 @@ Server 已接入成功结算的队长次数及角色演出任务，二者与其�
 
 重复角色编队的官方保存尝试返回 400，未进入演出，拒绝原因及其计数规则尚未确认；本地该结算分支暂不支持。Auto 失败、其他评分和达到挑战解锁门槛后的联动仍待核验。
 
+## POST `/api/user/{userId}/config`
+
+- Path：当前 `userId`；无 query。Body：`PostUserConfigRequest`，包含可空的 `defaultMusicType`、`isDisplayLoginStatus`、`friendRequestScope`。未指定或 null 表示保留原值，false 则明确关闭在线状态显示。
+- 已确认值：默认音源为 `sekai`／`original_music`；好友申请范围为 `all`／`id_search`／`reject`。
+- 客户端调用：`OptionDialog.UpdateServerData` 比较在线显示和好友申请范围，变化时调用 `UserInformationUtility.UpdateUserConfig`；该调用将默认音源置 null。当前默认音源选择还使用本地设置，不能据此断言所有设置都通过此接口保存。
+- Response：官方同时返回顶层 `userConfig` 和 `updatedResources`。非 null 字段请求会在刷新中返回完整 `userConfig`，相同值重复保存也返回；全 null 或空请求只在顶层返回配置，刷新中省略该字段。客户端声明的 `SuiteUserCommonResponse` 只读取 `updatedResources` 并合并用户状态，未声明顶层配置。
+- 未知好友范围、未知默认音源均返回 400、零字节正文；与合法的在线显示字段混合提交时整体不修改，独立 Suite 回读确认。
+
+证据：`PostUserConfigAPI.Execute`（RVA `0x618c438`）及成功回调、`PostUserConfigRequest`／`UserConfig` 契约、`FriendRequestStatus` 和 `DefaultMusicType`、`OptionDialog.UpdateServerData`（RVA `0x4c9accc`）、`UserInformationUtility.UpdateUserConfig`（RVA `0x4e06444`），以及官方请求、响应和回读。
+
+Client 已接入 `user-config-save` 和 `--replay-user-config`；Server 复用用户事务与配置模型，并补充抓包确认的顶层响应。10 份样本在完整配置、响应及独立回读范围 HTTP 对拍通过；编码失败回滚另有本地检查。空字符串、大小写变体、缺失请求体和其他非法类型尚待官方样本，完整游戏设置页未运行验收。
+
 ## POST `/api/user/{userId}/music-video/{musicId}`
 
 - Path：当前 `userId`、歌曲 `musicId`；无 query。Body：`UserMusicVideoRequest`，键为 `musicVocal`（音源 ID）、`musicPlayStatus`（`start`／`end`）、`musicCategoryName`（`mv`／`mv_2d`／`image`／`original`）。

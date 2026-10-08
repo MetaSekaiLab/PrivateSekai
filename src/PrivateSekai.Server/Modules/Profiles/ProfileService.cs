@@ -12,6 +12,17 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore thumbnails)
 {
+    public void SaveConfig(PostUserConfigRequest request)
+    {
+        if (request.defaultMusicType == null && request.isDisplayLoginStatus == null && request.friendRequestScope == null)
+            return;
+        var config = user.Data.userConfig ?? throw new InvalidOperationException("缺少用户配置。");
+        if (request.defaultMusicType != null) config.defaultMusicType = request.defaultMusicType;
+        if (request.isDisplayLoginStatus is { } display) config.isDisplayLoginStatus = display;
+        if (request.friendRequestScope != null) config.friendRequestScope = request.friendRequestScope;
+        user.MarkChanged(nameof(SuiteUser.userConfig));
+    }
+
     public void SaveStampFavorites(UserStampFavoriteRequest request)
     {
         var resource = request.UserStampFavoriteResource ?? throw new ArgumentException("缺少表情收藏配置。");
