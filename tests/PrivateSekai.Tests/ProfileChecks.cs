@@ -93,5 +93,30 @@ internal static class ProfileChecks
         operations.Execute(1, () => { profiles.UpdateProfile(new() { profileImageType = "leader" }); return user.BuildRefresh(); });
         Check.That(store.Read(1)!.Data.userProfile.word == null && store.Read(1)!.Data.userProfile.twitterId == null,
             "省略留言与社交 ID 会清除原文本");
+        foreach (var item in new[] {
+            (Type: "leader", Id: 1, Word: "test", Status: 400),
+            (Type: "card_before_special_training", Id: 99, Word: new string('あ', 31), Status: 404),
+            (Type: "card_after_special_training", Id: 1, Word: "test", Status: 409),
+            (Type: "leader", Id: (int?)null, Word: new string('あ', 30) + "test", Status: 400) })
+            operations.Execute(1, () =>
+            {
+                Check.That(profiles.UpdateProfile(new() { profileImageType = item.Type, profileImageId = item.Id, word = item.Word }) ==
+                    (item.Status, "") && user.BuildRefresh().userProfile == null,
+                    "头像校验先于留言，长度校验先于 NG，拒绝时不刷新");
+                return null;
+            });
+        operations.Execute(1, () =>
+        {
+            Check.That(profiles.UpdateProfile(new() { profileImageType = "leader", word = "あtestあ" }) == (409, "contain_ng_word"),
+                "NG 词在留言中按子串匹配");
+            return user.BuildRefresh();
+        });
+        var emptyText = operations.Execute(1, () =>
+        {
+            profiles.UpdateProfile(new() { profileImageType = "leader", word = "", twitterId = "" });
+            return user.BuildRefresh();
+        });
+        var emptyProfile = DumpSerializer.Deserialize<SuiteUser>(emptyText).userProfile;
+        Check.That(emptyProfile.word == "" && emptyProfile.twitterId == "", "显式空字符串保留文本字段");
     }
 }

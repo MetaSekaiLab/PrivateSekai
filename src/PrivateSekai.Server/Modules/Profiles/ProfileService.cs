@@ -68,14 +68,6 @@ public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore
 
     public (int Status, string ErrorCode) UpdateProfile(PutUserProfileRequest request)
     {
-        if (request.word is { } word)
-        {
-            var limit = int.Parse(master.GetTable<MasterConfig>("configs").Rows
-                .Single(c => c.configKey == "profile_word_max_length").value, CultureInfo.InvariantCulture);
-            if (word.Length > limit) return (400, "");
-            if (master.GetTable<MasterNGWord>("ngWords").Rows.Any(w => word.Contains(w.word, StringComparison.Ordinal)))
-                return (409, "contain_ng_word");
-        }
         if (request.profileImageType == "leader")
         {
             if (request.profileImageId != null) return (400, "");
@@ -87,6 +79,14 @@ public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore
             if (card == null) return (404, "");
             if (request.profileImageType == "card_after_special_training" && card.specialTrainingStatus != "done")
                 return (409, "");
+        }
+        if (request.word is { } word)
+        {
+            var limit = int.Parse(master.GetTable<MasterConfig>("configs").Rows
+                .Single(c => c.configKey == "profile_word_max_length").value, CultureInfo.InvariantCulture);
+            if (word.Length > limit) return (400, "");
+            if (master.GetTable<MasterNGWord>("ngWords").Rows.Any(w => word.Contains(w.word, StringComparison.Ordinal)))
+                return (409, "contain_ng_word");
         }
         if (user.Data.userProfile == null) return (200, "");
         user.Data.userProfile = new UserProfile
