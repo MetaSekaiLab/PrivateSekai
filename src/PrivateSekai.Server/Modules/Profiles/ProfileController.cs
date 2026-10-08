@@ -81,10 +81,11 @@ public sealed class ProfileController(UserOperation operations, UserSession user
         var status = 200;
         var bytes = operations.Execute(userId, () =>
         {
-            status = profiles.UpdateProfile(request);
+            var result = profiles.UpdateProfile(request);
+            status = result.Status;
             return status == 200
                 ? (object)new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() }
-                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
+                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = result.ErrorCode, ErrorMessage = "" };
         });
         Response.StatusCode = status;
         return Encoded(bytes);

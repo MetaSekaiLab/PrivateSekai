@@ -83,6 +83,7 @@ MissionHttpChecks.WriteMaster(directory);
 CostumeHttpChecks.WriteMaster(directory);
 StoryHttpChecks.WriteMaster(directory);
 BookmarkHttpChecks.WriteMaster(directory);
+ProfileHttpChecks.WriteMaster(directory);
 FavoriteHttpChecks.WriteMaster(directory);
 ChallengeDeckHttpChecks.WriteMaster(directory);
 MaterialExchangeHttpChecks.WriteMaster(directory);

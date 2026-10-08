@@ -26,7 +26,7 @@ internal static class StampFavoriteChecks
         using var scope = provider.CreateScope();
         var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
-        var profiles = new ProfileService(user, new CustomProfileThumbnailStore());
+        var profiles = new ProfileService(user, new CustomProfileThumbnailStore(), null!);
         var request = new UserStampFavoriteRequest { UserStampFavoriteResource = new()
         {
             UserStampFavoriteTabs = [new() { TabNum = 0, TabName = "fixture" }],

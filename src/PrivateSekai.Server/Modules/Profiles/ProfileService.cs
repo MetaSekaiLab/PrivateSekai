@@ -2,15 +2,17 @@ extern alias game;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using game::Sekai;
 using game::Sekai.CustomProfile;
+using PrivateSekai.Shared.Master;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
 
 namespace PrivateSekai.Modules.Profiles;
 
-public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore thumbnails)
+public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore thumbnails, MasterData master)
 {
     public void SaveConfig(PostUserConfigRequest request)
     {
@@ -64,28 +66,36 @@ public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore
         }
     }
 
-    public int UpdateProfile(PutUserProfileRequest request)
+    public (int Status, string ErrorCode) UpdateProfile(PutUserProfileRequest request)
     {
+        if (request.word is { } word)
+        {
+            var limit = int.Parse(master.GetTable<MasterConfig>("configs").Rows
+                .Single(c => c.configKey == "profile_word_max_length").value, CultureInfo.InvariantCulture);
+            if (word.Length > limit) return (400, "");
+            if (master.GetTable<MasterNGWord>("ngWords").Rows.Any(w => word.Contains(w.word, StringComparison.Ordinal)))
+                return (409, "contain_ng_word");
+        }
         if (request.profileImageType == "leader")
         {
-            if (request.profileImageId != null) return 400;
+            if (request.profileImageId != null) return (400, "");
         }
         else
         {
-            if (request.profileImageId == null) return 400;
+            if (request.profileImageId == null) return (400, "");
             var card = (user.Data.userCards ?? []).SingleOrDefault(c => c.cardId == request.profileImageId);
-            if (card == null) return 404;
+            if (card == null) return (404, "");
             if (request.profileImageType == "card_after_special_training" && card.specialTrainingStatus != "done")
-                return 409;
+                return (409, "");
         }
-        if (user.Data.userProfile == null) return 200;
+        if (user.Data.userProfile == null) return (200, "");
         user.Data.userProfile = new UserProfile
         {
             userId = user.UserId, word = request.word, twitterId = request.twitterId,
             profileImageType = request.profileImageType, profileImageId = request.profileImageId ?? 0
         };
         user.MarkChanged(nameof(SuiteUser.userProfile));
-        return 200;
+        return (200, "");
     }
 
     public void SaveCustomProfile(

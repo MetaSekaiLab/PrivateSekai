@@ -4,6 +4,15 @@ using PrivateSekai.Storage;
 
 internal static class ProfileHttpChecks
 {
+    public static void WriteMaster(string directory)
+    {
+        var path = Path.Combine(directory, "configs.json");
+        var configs = JsonNode.Parse(File.ReadAllText(path))!.AsArray();
+        configs.Add(JsonNode.Parse("""{"configKey":"profile_word_max_length","value":"30"}"""));
+        JsonFiles.Write(path, configs);
+        File.WriteAllText(Path.Combine(directory, "ngWords.json"), "[]");
+    }
+
     public static async Task Run(ProtocolClient client, MemoryUserStore store, string directory, Action<bool, string> check)
     {
         var state = store.Read(1)!;

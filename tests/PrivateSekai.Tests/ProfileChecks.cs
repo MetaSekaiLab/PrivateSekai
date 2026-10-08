@@ -1,10 +1,14 @@
 extern alias game;
 
+using System;
+using System.IO;
 using game::Sekai;
 using MessagePack;
 using Microsoft.Extensions.DependencyInjection;
+using PrivateSekai.Config;
 using PrivateSekai.Modules.Profiles;
 using PrivateSekai.Protocol;
+using PrivateSekai.Shared.Master;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
 
@@ -12,6 +16,15 @@ namespace PrivateSekai.Tests;
 
 internal static class ProfileChecks
 {
+    public static MasterData Master()
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "profile-fixture");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "configs.json"), """[{"configKey":"profile_word_max_length","value":"30"}]""");
+        File.WriteAllText(Path.Combine(directory, "ngWords.json"), """[{"id":1,"word":"test"}]""");
+        return new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
+    }
+
     public static void Run()
     {
         var store = new MemoryUserStore();
@@ -25,7 +38,7 @@ internal static class ProfileChecks
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
         using var thumbnails = new CustomProfileThumbnailStore();
-        var profiles = new ProfileService(user, thumbnails);
+        var profiles = new ProfileService(user, thumbnails, Master());
         foreach (var item in new[] { (Type: "leader", Id: (int?)0, Status: 400),
             (Type: "card_before_special_training", Id: (int?)null, Status: 400),
             (Type: "card_before_special_training", Id: (int?)99, Status: 404),
@@ -34,7 +47,7 @@ internal static class ProfileChecks
             var bytes = operations.Execute(1, () =>
             {
                 Check.That(profiles.UpdateProfile(new() { profileImageType = item.Type, profileImageId = item.Id,
-                    word = "changed" }) == item.Status, "头像拒绝返回已核验的业务状态码");
+                    word = "changed" }).Status == item.Status, "头像拒绝返回已核验的业务状态码");
                 return user.BuildRefresh();
             });
             Check.That(DumpSerializer.Deserialize<SuiteUser>(bytes).userProfile == null &&
@@ -49,7 +62,7 @@ internal static class ProfileChecks
             store.Read(1)!.Data.userProfile.word == "before", "回滚保留原头像及留言");
         operations.Execute(1, () =>
         {
-            Check.That(profiles.UpdateProfile(new() { profileImageType = "card_after_special_training", profileImageId = 2 }) == 200,
+            Check.That(profiles.UpdateProfile(new() { profileImageType = "card_after_special_training", profileImageId = 2 }).Status == 200,
                 "已特训卡牌支持特训后头像");
             return user.BuildRefresh();
         });
@@ -61,5 +74,24 @@ internal static class ProfileChecks
         var profile = DumpSerializer.Deserialize<SuiteUser>(restored).userProfile;
         Check.That(profile.userId == 1 && profile.profileImageType == "leader" && profile.profileImageId == 0,
             "恢复队长头像清除自选 ID 并保留账号 ID");
+        foreach (var item in new[] { (Word: new string('あ', 31), Status: 400, Error: ""),
+            (Word: "test", Status: 409, Error: "contain_ng_word") })
+            operations.Execute(1, () =>
+            {
+                Check.That(profiles.UpdateProfile(new() { profileImageType = "leader", word = item.Word, twitterId = "changed" }) ==
+                    (item.Status, item.Error) && user.BuildRefresh().userProfile == null,
+                    "超长与 NG 留言返回对应错误且不刷新资料");
+                return null;
+            });
+        Check.That(store.Read(1)!.Data.userProfile.twitterId == null, "留言拒绝不修改同次社交 ID");
+        operations.Execute(1, () =>
+        {
+            Check.That(profiles.UpdateProfile(new() { profileImageType = "leader", word = new string('あ', 30), twitterId = "fixture" }).Status == 200,
+                "留言允许 master 长度边界");
+            return user.BuildRefresh();
+        });
+        operations.Execute(1, () => { profiles.UpdateProfile(new() { profileImageType = "leader" }); return user.BuildRefresh(); });
+        Check.That(store.Read(1)!.Data.userProfile.word == null && store.Read(1)!.Data.userProfile.twitterId == null,
+            "省略留言与社交 ID 会清除原文本");
     }
 }

@@ -138,7 +138,7 @@ internal static class SqliteStoreChecks
             using var scope = provider.CreateScope();
             var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
             var user = scope.ServiceProvider.GetRequiredService<UserSession>();
-            var profiles = new ProfileService(user, thumbnails);
+            var profiles = new ProfileService(user, thumbnails, null!);
             operation.Execute(1, () =>
             {
                 profiles.SaveCustomProfileCard(1, 1, new() { thumbnail = "data:image/png;base64," + encoded });

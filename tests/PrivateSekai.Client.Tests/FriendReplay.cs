@@ -67,8 +67,12 @@ internal static class FriendReplay
             store.Save(2, state);
         }
         await caller.Send(new() { Operation = "system" });
-        var body = official["request"]?.DeepClone().AsObject();
+        var body = (input["requestBody"] ?? official["request"])?.DeepClone().AsObject();
         body?.Remove("userId");
+        var capturedBody = official["request"]?.DeepClone().AsObject();
+        capturedBody?.Remove("userId");
+        if (!JsonNode.DeepEquals(caller.Redactor.Clean(body), caller.Redactor.Clean(capturedBody)))
+            throw new InvalidOperationException("重放请求与样本脱敏后的结构不一致。");
         try
         {
             await ScenarioRunner.Run(caller, new() { Steps = [new()

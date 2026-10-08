@@ -25,7 +25,7 @@ internal static class UserConfigChecks
         using var scope = provider.CreateScope();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
-        var profiles = new ProfileService(user, new CustomProfileThumbnailStore());
+        var profiles = new ProfileService(user, new CustomProfileThumbnailStore(), null!);
         var bytes = operations.Execute(1, () =>
         {
             profiles.SaveConfig(new() { isDisplayLoginStatus = false });
