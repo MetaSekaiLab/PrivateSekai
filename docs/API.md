@@ -2435,6 +2435,20 @@ Server 已补免费任务达成及结算提示，Client 支持领奖场景和 `-
 
 证据：`PutUserMissionReceiveAPI` 构造、Execute 和回调，任务请求与响应契约、`liveMissions` 与 `mission_reward` 资源盒，以及免费任务达成、领奖和回读样本。
 
+## PUT `/api/user/{userId}/mission/honor_mission`
+
+- Path：当前 `userId`；无 query。Body：`UserMissionReceiveRequest.missionIds`，称号任务 ID 数组。
+- Response：`UserMissionReceiveResponse.obtainedRewards` 用于奖励展示，`updatedResources` 合并用户状态。客户端通过通用 `PutUserMissionReceiveAPI` 按任务类型拼接路由，在领取达成任务时请求。
+- 首次领取已达成的任务 3911：返回称号 532、等级 1、数量 1，任务状态由 `achieved` 改为 `received`。刷新包含 `userMissionStatuses`、`userHonors`、`userProfile`、`userProfileHonors`；任务状态条目省略 `userId`，不刷新 `userHonorMissions`。
+- 已领取、未达成、混合已达成与未达成、重复 ID 四种请求均返回 409，`errorCode` 和 `errorMessage` 为空。失败后独立 Suite 回读确认任务状态、称号进度与持有列表不变。重复 ID 不按 Live 任务的本地去重逻辑处理。
+- 奖励依据 `honorMissions.rewards.resourceBoxId` 查询 `resourceBoxPurpose=mission_reward` 的资源盒，不能只按资源盒 ID 查询。
+
+Client 提供 `honor-mission-receive`；Server 通过用户事务发奖与更新状态，编码失败整体回滚。五组官方 HTTP 对拍覆盖首次成功和四种拒绝，在奖励、称号持有、装备、资料、任务状态及进度范围一致；未比较完整 Suite。空数组、未知 ID、多项成功、已有称号升级及其他奖励组合仍待对应官方样本，尚未确认的错误形态不作为官方结论。
+
+任务 3911 的奖励称号 532 本身没有 `honorMissionType`，不能用于证明好友资料中的任务进度映射。带进度称号还需实际获取、装备和好友回读样本。
+
+证据：`PutUserMissionReceiveAPI` 构造、Execute 与成功回调，`MissionType`、请求响应契约、`honorMissions`、`resourceBoxes`，以及五组领取与独立回读样本。
+
 ## PUT `/api/user/{userId}/home/refresh`：登录奖励分支
 
 - Path：当前 `userId`；无 query。

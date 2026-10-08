@@ -153,6 +153,11 @@ builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
 if (args is ["--replay-profile-honor", _, var honorMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, honorMaster));
+if (args is ["--replay-honor-mission", var honorMissionCapture, var honorMissionMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, honorMissionMaster));
+    builder.Services.AddSingleton(HonorMissionReplay.Clock(honorMissionCapture));
+}
 if (args is ["--replay-music-video", _, var videoMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, videoMaster));
 if (args is ["--replay-friend", var friendManifest, var friendMaster, _])
@@ -319,6 +324,12 @@ try
     {
         using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await ProfileHonorReplay.Run(client, readback, store, honorPath, honorOutput);
+        return;
+    }
+    if (args is ["--replay-honor-mission", var honorMissionPath, _, var honorMissionOutput])
+    {
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await HonorMissionReplay.Run(client, readback, store, honorMissionPath, honorMissionOutput);
         return;
     }
     if (args is ["--replay-music-my-list", var myListPath, var myListOutput])

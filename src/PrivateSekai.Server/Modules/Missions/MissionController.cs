@@ -26,6 +26,22 @@ public sealed class MissionController(UserOperation operations, UserSession user
             UpdatedResources = user.BuildRefresh()
         }));
 
+    [HttpPut("api/user/{userId}/mission/honor_mission")]
+    public IActionResult ReceiveHonorMission(long userId, [FromBody] UserMissionReceiveRequest request)
+    {
+        var status = 200;
+        var bytes = operations.Execute(userId, () =>
+        {
+            var result = missions.ReceiveHonorMissionRewards(request.missionIds);
+            status = result.Status;
+            return status == 200
+                ? (object)new UserMissionReceiveResponse { ObtainedRewards = result.Rewards, UpdatedResources = user.BuildRefresh() }
+                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
+        });
+        Response.StatusCode = status;
+        return Encoded(bytes);
+    }
+
     /// <summary>
     /// 领取 Beginner Mission V2 奖励。客户端提交 missionIds，成功后合并用户资源并展示获得奖励。
     /// </summary>

@@ -324,6 +324,34 @@ public sealed class MissionService(
         return obtained.ToArray();
     }
 
+    public (int Status, UserResource[] Rewards) ReceiveHonorMissionRewards(int[]? missionIds)
+    {
+        if (missionIds == null || missionIds.Length == 0 || missionIds.Any(id => id <= 0))
+            throw new ArgumentException("缺少称号任务 ID。");
+        if (missionIds.Distinct().Count() != missionIds.Length) return (409, []);
+        var definitions = missionIds.Select(id => master.GetHonorMission(id)
+            ?? throw new ArgumentException("未知称号任务。")).ToArray();
+        var statuses = definitions.Select(m => user.Data.userMissionStatuses?
+            .SingleOrDefault(s => s.missionType == "honor_mission" && s.missionId == m.id)).ToArray();
+        if (statuses.Any(s => s?.missionStatus != "achieved")) return (409, []);
+        var obtained = new List<UserResource>();
+        foreach (var mission in definitions)
+        {
+            if (mission.rewards == null || mission.rewards.Length == 0)
+                throw new InvalidOperationException("缺少称号任务奖励。");
+            foreach (var reward in mission.rewards)
+            {
+                var resources = resourceMaster.BuildResourcesFromBox("mission_reward", reward.resourceBoxId);
+                if (resources.Length == 0) throw new InvalidOperationException("缺少称号任务奖励箱。");
+                resourceService.Grant(resources);
+                obtained.AddRange(resources);
+            }
+        }
+        foreach (var status in statuses) status!.missionStatus = "received";
+        user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
+        return (200, obtained.ToArray());
+    }
+
     public UserMissionReceiveResponse ReceiveBeginnerMissionV2Rewards(int[]? missionIds)
     {
         var obtainedRewards = new List<UserResource>();

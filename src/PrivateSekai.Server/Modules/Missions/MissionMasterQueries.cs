@@ -139,6 +139,9 @@ public sealed class MissionMasterQueries(MasterData master)
     public MasterLiveMission? GetLiveMission(int id) =>
         master.GetTable<MasterLiveMission>("liveMissions", m => m.id).FindById(id);
 
+    public MasterHonorMission? GetHonorMission(int id) =>
+        master.GetTable<MasterHonorMission>("honorMissions", m => m.id).FindById(id);
+
     public MasterLiveMission[] GetFreeLiveMissions(int periodId) =>
         master.GetTable<MasterLiveMission>("liveMissions", m => m.id).Rows
             .Where(m => m.liveMissionPeriodId == periodId && m.liveMissionType == "free")

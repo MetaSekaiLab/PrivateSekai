@@ -25,6 +25,7 @@ internal static class Program
         StoryCollectionChecks.Run();
         LoginBonusChecks.Run();
         DeckMissionChecks.Run();
+        HonorMissionChecks.Run();
         MusicVideoChecks.Run();
         UserConfigChecks.Run();
         ProfileChecks.Run();
