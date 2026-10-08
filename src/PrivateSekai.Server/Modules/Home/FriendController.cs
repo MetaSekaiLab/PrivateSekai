@@ -18,6 +18,10 @@ public sealed class FriendController(UserOperation operations, UserSession user,
     [HttpPut("api/user/{userId}/friend/{opponentUserId}")]
     public IActionResult Approve(long userId, long opponentUserId) => Apply(userId, opponentUserId, friends.Approve);
 
+    [HttpDelete("api/user/{userId}/friend/{opponentUserId}")]
+    public IActionResult Remove(long userId, long opponentUserId, [FromQuery] string type) =>
+        Apply(userId, opponentUserId, peer => friends.Remove(peer, type));
+
     private IActionResult Apply(long userId, long opponentUserId, System.Func<UserState, int> action)
     {
         var status = 200;

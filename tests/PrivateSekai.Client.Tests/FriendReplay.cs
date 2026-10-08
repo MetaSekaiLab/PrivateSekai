@@ -28,7 +28,8 @@ internal static class FriendReplay
         var peerBefore = Load(input["peerBefore"]!.GetValue<string>())["response"]!;
         var peerAfter = Load(input["peerAfter"]!.GetValue<string>())["response"]!;
         var operation = official["operation"]!.GetValue<string>();
-        if (operation is not ("friend-request" or "friend-approve")) throw new InvalidOperationException("需要好友写入样本。");
+        if (operation is not ("friend-request" or "friend-approve" or "friend-cancel" or "friend-reject" or "friend-release"))
+            throw new InvalidOperationException("需要好友写入样本。");
         var rejected = official["status"]?.GetValue<string>() == "stopped";
         var expectedStatus = (rejected ? official["lastHttpStatus"] : official["httpStatus"])!.GetValue<int>();
         if (rejected && (official["failurePhase"]?.GetValue<string>() != "request" || expectedStatus is not (400 or 409)))
@@ -58,7 +59,7 @@ internal static class FriendReplay
         }
         var expectedFriends = (rejected ? official["before"] : official["response"]!["updatedResources"])!.DeepClone();
         Remap(expectedFriends, 1);
-        var status = expectedFriends["userFriends"]!.AsArray().SingleOrDefault(f => f!["opponentUserId"]!.GetValue<long>() == 2)?["userLoginStatus"];
+        var status = expectedFriends["userFriends"]?.AsArray().SingleOrDefault(f => f!["opponentUserId"]!.GetValue<long>() == 2)?["userLoginStatus"];
         if (status != null)
         {
             var state = store.Read(2)!;
@@ -81,7 +82,8 @@ internal static class FriendReplay
         JsonNode? Clean(JsonNode? source, bool includeStatus)
         {
             var result = caller.Redactor.Clean(source);
-            if (result is not JsonObject obj || !obj.ContainsKey("userFriends")) return result;
+            if (result is not JsonObject obj || obj.ContainsKey("httpStatus")) return result;
+            if (!obj.ContainsKey("userFriends")) return new JsonObject();
             var friends = obj["userFriends"]!.DeepClone();
             if (!includeStatus) foreach (var friend in friends.AsArray()) friend!.AsObject().Remove("userLoginStatus");
             return new JsonObject { ["userFriends"] = friends };

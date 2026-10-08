@@ -2342,6 +2342,18 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 
 待核验：重复申请修改消息、自身或未知目标、其他来源、拒收范围、已拒绝或过期申请、数量上限，以及自选卡牌头像、称号、边框、Mysekai 资料映射。当前实现不为这些未支持分支伪造官方结果；需补充对应官方操作与双方回读后扩展。未支持分支可能导致请求失败，不能将当前实现视为完整好友系统。
 
+## DELETE `/api/user/{userId}/friend/{opponentUserId}?type={type}`
+
+- Path：当前账号和对方的 64 位 ID；无 body。Query `type` 的已确认映射：`cancel_friend_request` 取消自己发出的申请，`reject_friend_request` 拒绝收到的申请，`release_friend` 删除已建立的好友关系。
+- 调用时机：好友界面取消申请、拒绝申请或解除好友；`FriendUtility.RejectRequestAsync` 使用对应 `DeleteFriendRejectAPI.UseCase` 发起请求。响应为 `SuiteUserCommonResponse`，成功回调合并 `updatedResources`。
+- 对应正常状态下均返回 200，双方移除关系，响应包含当前账号剩余的完整 `userFriends`。拒绝申请不保留 `rejected` 记录；其他好友不变。
+- 双方已经没有该关系时，三个 type 都返回 200，但 `updatedResources` 不包含 `userFriends`。不能为了返回空列表而清除其他好友，也不应伪造一次好友刷新。
+- Client 操作为 `friend-cancel`、`friend-reject`、`friend-release`。Server 复用双账号事务；响应编码失败时回滚双方删除。
+
+证据：`DeleteFriendRejectAPI.Execute`（RVA `0x6178ed4`）、`UseCase` 枚举顺序、地址 `0xB09FC88` 起三个重定位项与字符串表交叉确认类型映射，回调 `OnReceivecResponce`（RVA `0x617910c`），以及官方写入和双方独立回读。
+
+6 组 HTTP 对拍覆盖正常取消／拒绝／删除及无关系时重复操作，验证好友字段存在性、完整列表和双方回读。在线状态的回读排除规则与上一节相同。类型与关系不匹配、自身或未知目标、非法 type、过期关系仍待采样；实现对未确认的状态组合保留不支持分支。
+
 ## POST `/api/user/{userId}/config`
 
 - Path：当前 `userId`；无 query。Body：`PostUserConfigRequest`，包含可空的 `defaultMusicType`、`isDisplayLoginStatus`、`friendRequestScope`。未指定或 null 表示保留原值，false 则明确关闭在线状态显示。

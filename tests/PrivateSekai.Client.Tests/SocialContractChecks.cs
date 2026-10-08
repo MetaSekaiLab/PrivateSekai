@@ -21,5 +21,13 @@ internal static class SocialContractChecks
         var body = DumpSerializer.Deserialize<PostUserFriendRequest>(Operations.EncodeBody(friend,
             new JsonObject { ["message"] = "", ["friendRequestSentLocation"] = "id_search" })!);
         check(body.sentLocation == "id_search" && body.message == "", "好友申请使用协议键 friendRequestSentLocation");
+        foreach (var (name, type) in new[] { ("friend-cancel", "cancel_friend_request"),
+            ("friend-reject", "reject_friend_request"), ("friend-release", "release_friend") })
+        {
+            var operation = Operations.All[name];
+            check(operation.Method == "DELETE" && operation.RequestType == null && operation.RequiredResponseField == "updatedResources" &&
+                Operations.Path(operation, new() { Args = new() { ["opponentUserId"] = "400000000000000001" } }, 1) ==
+                "/api/user/1/friend/400000000000000001?type=" + type, "好友删除动作的类型、方法与路径契约");
+        }
     }
 }

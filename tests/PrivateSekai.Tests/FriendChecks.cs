@@ -127,5 +127,42 @@ internal static class FriendChecks
         Check.That(store.Read(3)!.Data.userFriends.Single().approvedAt == now &&
             store.Read(1)!.Data.userFriends.Single(f => f.opponentUserId == 3).approvedAt == now,
             "正常接受写入双方相同时间");
+        Check.Throws<MessagePackSerializationException>(() => operations.ExecutePair(1, 2, peer =>
+        {
+            service.Remove(peer, "release_friend");
+            return new BrokenResponse();
+        }), "删除好友编码失败回滚双方");
+        Check.That(store.Read(1)!.Data.userFriends.Length == 2 && store.Read(2)!.Data.userFriends.Length == 1,
+            "删除失败不丢失关系");
+        var removed = operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Remove(peer, "release_friend") == 200, "删除好友成功");
+            return queries.Project(user.BuildRefresh());
+        });
+        Check.That(DumpSerializer.Deserialize<SuiteUser>(removed).userFriends.Single().opponentUserId == 3 &&
+            store.Read(2)!.Data.userFriends.Length == 0, "删除双方关系并保留其他好友，返回剩余全表");
+        Request(1, 2);
+        operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Remove(peer, "cancel_friend_request") == 200, "发起方取消申请成功");
+            return user.BuildRefresh();
+        });
+        Check.That(store.Read(1)!.Data.userFriends.Single().opponentUserId == 3 && store.Read(2)!.Data.userFriends.Length == 0,
+            "取消移除双方申请记录");
+        Request(1, 2);
+        operations.ExecutePair(2, 1, peer =>
+        {
+            Check.That(service.Remove(peer, "reject_friend_request") == 200, "接收方拒绝申请成功");
+            return user.BuildRefresh();
+        });
+        Check.That(store.Read(1)!.Data.userFriends.Single().opponentUserId == 3 && store.Read(2)!.Data.userFriends.Length == 0,
+            "拒绝移除双方记录，不保留 rejected 状态");
+        foreach (var type in new[] { "cancel_friend_request", "reject_friend_request", "release_friend" })
+            operations.ExecutePair(1, 2, peer =>
+            {
+                Check.That(service.Remove(peer, type) == 200 && user.BuildRefresh().userFriends == null,
+                    "无关系时删除类操作成功且不刷新好友列表");
+                return null;
+            });
     }
 }
