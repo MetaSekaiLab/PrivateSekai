@@ -2332,7 +2332,8 @@ Server 在用户事务中保存私有状态，认证和 Suite 入口提交在线
 - Path：当前账号和对方的 64 位 ID；无 query。POST body 为 `message`、`friendRequestSentLocation`；PUT 无 body。
 - 请求时机：申请弹窗提交 POST，接受操作提交 PUT；成功回调通过 `UserDataManager.UpdateAll` 合并 `SuiteUserCommonResponse.updatedResources`。申请弹窗先检查消息长度及 NG 词。
 - 成功返回完整 `userFriends` 列表。首次申请建立双方 `sent_request`／`pending_request`，期限为 now 加 master 的 168 小时；空消息省略，普通日文消息原样保留。
-- 相同消息重复申请返回 200，更新双方期限，不追加记录。接收方反向 POST 相当于接受，双方成为 `friend`，增加相同 `approvedAt`，保留原消息和期限。PUT 接受具有相同关系结果。
+- 重复申请返回 200，更新双方消息和期限，不追加记录；重发空字符串清除原消息，响应省略 message。接收方反向 POST 相当于接受，双方成为 `friend`，增加相同 `approvedAt`，保留原消息和期限。PUT 接受具有相同关系结果。
+- 无已有关系时，接收方 `friendRequestScope=reject` 返回 409，错误码 `opponent_friend_request_scope_reject`；`id_search` 范围接受同名来源，`multi_live` 来源返回 409、`opponent_friend_request_scope_id_search`。错误体 errorMessage 为空；双方独立回读没有新关系。实现按是否为 id_search 判定来源匹配，其余来源尚未逐项联网采样。
 - 双方已经是好友时，再 POST 或 PUT 返回 409；命中已采样 NG 词的消息返回 400。上述错误体为 `httpStatus`、空 `errorCode`、空 `errorMessage`，独立回读无关系变化。客户端 NG 检查按 `String.Contains` 匹配 master 词条；消息上限来自 master 的 30 字符配置。
 - 好友卡牌仅含 `cardId`、`level`、`masterRank`、`specialTrainingStatus`、`defaultImage`。已对拍默认队长头像及空称号、空边框、未设置 Mysekai 访问的资料；好友查询使用对方当前快照，响应投影不写回存档。未接受记录省略 `approvedAt`。
 
@@ -2340,7 +2341,9 @@ Server 在用户事务中保存私有状态，认证和 Suite 入口提交在线
 
 Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOperation.ExecutePair` 原子提交双方关系。6 组 HTTP 对拍覆盖空消息、日文消息、重复申请、反向申请、接受和 NG 拒绝，比较完整好友列表及双方独立回读；回读中的在线状态因会话刷新单独排除，写响应仍比较该字段。业务检查覆盖双边回滚、重复记录及响应隔离。未启动实际游戏。
 
-待核验：重复申请修改消息、自身或未知目标、其他来源、拒收范围、已拒绝或过期申请、数量上限，以及自选卡牌头像、称号、边框、Mysekai 资料映射。当前实现不为这些未支持分支伪造官方结果；需补充对应官方操作与双方回读后扩展。未支持分支可能导致请求失败，不能将当前实现视为完整好友系统。
+另有 5 组 HTTP 对拍覆盖重发消息替换／清空、reject 范围拒绝、id_search 匹配成功及 multi_live 不匹配拒绝，错误码、消息省略、期限和双方列表无差异。范围设置通过现有 `user-config-save` 操作采样；采样后已恢复原设置。
+
+待核验：自身或未知目标、其他来源、范围变更与已有申请的交互、已拒绝或过期申请、数量上限，以及自选卡牌头像、称号、边框、Mysekai 资料映射。范围校验与反向接受的先后顺序仍需组合样本，当前实现不代表这些组合已对齐。其余未知状态保留未支持分支，不能将当前实现视为完整好友系统。
 
 ## DELETE `/api/user/{userId}/friend/{opponentUserId}?type={type}`
 

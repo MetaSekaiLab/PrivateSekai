@@ -51,7 +51,7 @@ internal static class FriendChecks
         var request = new PostUserFriendRequest { message = "こんにちは", sentLocation = "id_search" };
         byte[] Request(long from, long to) => operations.ExecutePair(from, to, peer =>
         {
-            Check.That(service.Request(peer, request) == 200, "申请成功");
+            Check.That(service.Request(peer, request).Status == 200, "申请成功");
             return queries.Project(user.BuildRefresh());
         });
         Check.Throws<MessagePackSerializationException>(() => operations.ExecutePair(1, 2, peer =>
@@ -89,6 +89,14 @@ internal static class FriendChecks
             store.Read(2)!.Data.userFriends.Single().requestExpiredAt == sent.requestExpiredAt,
             "重复申请更新双方期限，不追加重复关系");
         request.message = "";
+        Request(1, 2);
+        Check.That(store.Read(1)!.Data.userFriends.Single().message == null && store.Read(2)!.Data.userFriends.Single().message == null,
+            "重发空消息清除双方原消息");
+        request.message = "こんにちは";
+        Request(1, 2);
+        Check.That(store.Read(1)!.Data.userFriends.Single().message == request.message && store.Read(2)!.Data.userFriends.Single().message == request.message,
+            "重发非空消息更新双方文本");
+        request.message = "";
         Request(2, 1);
         var approved = store.Read(1)!.Data.userFriends.Single();
         Check.That(approved.friendStatus == "friend" && store.Read(2)!.Data.userFriends.Single().friendStatus == "friend" &&
@@ -96,14 +104,14 @@ internal static class FriendChecks
             "反向申请接受关系并保留原消息和期限");
         operations.ExecutePair(1, 2, peer =>
         {
-            Check.That(service.Request(peer, request) == 409 && service.Approve(peer) == 409,
+            Check.That(service.Request(peer, request).Status == 409 && service.Approve(peer) == 409,
                 "已是好友时重复申请和接受返回冲突");
             return null;
         });
         operations.ExecutePair(1, 3, peer =>
         {
             request.message = "api test";
-            Check.That(service.Request(peer, request) == 400 && user.BuildRefresh().userFriends == null && peer.Data.userFriends == null,
+            Check.That(service.Request(peer, request).Status == 400 && user.BuildRefresh().userFriends == null && peer.Data.userFriends == null,
                 "NG 消息拒绝且不更改双方关系");
             return null;
         });
@@ -164,5 +172,30 @@ internal static class FriendChecks
                     "无关系时删除类操作成功且不刷新好友列表");
                 return null;
             });
+        var restricted = store.Read(2)!;
+        restricted.Data.userConfig.friendRequestScope = "reject";
+        store.Save(2, restricted);
+        operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Request(peer, request) == (409, "opponent_friend_request_scope_reject") &&
+                user.BuildRefresh().userFriends == null && peer.Data.userFriends.Length == 0,
+                "拒收范围返回明确错误码且不新增关系");
+            return null;
+        });
+        restricted = store.Read(2)!;
+        restricted.Data.userConfig.friendRequestScope = "id_search";
+        store.Save(2, restricted);
+        request.sentLocation = "multi_live";
+        operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Request(peer, request) == (409, "opponent_friend_request_scope_id_search") &&
+                user.BuildRefresh().userFriends == null && peer.Data.userFriends.Length == 0,
+                "仅 ID 搜索范围拒绝 multi_live 来源且不新增关系");
+            return null;
+        });
+        request.sentLocation = "id_search";
+        Request(1, 2);
+        Check.That(store.Read(2)!.Data.userFriends.Single().friendStatus == "pending_request",
+            "仅 ID 搜索范围接受匹配来源");
     }
 }

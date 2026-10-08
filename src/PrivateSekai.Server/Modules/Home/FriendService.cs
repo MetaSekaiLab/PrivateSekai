@@ -30,22 +30,23 @@ public sealed class FriendService(UserSession user, FriendMasterQueries master)
         return 200;
     }
 
-    public int Request(UserState peer, PostUserFriendRequest request)
+    public (int Status, string ErrorCode) Request(UserState peer, PostUserFriendRequest request)
     {
         var peerId = peer.Data.userRegistration!.userId;
         if (request.message == null || request.message.Length > master.Config("friend_request_message_length_limit") ||
             request.sentLocation == null || !Enum.IsDefined(typeof(FriendRequestSentLocation), request.sentLocation) ||
-            master.HasNgWord(request.message)) return 400;
+            master.HasNgWord(request.message)) return (400, "");
         var own = (user.Data.userFriends ?? []).SingleOrDefault(f => f.opponentUserId == peerId);
         var other = (peer.Data.userFriends ?? []).SingleOrDefault(f => f.opponentUserId == user.UserId);
-        if (own?.friendStatus == "friend" && other?.friendStatus == "friend") return 409;
-        if (own?.friendStatus == "pending_request" && other?.friendStatus == "sent_request") return Approve(peer);
+        if (own?.friendStatus == "friend" && other?.friendStatus == "friend") return (409, "");
+        if (own?.friendStatus == "pending_request" && other?.friendStatus == "sent_request") return (Approve(peer), "");
         var resend = own?.friendStatus == "sent_request" && other?.friendStatus == "pending_request";
         if (!resend && (own != null || other != null))
             throw new NotSupportedException("尚未核验该好友关系的申请转换。");
-        if (resend && request.message != (own!.message ?? ""))
-            throw new NotSupportedException("尚未核验重复申请修改消息的行为。");
-        if (peer.Data.userConfig?.friendRequestScope != "all")
+        if (peer.Data.userConfig?.friendRequestScope == "reject") return (409, "opponent_friend_request_scope_reject");
+        if (peer.Data.userConfig?.friendRequestScope == "id_search" && request.sentLocation != "id_search")
+            return (409, "opponent_friend_request_scope_id_search");
+        if (peer.Data.userConfig?.friendRequestScope is not ("all" or "id_search"))
             throw new NotSupportedException("尚未核验限制申请范围的关系写入。");
         if ((user.Data.userFriends ?? []).Count(f => f.friendStatus == "friend") >= master.Config("friend_count_limit") ||
             (peer.Data.userFriends ?? []).Count(f => f.friendStatus == "friend") >= master.Config("friend_count_limit"))
@@ -54,8 +55,9 @@ public sealed class FriendService(UserSession user, FriendMasterQueries master)
         if (resend)
         {
             own!.requestExpiredAt = other!.requestExpiredAt = expires;
+            own.message = other.message = request.message.Length == 0 ? null : request.message;
             user.MarkChanged(nameof(SuiteUser.userFriends));
-            return 200;
+            return (200, "");
         }
         user.Data.userFriends = [.. user.Data.userFriends ?? [], new UserFriend
         {
@@ -68,7 +70,7 @@ public sealed class FriendService(UserSession user, FriendMasterQueries master)
             message = request.message.Length == 0 ? null : request.message
         }];
         user.MarkChanged(nameof(SuiteUser.userFriends));
-        return 200;
+        return (200, "");
     }
 
     public int Approve(UserState peer)
