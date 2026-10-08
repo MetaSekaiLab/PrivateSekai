@@ -161,19 +161,24 @@ public sealed class MissionService(
 
     public void RecordManualLiveClear() => RecordLimitedBeginnerProgress(master.GetLiveClearMissions());
 
-    public void RecordEasyFullCombo()
+    public void RecordEasyFullCombo() => IncrementHonorProgress("easy_full_combo");
+
+    public void RecordLiveFinish(bool cleared) =>
+        IncrementHonorProgress(cleared ? "clear_live" : "finish_live_with_empty_life");
+
+    private void IncrementHonorProgress(string type)
     {
         var records = (user.Data.userHonorMissions ?? []).ToList();
-        var progress = records.SingleOrDefault(m => m.honorMissionType == "easy_full_combo");
+        var progress = records.SingleOrDefault(m => m.honorMissionType == type);
         if (progress == null)
         {
-            progress = new UserHonorMission { honorMissionType = "easy_full_combo", achievedMissionIds = [] };
+            progress = new UserHonorMission { honorMissionType = type, achievedMissionIds = [] };
             records.Add(progress);
         }
         progress.progress = checked(progress.progress + 1);
         user.Data.userHonorMissions = records.OrderBy(m => m.honorMissionType, StringComparer.Ordinal).ToArray();
         user.MarkChanged(nameof(SuiteUser.userHonorMissions));
-        foreach (var definition in master.GetEasyFullComboMissions())
+        foreach (var definition in master.GetHonorMissions(type))
         {
             if (progress.progress < definition.requirement ||
                 user.Data.userMissionStatuses?.Any(s => s.missionType == "honor_mission" && s.missionId == definition.id &&

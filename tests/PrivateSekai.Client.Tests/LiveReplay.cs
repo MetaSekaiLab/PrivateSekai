@@ -90,8 +90,8 @@ internal static class LiveReplay
                     if (differences.Count != 0 || !report["complete"]!.GetValue<bool>() ||
                         new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
                             .Any(k => report[k]!.AsArray().Count != 0))
-                        throw new InvalidOperationException("Easy FC 进度、状态或独立回读与官方不同。");
-                    Console.WriteLine("Easy FC 进度、任务状态、临时达成提示及独立回读 HTTP 对拍通过。");
+                        throw new InvalidOperationException("演出称号进度、状态或独立回读与官方不同。");
+                    Console.WriteLine("Easy FC、通关、生命耗尽进度及任务状态、临时提示、独立回读 HTTP 对拍通过。");
                 }
                 JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official,
                     local));
@@ -138,7 +138,8 @@ internal static class LiveReplay
     {
         var selected = new JsonObject();
         if (source?["userHonorMissions"] is JsonArray missions)
-            selected["userHonorMissions"] = new JsonArray(missions.Where(m => m?["honorMissionType"]?.GetValue<string>() == "easy_full_combo")
+            selected["userHonorMissions"] = new JsonArray(missions.Where(m => m?["honorMissionType"]?.GetValue<string>() is
+                    "easy_full_combo" or "clear_live" or "finish_live_with_empty_life")
                 .Select(m => m!.DeepClone()).ToArray());
         if (source?["userMissionStatuses"] is JsonArray statuses)
             selected["userMissionStatuses"] = new JsonArray(statuses.Where(m => m?["missionType"]?.GetValue<string>() == "honor_mission")

@@ -141,6 +141,7 @@ public sealed class LiveService(
             ApplyLiveRewards(scoreRankRewards);
             ApplyLiveRewards(musicAchievementRewards);
             missions.UpdateLiveMissionProgress(userLivePoint);
+            missions.RecordLiveFinish(request.life > 0);
             if (!session.IsAuto)
                 missions.RecordManualLiveClear();
             if (request.life > 0)

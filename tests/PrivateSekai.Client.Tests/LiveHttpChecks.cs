@@ -74,7 +74,8 @@ internal static class LiveHttpChecks
             check(saved.Data.userLiveMissions.Single().achievedMissionIds.Length == 0 &&
                 saved.Data.userMissionStatuses.Single(s => s.missionType == "live_mission").missionStatus == "achieved",
                 "Live 达成状态持久化，结算提示 ID 不进入存档");
-            check(saved.Data.userHonorMissions.Single().progress == 1 && saved.Data.userHonorMissions.Single().achievedMissionIds.Length == 0,
+            var honor = saved.Data.userHonorMissions.Single(m => m.honorMissionType == "easy_full_combo");
+            check(honor.progress == 1 && honor.achievedMissionIds.Length == 0,
                 "Easy FC 进度持久化，新增称号任务提示不进入存档");
             check(saved.Data.userBeginnerMissionV2s.Single().progress == 1 && !saved.Data.userBeginnerMissionV2s.Single().isNewAchieved,
                 "新手演出任务保存进度但不保存本次达成提示");
@@ -93,7 +94,8 @@ internal static class LiveHttpChecks
             check(clear["response"]!["scoreRank"]!.GetValue<string>() == "rank_c",
                 "结算响应包含 master 阈值计算的评分");
             var mission = clear["response"]!["updatedResources"]!["userLiveMissions"]![0]!;
-            var honorMission = clear["response"]!["updatedResources"]!["userHonorMissions"]![0]!;
+            var honorMission = clear["response"]!["updatedResources"]!["userHonorMissions"]!.AsArray()
+                .Single(m => m!["honorMissionType"]!.GetValue<string>() == "easy_full_combo")!;
             check(honorMission["achievedMissionIds"]!.AsArray().Single()!.GetValue<int>() == 10001 && honorMission["userId"] == null,
                 "Easy FC 达成只在本次 HTTP 响应提示且省略账号字段");
             check(mission["achievedMissionIds"]!.AsArray().Single()!.GetValue<int>() == 1 && mission["userId"] == null,
@@ -126,9 +128,12 @@ internal static class LiveHttpChecks
             "含 GOOD 且没有 BAD/MISS 的结算不算全连");
         check(great["fullComboFlg"]!.GetValue<bool>() && !great["fullPerfectFlg"]!.GetValue<bool>(),
             "GREAT 保留全连但不算 AP");
-        check(store.Read(1)!.Data.userHonorMissions.Single().progress == 1 &&
-            great["updatedResources"]!["userHonorMissions"]![0]!["achievedMissionIds"]!.AsArray().Count == 0,
+        check(store.Read(1)!.Data.userHonorMissions.Single(m => m.honorMissionType == "easy_full_combo").progress == 1 &&
+            great["updatedResources"]!["userHonorMissions"]!.AsArray()
+                .Single(m => m!["honorMissionType"]!.GetValue<string>() == "easy_full_combo")!["achievedMissionIds"]!.AsArray().Count == 0,
             "同曲再次 FC 不重复累计称号进度或提示达成");
+        check(store.Read(1)!.Data.userHonorMissions.Single(m => m.honorMissionType == "clear_live").progress == 3,
+            "同曲成功演出仍累计通关次数，与 FC 去重分开");
         check(good["updatedResources"]!["userLiveMissions"]![0]!["achievedMissionIds"]!.AsArray().Count == 0 &&
             good["updatedResources"]!["userMissionStatuses"] == null,
             "已达成任务后续结算不重复提示或刷新任务状态");

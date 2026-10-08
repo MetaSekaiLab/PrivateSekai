@@ -2384,9 +2384,18 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 - 达到 `honorMissions.requirement` 后新增 `honor_mission` 的 `achieved` 状态；已达成或已领取的任务不重复标记。响应的对应任务 `achievedMissionIds` 仅含本次新增 ID；存档及随后 Suite 保留空数组，`userId` 省略。
 - 进度、成绩与任务状态在同一用户操作中提交，响应编码失败整体回滚。Controller 只在响应副本上填写临时提示，不写入持久任务。
 
-四次新增 FC（含首次门槛）、同曲重复、Auto、已有失败样本共 7 组 HTTP 对拍通过，覆盖 Easy FC 进度、称号任务状态、判定标志、临时提示及独立回读。Client 检查支持 `--replay-live-honor`。不据此声明全量 Live 响应一致：金币收集、总通关次数等其他称号进度仍有缺口；其他难度、AP、多人、挑战与自定义谱面需各自证据。跨门槛后更高等级领取的奖励升级仍待核验。
+四次新增 FC（含首次门槛）、同曲重复、Auto、已有失败样本共 7 组 HTTP 对拍通过，覆盖 Easy FC 进度、称号任务状态、判定标志、临时提示及独立回读。Client 检查支持 `--replay-live-honor`。不据此声明全量 Live 响应一致：金币收集、最大连击等其他称号进度仍有缺口；其他难度、AP、多人、挑战与自定义谱面需各自证据。跨门槛后更高等级领取的奖励升级仍待核验。
 
 证据：`PutUserLiveClearAPI` 请求、成功回调对 `updatedResources` 的合并，`UserHonorMission` 契约、`musicDifficulties`／`honorMissions` master，以及上述官方结算和 Suite 回读。
+
+### 普通单人 Live 的通关与生命耗尽次数
+
+- 同一结算入口中，`life > 0` 的手动或 Auto 演出增加 `clear_live`；同曲重复成功也增加，不采用 FC 的曲目去重规则。失败不增加通关次数。
+- 手动生命耗尽结算增加 `finish_live_with_empty_life`。官方从 4 到 5 的样本达成任务 1302，响应仅在该次显示 `achievedMissionIds=[1302]`，Suite 回读为空；状态保存为 `achieved`。下一次失败继续增加至 6，提示数组为空，不重复刷新任务状态。
+- 这两类计数与 Easy FC 复用按 master 类型查询门槛的任务逻辑，全部状态在同一用户操作中提交；编码失败和重复已结束会话不会重复累计。
+- `clear_live` 当前 master 门槛为 39、3939。通关计数的手动、重复和 Auto 已有官方样本，39 次首次达成本轮仅有 master 及小型夹具验证，尚未官方采样。不得把生命耗尽的门槛样本当成通关门槛证明。
+
+手动成功、同曲重复、Auto、旧失败、生命耗尽跨门槛及达成后共 6 组 HTTP 对拍通过。`--replay-live-honor` 同时比较 Easy FC、通关、生命耗尽三类进度、称号任务状态、提示和独立回读。其他 Live 类型与 Auto 生命耗尽组合未确认；该检查不包含其他称号进度或完整结算奖励。
 
 ## DELETE `/api/user/{userId}/friend/{opponentUserId}?type={type}`
 
