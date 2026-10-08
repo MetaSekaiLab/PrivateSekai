@@ -12,7 +12,7 @@ internal static class ProfileHttpChecks
         var scenario = new Scenario { Steps =
         [
             new() { Operation = "profile-save", Body = JsonNode.Parse("""
-                {"word":"fixture-profile-word","twitterId":"fixture-social-id","profileImageType":"card","profileImageId":1}
+                {"word":"fixture-profile-word","twitterId":"fixture-social-id","profileImageType":"card_before_special_training","profileImageId":1}
                 """)!.AsObject(), Expect = new() { ["/updatedResources/userProfile/profileImageId"] = JsonValue.Create(1) } }
         ] };
         ScenarioRunner.Validate(scenario, [new() { BaseUrl = "http://localhost" }], new HashSet<string>());
@@ -20,6 +20,7 @@ internal static class ProfileHttpChecks
         var saved = store.Read(1)!.Data.userProfile;
         check(saved.word == "fixture-profile-word" && saved.twitterId == "fixture-social-id" && saved.profileImageId == 1,
             "个人资料客户端真实 HTTP 保存留言、社交 ID 和头像");
+        check(saved.userId == 1, "保存资料保留当前账号 ID");
         var record = File.ReadAllText(Path.Combine(directory, "profile/001.json"));
         check(!record.Contains("fixture-profile-word") && !record.Contains("fixture-social-id"),
             "个人资料请求、响应和状态快照中的文本均脱敏");

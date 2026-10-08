@@ -78,6 +78,15 @@ internal static class FriendChecks
             "申请省略接受时间，好友卡牌只输出五个字段");
         Check.That(card["level"]!.GetValue<int>() == 7 && friend["userLoginStatus"]!["loginStatus"]!.GetValue<string>() == "online",
             "好友资料来自对方当前快照");
+        var avatar = store.Read(2)!;
+        avatar.Data.userCards = [.. avatar.Data.userCards, new() { cardId = 2, level = 1 }];
+        avatar.Data.userProfile.profileImageType = "card_before_special_training";
+        avatar.Data.userProfile.profileImageId = 2;
+        store.Save(2, avatar);
+        var projection = queries.Project(store.Read(1)!.Data).userFriends.Single().opponentUserFriendProfile;
+        Check.That(projection.userProfile.profileImageId == 2 && projection.userProfile.profileImageType == "card_before_special_training" &&
+            projection.userCard.cardId == 1 && projection.userCard.level == 7,
+            "自选头像保留选中卡牌 ID，好友卡牌仍取主队队长");
         foreach (var id in new long[] { 1, 2 })
         {
             var state = store.Read(id)!;

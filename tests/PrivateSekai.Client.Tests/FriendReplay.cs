@@ -28,7 +28,7 @@ internal static class FriendReplay
         var peerBefore = Load(input["peerBefore"]!.GetValue<string>())["response"]!;
         var peerAfter = Load(input["peerAfter"]!.GetValue<string>())["response"]!;
         var operation = official["operation"]!.GetValue<string>();
-        if (operation is not ("friend-request" or "friend-approve" or "friend-cancel" or "friend-reject" or "friend-release"))
+        if (operation is not ("friend-request" or "friend-approve" or "friend-cancel" or "friend-reject" or "friend-release" or "profile-save"))
             throw new InvalidOperationException("需要好友写入样本。");
         var rejected = official["status"]?.GetValue<string>() == "stopped";
         var expectedStatus = (rejected ? official["lastHttpStatus"] : official["httpStatus"])!.GetValue<int>();
@@ -67,12 +67,14 @@ internal static class FriendReplay
             store.Save(2, state);
         }
         await caller.Send(new() { Operation = "system" });
+        var body = official["request"]?.DeepClone().AsObject();
+        body?.Remove("userId");
         try
         {
             await ScenarioRunner.Run(caller, new() { Steps = [new()
             {
-                Operation = operation, Args = new() { ["opponentUserId"] = "2" },
-                Body = official["request"]?.DeepClone().AsObject()
+                Operation = operation, Args = operation == "profile-save" ? new() : new() { ["opponentUserId"] = "2" },
+                Body = body
             }] }, output);
         }
         catch (ClientFailure) when (rejected && caller.LastHttpStatus == expectedStatus) { }
@@ -83,10 +85,16 @@ internal static class FriendReplay
         {
             var result = caller.Redactor.Clean(source);
             if (result is not JsonObject obj || obj.ContainsKey("httpStatus")) return result;
-            if (!obj.ContainsKey("userFriends")) return new JsonObject();
-            var friends = obj["userFriends"]!.DeepClone();
-            if (!includeStatus) foreach (var friend in friends.AsArray()) friend!.AsObject().Remove("userLoginStatus");
-            return new JsonObject { ["userFriends"] = friends };
+            var selected = new JsonObject();
+            if (operation == "profile-save" && obj.ContainsKey("userProfile"))
+                selected["userProfile"] = obj["userProfile"]!.DeepClone();
+            if (obj.ContainsKey("userFriends"))
+            {
+                var friends = obj["userFriends"]!.DeepClone();
+                if (!includeStatus) foreach (var friend in friends.AsArray()) friend!.AsObject().Remove("userLoginStatus");
+                selected["userFriends"] = friends;
+            }
+            return selected;
         }
         var report = new JsonObject
         {
@@ -98,7 +106,7 @@ internal static class FriendReplay
         {
             item.Client.CaptureTo(Path.Combine(output, item.Name));
             await item.Client.Send(new() { Operation = "system" });
-            var actual = await item.Client.Send(new() { Operation = "suite-friends" });
+            var actual = await item.Client.Send(new() { Operation = operation == "profile-save" && item.Id == 1 ? "suite" : "suite-friends" });
             var expected = item.Expected.DeepClone();
             Remap(expected, item.Id);
             report[item.Name + "Differences"] = JsonSerializer.SerializeToNode(Comparison.Diff(Clean(expected, false), Clean(actual, false)), JsonFiles.Options);

@@ -76,6 +76,7 @@ public sealed class ProfileController(UserOperation operations, UserSession user
         {
             profiles.UpdateProfile(new UserProfile
             {
+                userId = userId,
                 word = request.word,
                 twitterId = request.twitterId,
                 profileImageType = request.profileImageType,
