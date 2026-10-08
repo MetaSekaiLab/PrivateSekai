@@ -4,11 +4,12 @@ using System;
 using System.Linq;
 using game::Sekai;
 using PrivateSekai.Protocol;
+using PrivateSekai.Shared.Master;
 using PrivateSekai.Shared.Users;
 
 namespace PrivateSekai.Modules.Home;
 
-public sealed class FriendQueries(UserOperation operations)
+public sealed class FriendQueries(UserOperation operations, MasterData master)
 {
     public SuiteUser Project(SuiteUser result)
     {
@@ -24,8 +25,16 @@ public sealed class FriendQueries(UserOperation operations)
                 throw new NotSupportedException("尚未核验该好友头像类型。");
             var cardId = (data.userDecks ?? []).Single(d => d.deckId == data.userGamedata.deck).leader;
             var card = (data.userCards ?? []).Single(c => c.cardId == cardId);
-            if ((data.userProfileHonors ?? []).Length != 0)
-                throw new NotSupportedException("尚未核验好友称号资料映射。");
+            var honors = data.userProfileHonors ?? [];
+            foreach (var honor in honors)
+            {
+                if (honor.profileHonorType != "normal")
+                    throw new NotSupportedException("尚未核验该好友称号类型。");
+                var definition = master.GetTable<MasterHonor>("honors", h => h.id).FindById(honor.honorId)
+                    ?? throw new InvalidOperationException("缺少好友称号 master 定义。");
+                if (!string.IsNullOrEmpty(definition.honorMissionType))
+                    throw new NotSupportedException("尚未核验好友称号任务资料映射。");
+            }
             if (data.userMysekaiVisitSetting != null || (data.userPlayerFrames ?? []).Length != 0)
                 throw new NotSupportedException("尚未核验好友 Mysekai 设置或玩家边框映射。");
             friend.opponentUserFriendProfile = new UserFriendProfile
@@ -33,7 +42,8 @@ public sealed class FriendQueries(UserOperation operations)
                 name = data.userGamedata.name,
                 userProfile = new UserProfile { userId = friend.opponentUserId, profileImageType = profile.profileImageType, profileImageId = profile.profileImageId },
                 userCard = DumpSerializer.Deserialize<UserCard>(DumpSerializer.Serialize(card)),
-                userProfileHonors = [], userHonorMissions = [], userPlayerFrames = [],
+                userProfileHonors = DumpSerializer.Deserialize<UserProfileHonor[]>(DumpSerializer.Serialize(honors)),
+                userHonorMissions = [], userPlayerFrames = [],
                 isMysekaiOwnerAcceptVisitForFriend = false
             };
             if (data.userConfig?.isDisplayLoginStatus == false)

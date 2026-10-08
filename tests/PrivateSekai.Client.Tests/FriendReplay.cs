@@ -10,7 +10,7 @@ using PrivateSekai.Storage;
 internal static class FriendReplay
 {
     private static readonly string[] Fields = ["userGamedata", "userConfig", "userProfile", "userCards", "userDecks",
-        "userProfileHonors", "userHonorMissions", "userPlayerFrames", "userFriends", "userMysekaiVisitSetting"];
+        "userProfileHonors", "userHonors", "userHonorBackgrounds", "userHonorWords", "userHonorMissions", "userPlayerFrames", "userFriends", "userMysekaiVisitSetting"];
 
     public static TimeProvider Clock(string manifest)
     {
@@ -28,8 +28,9 @@ internal static class FriendReplay
         var peerBefore = Load(input["peerBefore"]!.GetValue<string>())["response"]!;
         var peerAfter = Load(input["peerAfter"]!.GetValue<string>())["response"]!;
         var operation = official["operation"]!.GetValue<string>();
-        if (operation is not ("friend-request" or "friend-approve" or "friend-cancel" or "friend-reject" or "friend-release" or "profile-save"))
+        if (operation is not ("friend-request" or "friend-approve" or "friend-cancel" or "friend-reject" or "friend-release" or "profile-save" or "profile-honor-save"))
             throw new InvalidOperationException("需要好友写入样本。");
+        var profileWrite = operation is "profile-save" or "profile-honor-save";
         var rejected = official["status"]?.GetValue<string>() == "stopped";
         var expectedStatus = (rejected ? official["lastHttpStatus"] : official["httpStatus"])!.GetValue<int>();
         if (rejected && (official["failurePhase"]?.GetValue<string>() != "request" || expectedStatus is not (400 or 404 or 409)))
@@ -77,7 +78,7 @@ internal static class FriendReplay
         {
             await ScenarioRunner.Run(caller, new() { Steps = [new()
             {
-                Operation = operation, Args = operation == "profile-save" ? new() : new() { ["opponentUserId"] = "2" },
+                Operation = operation, Args = profileWrite ? new() : new() { ["opponentUserId"] = "2" },
                 Body = body
             }] }, output);
         }
@@ -92,6 +93,8 @@ internal static class FriendReplay
             var selected = new JsonObject();
             if (operation == "profile-save" && obj.ContainsKey("userProfile"))
                 selected["userProfile"] = obj["userProfile"]!.DeepClone();
+            if (operation == "profile-honor-save" && obj.ContainsKey("userProfileHonors"))
+                selected["userProfileHonors"] = obj["userProfileHonors"]!.DeepClone();
             if (obj.ContainsKey("userFriends"))
             {
                 var friends = obj["userFriends"]!.DeepClone();
@@ -110,7 +113,7 @@ internal static class FriendReplay
         {
             item.Client.CaptureTo(Path.Combine(output, item.Name));
             await item.Client.Send(new() { Operation = "system" });
-            var actual = await item.Client.Send(new() { Operation = operation == "profile-save" && item.Id == 1 ? "suite" : "suite-friends" });
+            var actual = await item.Client.Send(new() { Operation = profileWrite && item.Id == 1 ? "suite" : "suite-friends" });
             var expected = item.Expected.DeepClone();
             Remap(expected, item.Id);
             report[item.Name + "Differences"] = JsonSerializer.SerializeToNode(Comparison.Diff(Clean(expected, false), Clean(actual, false)), JsonFiles.Options);

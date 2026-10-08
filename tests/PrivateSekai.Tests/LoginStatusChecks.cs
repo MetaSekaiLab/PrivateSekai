@@ -42,7 +42,7 @@ internal static class LoginStatusChecks
             return new BrokenResponse();
         }), "在线状态编码失败回滚");
         Check.That(store.Read(1)!.Private.LoginStatus?.loginStatus == "solo_live", "失败不覆盖已有状态");
-        var controller = new LoginController(operations, user, null!, home, null!, new FriendQueries(operations));
+        var controller = new LoginController(operations, user, null!, home, null!, new FriendQueries(operations, null!));
         JsonObject ReadFriend()
         {
             var result = (FileContentResult)controller.HandleSuiteUserParts(2, ["user_friend"]);

@@ -28,7 +28,9 @@ internal static class FriendChecks
              {"configKey":"friend_count_limit","value":"300"}]
             """);
         File.WriteAllText(Path.Combine(directory, "ngWords.json"), """[{"id":1,"word":"test"}]""");
-        var master = new FriendMasterQueries(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
+        File.WriteAllText(Path.Combine(directory, "honors.json"), """[{"id":1},{"id":2,"honorMissionType":"fixture_mission"}]""");
+        var masterData = new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
+        var master = new FriendMasterQueries(masterData);
         var store = new MemoryUserStore();
         for (var id = 1; id <= 3; id++)
         {
@@ -47,7 +49,7 @@ internal static class FriendChecks
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
         var service = new FriendService(user, master);
-        var queries = new FriendQueries(operations);
+        var queries = new FriendQueries(operations, masterData);
         var request = new PostUserFriendRequest { message = "こんにちは", sentLocation = "id_search" };
         byte[] Request(long from, long to) => operations.ExecutePair(from, to, peer =>
         {
@@ -82,11 +84,20 @@ internal static class FriendChecks
         avatar.Data.userCards = [.. avatar.Data.userCards, new() { cardId = 2, level = 1 }];
         avatar.Data.userProfile.profileImageType = "card_before_special_training";
         avatar.Data.userProfile.profileImageId = 2;
+        avatar.Data.userProfileHonors = [new() { seq = 1, profileHonorType = "normal", honorId = 1, honorLevel = 1,
+            bondsHonorViewType = "none", honorBackgroundId = 10101, honorWordId = 10101 }];
+        avatar.Data.userHonorMissions = [new() { honorMissionType = "fixture_mission", progress = 42 }];
         store.Save(2, avatar);
         var projection = queries.Project(store.Read(1)!.Data).userFriends.Single().opponentUserFriendProfile;
         Check.That(projection.userProfile.profileImageId == 2 && projection.userProfile.profileImageType == "card_before_special_training" &&
             projection.userCard.cardId == 1 && projection.userCard.level == 7,
             "自选头像保留选中卡牌 ID，好友卡牌仍取主队队长");
+        Check.That(projection.userProfileHonors.Single().honorBackgroundId == 10101 &&
+            projection.userProfileHonors.Single().honorWordId == 10101 && projection.userHonorMissions.Length == 0,
+            "普通称号保留背景与文字，不泄露无关称号任务");
+        projection.userProfileHonors[0].honorLevel = 9;
+        Check.That(store.Read(2)!.Data.userProfileHonors[0].honorLevel == 1,
+            "好友称号投影与对方存档引用隔离");
         foreach (var id in new long[] { 1, 2 })
         {
             var state = store.Read(id)!;
@@ -279,5 +290,10 @@ internal static class FriendChecks
         });
         Check.That(store.Read(1)!.Data.userFriends.Single(f => f.opponentUserId == 2).friendStatus == "friend" &&
             store.Read(2)!.Data.userFriends.Single().friendStatus == "friend", "好友状态下拒绝失败保留双方关系");
+        var missionHonor = store.Read(2)!;
+        missionHonor.Data.userProfileHonors[0].honorId = 2;
+        store.Save(2, missionHonor);
+        Check.Throws<NotSupportedException>(() => queries.Project(store.Read(1)!.Data),
+            "未采样的任务称号不伪造空任务映射");
     }
 }
