@@ -154,6 +154,9 @@ internal static class FeatureChecks
         Check.That(!(rolledBack.Data.userCharacterLiveUsageCounts ?? []).Any() &&
             !(rolledBack.Data.userCharacterMissions ?? []).Any(m => m.characterMissionType == "play_live"),
             "结算编码失败回滚队长次数与角色演出任务");
+        Check.That(rolledBack.Data.userHonorMissions == null &&
+            !(rolledBack.Data.userMissionStatuses ?? []).Any(s => s.missionType == "honor_mission"),
+            "结算编码失败回滚 Easy FC 进度与称号任务达成");
 
         var cleared = operation.Execute(3, () =>
         {
@@ -179,6 +182,10 @@ internal static class FeatureChecks
             result.updatedResources.userCards.Single().level == 3,
             "演出卡牌经验使用卡牌等级上限");
         Check.That(!store.Read(3)!.Private.UserLiveSessions.ContainsKey(liveId), "Live 成功后移除会话");
+        Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "easy_full_combo").progress == 1 &&
+            store.Read(3)!.Data.userMissionStatuses.Single(s => s.missionType == "honor_mission").missionStatus == "achieved" &&
+            store.Read(3)!.Data.userHonorMissions.Single().achievedMissionIds.Length == 0,
+            "首次 Easy FC 跨门槛持久化进度与达成状态，不持久化提示 ID");
         Check.That(result.updatedResources.userCharacterLiveUsageCounts.Single(c => c.characterLiveUsageType == "leader").usageCount == 1 &&
             result.updatedResources.userCharacterLiveUsageCounts.Single(c => c.characterLiveUsageType == "leader").characterId == 1 &&
             store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 1,
@@ -418,6 +425,7 @@ internal static class FeatureChecks
             ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = "[]",
+            ["honorMissions"] = """[{"id":10001,"honorMissionType":"easy_full_combo","requirement":1}]""",
             ["musicAchievements"] = """[{"id":1,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_c","resourceBoxId":80}]"""
         };
         foreach (var (table, json) in tables)

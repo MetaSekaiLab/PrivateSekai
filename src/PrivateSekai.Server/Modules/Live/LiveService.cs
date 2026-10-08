@@ -108,7 +108,13 @@ public sealed class LiveService(
             boosts.Normalize();
             boosts.Consume(session.BoostCount);
             if (!session.IsAuto)
+            {
+                if (request.life > 0 && fullCombo && master.ResolveMusicDifficultyType(session.MusicDifficultyId) == "easy" &&
+                    !(user.Data.userMusicResults ?? []).Any(r => r.musicId == session.MusicId &&
+                        r.musicDifficultyType == "easy" && r.fullComboFlg))
+                    missions.RecordEasyFullCombo();
                 highScoreFlg = UpdateUserMusicResult(session, request, fullCombo, fullPerfect);
+            }
             deckCardExpResults = BuildDeckCardExpResults(session.DeckId);
             // 非 Auto 的 D 档及普通/Auto 的 C 档已有官方经验样本。
             var baseExp = scoreRank switch
@@ -145,6 +151,8 @@ public sealed class LiveService(
                 user.Data.userAutoLive.count = checked(user.Data.userAutoLive.count + 1);
                 user.MarkChanged(nameof(SuiteUser.userAutoLive));
             }
+            if (user.Data.userHonorMissions != null)
+                user.MarkChanged(nameof(SuiteUser.userHonorMissions));
         }
 
         MergeLiveCharacterArchiveVoiceGroups(request.ingameCutinCharacterArchiveVoiceGroupIds);

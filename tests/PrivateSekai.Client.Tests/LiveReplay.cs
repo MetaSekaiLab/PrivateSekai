@@ -13,14 +13,14 @@ internal static class LiveReplay
     private static HashSet<int> rankReleaseIds = [];
     private static readonly string[] Fields = ["userGamedata", "userCards", "userDecks", "userBoost",
         "userMaterials", "userChargedCurrency", "userMusicResults", "userMusicAchievements", "userLiveMissions",
-        "userMissionStatuses", "userBeginnerMissionV2s", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive", "userReleaseConditions",
+        "userMissionStatuses", "userHonorMissions", "userBeginnerMissionV2s", "userLiveCharacterArchiveVoice", "userEventBreakTime", "userAutoLive", "userReleaseConditions",
         "userCharacterLiveUsageCounts", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
 
     public static void ImportMaster(string source, string destination)
     {
         foreach (var table in new[] { "cards", "cardRarities", "musicDifficulties", "playLevelScores",
             "boosts", "musicAchievements", "resourceBoxes", "liveMissionPeriods", "liveMissions", "beginnerMissionV2s", "levels", "playerRankRewards", "configs", "releaseConditions",
-            "characterMissionV2s", "characterMissionV2ParameterGroups" })
+            "characterMissionV2s", "characterMissionV2ParameterGroups", "honorMissions" })
             File.Copy(Path.Combine(source, table + ".json"), Path.Combine(destination, table + ".json"), true);
         rankReleaseIds = JsonNode.Parse(File.ReadAllText(Path.Combine(source, "releaseConditions.json")))!.AsArray()
             .Where(c => c?["releaseConditionType"]?.GetValue<string>() == "user_rank")
@@ -41,7 +41,8 @@ internal static class LiveReplay
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeMilliseconds(now);
     }
 
-    public static async Task Run(ProtocolClient client, MemoryUserStore store, string startPath, string clearPath, string output)
+    public static async Task Run(ProtocolClient client, MemoryUserStore store, string startPath, string clearPath, string output,
+        ProtocolClient? honorReadback = null)
     {
         var start = Read(startPath, "live-start");
         var official = Read(clearPath, "live-clear");
@@ -78,6 +79,20 @@ internal static class LiveReplay
             if (File.Exists(localPath))
             {
                 var local = JsonNode.Parse(File.ReadAllText(localPath))!.AsObject();
+                if (honorReadback != null)
+                {
+                    var report = ScenarioRunner.Compare(SelectHonorRecord(official), SelectHonorRecord(local));
+                    await honorReadback.Send(new() { Operation = "system" });
+                    var after = await honorReadback.Suite();
+                    var differences = Comparison.Diff(SelectHonor(official["after"]), SelectHonor(after));
+                    report["readbackDifferences"] = JsonSerializer.SerializeToNode(differences, JsonFiles.Options);
+                    JsonFiles.Write(Path.Combine(output, "honor-progress-compare.json"), report);
+                    if (differences.Count != 0 || !report["complete"]!.GetValue<bool>() ||
+                        new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
+                            .Any(k => report[k]!.AsArray().Count != 0))
+                        throw new InvalidOperationException("Easy FC 进度、状态或独立回读与官方不同。");
+                    Console.WriteLine("Easy FC 进度、任务状态、临时达成提示及独立回读 HTTP 对拍通过。");
+                }
                 JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official,
                     local));
                 JsonFiles.Write(Path.Combine(output, "rank-release-compare.json"),
@@ -115,6 +130,31 @@ internal static class LiveReplay
         selected["response"] = new JsonObject
         {
             ["updatedResources"] = Select(record["response"]?["updatedResources"], ["userBoost"])
+        };
+        return selected;
+    }
+
+    private static JsonObject SelectHonor(JsonNode? source)
+    {
+        var selected = new JsonObject();
+        if (source?["userHonorMissions"] is JsonArray missions)
+            selected["userHonorMissions"] = new JsonArray(missions.Where(m => m?["honorMissionType"]?.GetValue<string>() == "easy_full_combo")
+                .Select(m => m!.DeepClone()).ToArray());
+        if (source?["userMissionStatuses"] is JsonArray statuses)
+            selected["userMissionStatuses"] = new JsonArray(statuses.Where(m => m?["missionType"]?.GetValue<string>() == "honor_mission")
+                .Select(m => m!.DeepClone()).ToArray());
+        return selected;
+    }
+
+    private static JsonObject SelectHonorRecord(JsonObject record)
+    {
+        var selected = record.DeepClone().AsObject();
+        foreach (var side in new[] { "before", "after" }) selected[side] = SelectHonor(record[side]);
+        selected["response"] = new JsonObject
+        {
+            ["fullComboFlg"] = record["response"]?["fullComboFlg"]?.DeepClone(),
+            ["fullPerfectFlg"] = record["response"]?["fullPerfectFlg"]?.DeepClone(),
+            ["updatedResources"] = SelectHonor(record["response"]?["updatedResources"])
         };
         return selected;
     }

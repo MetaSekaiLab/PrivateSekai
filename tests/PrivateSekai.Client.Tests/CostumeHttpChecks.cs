@@ -104,8 +104,10 @@ internal static class CostumeHttpChecks
               {"resourceType":"material","resourceId":11,"resourceQuantity":300},
               {"resourceType":"material","resourceId":12,"resourceQuantity":30}]}]
             """);
-        File.WriteAllText(Path.Combine(directory, "honorMissions.json"),
-            """[{"id":3101,"honorMissionType":"collect_costume_3d","requirement":50}]""");
+        var honorPath = Path.Combine(directory, "honorMissions.json");
+        var honorMissions = JsonNode.Parse(File.ReadAllText(honorPath))!.AsArray();
+        honorMissions.Add(JsonNode.Parse("""{"id":3101,"honorMissionType":"collect_costume_3d","requirement":50}"""));
+        JsonFiles.Write(honorPath, honorMissions);
     }
 
     public static async Task RunCraft(ProtocolClient client, MemoryUserStore store, IServiceProvider provider, string directory, Action<bool, string> check)

@@ -2375,7 +2375,18 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 
 好友任务进度补充：`FriendViewData` 使用两张列表构造 `HonorInfo`；`HonorUtility.TryFindUserHonorMission`（RVA `0x4daf600`）及其 lambda（RVA `0x4db2a40`）按 master 的 `honorMissionType` 匹配任务。官方称号 3009 样本仅返回 `userHonorMissions=[{honorMissionType:"easy_full_combo",progress:5}]`，省略 `userId`、`achievedMissionIds`，不带账号其他任务。单独装备、混合普通称号、清空共 3 组双账号 HTTP 对拍通过，清空后任务列表为空。Server 依据装备关联类型投影当前进度；多种进度称号并存时的排序、缺失任务记录、羁绊称号仍需样本。
 
-获取样本时新增四首不同 Easy FC，进度从 1 逐次增至 5。跨门槛结算响应临时携带 `achievedMissionIds=[10001]`，随后 Suite 回读为空；任务状态为 `achieved`，领取后为 `received` 并获得称号 3009 等级 1，领取 HTTP 对拍通过。本地 Live 尚未实现此类称号进度累计，好友映射验证不代表演出达成链路已完成。
+获取样本时新增四首不同 Easy FC，进度从 1 逐次增至 5。跨门槛结算响应临时携带 `achievedMissionIds=[10001]`，随后 Suite 回读为空；任务状态为 `achieved`，领取后为 `received` 并获得称号 3009 等级 1，领取 HTTP 对拍通过。普通单人 Live 的 Easy FC 累计现已接入，范围见下文；其他称号任务尚未全量实现。
+
+### 普通单人 Live 的 Easy FC 称号进度
+
+- 沿用 `PUT /api/user/{userId}/live/{userLiveId}`。开局的 `musicDifficultyId` 查 master 确定难度；结算依据非 Auto、成功存活与 FC 判定，并在更新成绩前检查该曲 Easy 的历史 `fullComboFlg`。
+- 首次完成的不同 Easy 曲目将 `userHonorMissions.easy_full_combo.progress` 增加 1；同曲再次 FC、Auto，以及已有失败结算样本均不增加。仍刷新现有 `userHonorMissions`，此列表中的其他类型不属于本轮统计实现范围。
+- 达到 `honorMissions.requirement` 后新增 `honor_mission` 的 `achieved` 状态；已达成或已领取的任务不重复标记。响应的对应任务 `achievedMissionIds` 仅含本次新增 ID；存档及随后 Suite 保留空数组，`userId` 省略。
+- 进度、成绩与任务状态在同一用户操作中提交，响应编码失败整体回滚。Controller 只在响应副本上填写临时提示，不写入持久任务。
+
+四次新增 FC（含首次门槛）、同曲重复、Auto、已有失败样本共 7 组 HTTP 对拍通过，覆盖 Easy FC 进度、称号任务状态、判定标志、临时提示及独立回读。Client 检查支持 `--replay-live-honor`。不据此声明全量 Live 响应一致：金币收集、总通关次数等其他称号进度仍有缺口；其他难度、AP、多人、挑战与自定义谱面需各自证据。跨门槛后更高等级领取的奖励升级仍待核验。
+
+证据：`PutUserLiveClearAPI` 请求、成功回调对 `updatedResources` 的合并，`UserHonorMission` 契约、`musicDifficulties`／`honorMissions` master，以及上述官方结算和 Suite 回读。
 
 ## DELETE `/api/user/{userId}/friend/{opponentUserId}?type={type}`
 

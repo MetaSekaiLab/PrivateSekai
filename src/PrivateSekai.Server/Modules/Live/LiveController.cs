@@ -4,12 +4,13 @@ using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using game::Sekai.ApiData;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 
 namespace PrivateSekai.Modules.Live;
 
-public sealed class LiveController(UserOperation operations, UserSession user, LiveService live) : PrskController
+public sealed class LiveController(UserOperation operations, UserSession user, LiveService live, MissionMasterQueries missions) : PrskController
 {
     [HttpPost("api/user/{userId}/boost-item")]
     public IActionResult RecoverBoost(long userId, [FromBody] UserBoostItemRequest request)
@@ -51,8 +52,20 @@ public sealed class LiveController(UserOperation operations, UserSession user, L
             var previousBeginner = (user.Data.userMissionStatuses ?? [])
                 .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
                 .Select(s => s.missionId).ToHashSet();
+            var previousHonor = (user.Data.userMissionStatuses ?? [])
+                .Where(s => s.missionType == "honor_mission" && s.missionStatus is "achieved" or "received")
+                .Select(s => s.missionId).ToHashSet();
             var response = live.ClearUserLive(userLiveId, request);
             response.updatedResources = user.BuildRefresh();
+            var newHonors = (user.Data.userMissionStatuses ?? [])
+                .Where(s => s.missionType == "honor_mission" && s.missionStatus == "achieved" && !previousHonor.Contains(s.missionId))
+                .Select(s => missions.GetHonorMission(s.missionId)!).ToArray();
+            if (newHonors.Length > 0)
+                response.updatedResources.userHonorMissions = response.updatedResources.userHonorMissions.Select(m => new UserHonorMission
+                {
+                    honorMissionType = m.honorMissionType, progress = m.progress,
+                    achievedMissionIds = newHonors.Where(d => d.honorMissionType == m.honorMissionType).Select(d => d.id).ToArray()
+                }).ToArray();
             var achieved = (user.Data.userMissionStatuses ?? [])
                 .Where(s => s.missionType == "live_mission" && s.missionStatus == "achieved" && !previous.Contains(s.missionId))
                 .Select(s => s.missionId).ToArray();

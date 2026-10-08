@@ -24,6 +24,7 @@ internal static class LiveHttpChecks
             ["boosts"] = """[{"id":1,"costBoost":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = """[{"id":1,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":3}]""",
+            ["honorMissions"] = """[{"id":10001,"honorMissionType":"easy_full_combo","requirement":1}]""",
             ["musicAchievements"] = "[]"
         };
         foreach (var (table, json) in tables) File.WriteAllText(Path.Combine(directory, table + ".json"), json);
@@ -49,6 +50,7 @@ internal static class LiveHttpChecks
         liveDeck.subLeader = liveDeck.member2 = liveDeck.member3 = liveDeck.member4 = liveDeck.member5 = 0;
         firstState.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         firstState.Data.userMusicResults = [];
+        firstState.Data.userHonorMissions = [];
         firstState.Data.userLiveMissions = [];
         firstState.Data.userMissionStatuses = [];
         firstState.Data.userBeginnerMissionV2s = [];
@@ -72,6 +74,8 @@ internal static class LiveHttpChecks
             check(saved.Data.userLiveMissions.Single().achievedMissionIds.Length == 0 &&
                 saved.Data.userMissionStatuses.Single(s => s.missionType == "live_mission").missionStatus == "achieved",
                 "Live 达成状态持久化，结算提示 ID 不进入存档");
+            check(saved.Data.userHonorMissions.Single().progress == 1 && saved.Data.userHonorMissions.Single().achievedMissionIds.Length == 0,
+                "Easy FC 进度持久化，新增称号任务提示不进入存档");
             check(saved.Data.userBeginnerMissionV2s.Single().progress == 1 && !saved.Data.userBeginnerMissionV2s.Single().isNewAchieved,
                 "新手演出任务保存进度但不保存本次达成提示");
             check(saved.Data.userLiveCharacterArchiveVoice.characterArchiveVoiceGroupIds.Order().SequenceEqual(new[] { 4, 5 }),
@@ -89,6 +93,9 @@ internal static class LiveHttpChecks
             check(clear["response"]!["scoreRank"]!.GetValue<string>() == "rank_c",
                 "结算响应包含 master 阈值计算的评分");
             var mission = clear["response"]!["updatedResources"]!["userLiveMissions"]![0]!;
+            var honorMission = clear["response"]!["updatedResources"]!["userHonorMissions"]![0]!;
+            check(honorMission["achievedMissionIds"]!.AsArray().Single()!.GetValue<int>() == 10001 && honorMission["userId"] == null,
+                "Easy FC 达成只在本次 HTTP 响应提示且省略账号字段");
             check(mission["achievedMissionIds"]!.AsArray().Single()!.GetValue<int>() == 1 && mission["userId"] == null,
                 "Live HTTP 结算提示本次新达成 ID 并省略用户 ID");
             check(clear["response"]!["updatedResources"]!["userBeginnerMissionV2s"]![0]!["isNewAchieved"]!.GetValue<bool>(),
@@ -119,6 +126,9 @@ internal static class LiveHttpChecks
             "含 GOOD 且没有 BAD/MISS 的结算不算全连");
         check(great["fullComboFlg"]!.GetValue<bool>() && !great["fullPerfectFlg"]!.GetValue<bool>(),
             "GREAT 保留全连但不算 AP");
+        check(store.Read(1)!.Data.userHonorMissions.Single().progress == 1 &&
+            great["updatedResources"]!["userHonorMissions"]![0]!["achievedMissionIds"]!.AsArray().Count == 0,
+            "同曲再次 FC 不重复累计称号进度或提示达成");
         check(good["updatedResources"]!["userLiveMissions"]![0]!["achievedMissionIds"]!.AsArray().Count == 0 &&
             good["updatedResources"]!["userMissionStatuses"] == null,
             "已达成任务后续结算不重复提示或刷新任务状态");

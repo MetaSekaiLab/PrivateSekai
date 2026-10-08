@@ -142,6 +142,10 @@ public sealed class MissionMasterQueries(MasterData master)
     public MasterHonorMission? GetHonorMission(int id) =>
         master.GetTable<MasterHonorMission>("honorMissions", m => m.id).FindById(id);
 
+    public MasterHonorMission[] GetEasyFullComboMissions() =>
+        master.GetTable<MasterHonorMission>("honorMissions", m => m.id).Rows
+            .Where(m => m.honorMissionType == "easy_full_combo").OrderBy(m => m.id).ToArray();
+
     public MasterLiveMission[] GetFreeLiveMissions(int periodId) =>
         master.GetTable<MasterLiveMission>("liveMissions", m => m.id).Rows
             .Where(m => m.liveMissionPeriodId == periodId && m.liveMissionType == "free")
