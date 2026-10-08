@@ -21,6 +21,8 @@ internal static class UserResponseSerializer
                 new MissionReceiveFormatter(),
                 new CostumeShopFormatter(),
                 new CharacterMissionFormatter(),
+                new FieldFilterFormatter<UserLoginStatus>((s, key) =>
+                    key == "loginStatusUpdatedAt" && s.loginStatus == "offline" && s.loginStatusUpdatedAt == 0),
                 new FieldFilterFormatter<UserHonor>((s, key) => key == "userId" && s.userId == 0),
                 new FieldFilterFormatter<UserProfile>((s, key) => (key == "userId" && s.userId == 0) ||
                     (key == "profileImageId" && s.profileImageType == "leader" && s.profileImageId == 0)),

@@ -2313,6 +2313,20 @@ Server 已接入成功结算的队长次数及角色演出任务，二者与其�
 
 重复角色编队的官方保存尝试返回 400，未进入演出，拒绝原因及其计数规则尚未确认；本地该结算分支暂不支持。Auto 失败、其他评分和达到挑战解锁门槛后的联动仍待核验。
 
+## PUT `/api/user/{userId}/login-status`
+
+- Path：当前 `userId`；无 query。Body：`PutUserLoginStatusRequest.loginStatus`，按 `LoginStatus` 枚举名称发送字符串。
+- 官方接受 `offline`、`online`、`solo_live`、`multi_live`、`challenge_live`、`cheerful_live`、`virtual_live`、`rank_match`、`own_mysekai`、`other_mysekai`，成功返回加密空 map `{}`。客户端虽声明 `SuiteUserCommonResponse`，实测没有 `updatedResources`。未知字符串返回 400、零字节正文。
+- `LoginStatusKeeper.Run` 可立即发送状态，随后轮询维持；轮询间隔为 `max(master 过期秒数 - 60, 120)`。`solo_live`／`challenge_live` 使用 solo 配置，multi／cheerful／rank 使用 multi，virtual 单独配置，其余使用 online；当前四项 master 均为 600 秒。
+- 状态不在自己的 Suite 顶层，而在好友记录的 `userLoginStatus` 中。公开状态包含 `loginStatus` 和 `loginStatusUpdatedAt`，显式 offline 也保留时间戳。关闭 `userConfig.isDisplayLoginStatus` 时，对方收到 offline 且省略时间戳；不会据此覆盖真实状态。
+- 认证、完整 Suite 和好友 parts 查询都会把当前用户重新标记 online。因此 Client 的 `login-status-save` 禁用自身前后 Suite 快照，验证改用另一账号读取好友列表。该行为不意味着所有 GET 接口都已确认会标记在线。
+
+证据：`PutUserLoginStatusAPI.Execute`（RVA `0x6184380`）、请求契约、`LoginStatusKeeper`、`FriendViewData.SetupLoginStatus`（RVA `0x6362f8c`）、master 配置及两个测试账号的官方对照。好友展示代码在超过更新时间加过期时长后显示离线；官方超时后的原始返回值尚待采样，服务端目前保留原始状态和时间戳，由客户端处理已确认的展示过期规则。
+
+Server 在用户事务中保存私有状态，认证和 Suite 入口提交在线状态，查询好友时读取对方当前快照；隐藏状态的时间戳仅在响应层省略。5 组 HTTP 对拍覆盖公开 online／solo_live、显式 offline、隐藏状态及非法输入后的另一账号回读；本地检查另覆盖编码回滚和引用隔离。未证明完整好友资料、超时、所有入口的自动状态变化或游戏场景切换均已对齐。
+
+观察工具另外支持 POST／PUT `/api/user/{userId}/friend/{opponentUserId}`，分别为 `friend-request` 和 `friend-approve`；申请 body 使用 `message` 和 `friendRequestSentLocation`，接受申请无 body。已实测空消息、`id_search` 来源的测试账号申请与接受，成功响应含 `updatedResources`；对方 ID 为正 64 位整数。这两个关系写接口的 Server 尚未实现，需先补齐双账号原子提交及失败恢复，不能用两次单账号保存伪装原子操作。
+
 ## POST `/api/user/{userId}/config`
 
 - Path：当前 `userId`；无 query。Body：`PostUserConfigRequest`，包含可空的 `defaultMusicType`、`isDisplayLoginStatus`、`friendRequestScope`。未指定或 null 表示保留原值，false 则明确关闭在线状态显示。

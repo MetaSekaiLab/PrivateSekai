@@ -26,6 +26,7 @@ public sealed class AuthController(
             return Unauthorized("Invalid credential");
         return Encoded(operations.Restore(userId, templates.CreateUser, () =>
         {
+            home.SetLoginStatus("online");
             home.EnsureShopAreaActionSets();
             user.NormalizeEventBreakTime();
             return templates.GetAuth(JwtSignature.GenSessionToken(userId));

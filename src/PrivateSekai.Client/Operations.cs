@@ -26,6 +26,9 @@ public static class Operations
         ["thumbnail-download"] = new("GET", "<previous-response-thumbnail>", null, "sha256", false),
         ["suite"] = new("GET", "/api/suite/user/{userId}", null, "userRegistration", false),
         ["suite-friends"] = new("GET", "/api/suite/user/{userId}/parts?name=user_friend", null, "now", false),
+        ["login-status-save"] = new("PUT", "/api/user/{userId}/login-status", typeof(PutUserLoginStatusRequest), null, false),
+        ["friend-request"] = new("POST", "/api/user/{userId}/friend/{opponentUserId}", typeof(PostUserFriendRequest), "updatedResources"),
+        ["friend-approve"] = new("PUT", "/api/user/{userId}/friend/{opponentUserId}", null, "updatedResources"),
         ["suite-break-time"] = new("GET", "/api/suite/user/{userId}/parts?name=user_event_break_time", null, "now", false),
         ["account-restrict-info"] = new("GET", "/api/user/{userId}/restrict-info", null, "isRestrictDeviceTransfer", false),
         ["inherit-set"] = new("PUT", "/api/user/{userId}/inherit", typeof(UserIPassInheritRequest), "userInherit"),
@@ -125,6 +128,11 @@ public static class Operations
             {
                 if (!Enum.GetNames<UnitType>().Any(u => u.ToUpperInvariant() == pair.Value))
                     throw new InvalidOperationException("组合路径参数须使用客户端枚举的大写名称。");
+            }
+            else if (pair.Key == "opponentUserId")
+            {
+                if (!long.TryParse(pair.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var opponentId) || opponentId <= 0)
+                    throw new InvalidOperationException("对方用户 ID 必须是正的 64 位整数。");
             }
             else if (pair.Key is "userLiveId" or "userChallengeLiveId" or "inheritId")
             {

@@ -9,6 +9,8 @@ namespace PrivateSekai.Models;
 /// </summary>
 public class NotSuiteData
 {
+    public UserLoginStatus? LoginStatus { get; set; }
+
     /// <summary>
     /// 引继码 ID
     /// </summary>

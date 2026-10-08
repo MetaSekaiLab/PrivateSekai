@@ -44,6 +44,7 @@ MusicMyListContractChecks.Run(Check);
 ProfileHonorContractChecks.Run(Check);
 MusicVideoContractChecks.Run(Check);
 UserConfigContractChecks.Run(Check);
+SocialContractChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
     "sensitive-diagnostic-placeholder", new IOException("sensitive-diagnostic-placeholder")))!;
 Check(networkFailure["httpRequestError"]!.GetValue<string>() == "SecureConnectionError" &&
@@ -177,6 +178,8 @@ if (args is ["--replay-challenge-play-day" or "--replay-challenge-stage", var da
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(dayCaptureClock));
 if (args is ["--replay-material-exchange" or "--replay-event-exchange", var exchangeClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(MaterialExchangeReplay.Clock(exchangeClockCapture));
+if (args is ["--replay-login-status", _, var observerClockPath, _])
+    builder.Services.AddSingleton(LoginStatusReplay.Clock(observerClockPath));
 builder.Services.AddControllers().AddApplicationPart(typeof(DeckController).Assembly)
     .ConfigureApplicationPartManager(manager => manager.FeatureProviders.Add(new TestedControllers()));
 await using var app = builder.Build();
@@ -289,6 +292,13 @@ try
     {
         using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await UserConfigReplay.Run(client, readback, store, configPath, configOutput);
+        return;
+    }
+    if (args is ["--replay-login-status", var statusPath, var observerPath, var statusOutput])
+    {
+        using var observer = new ProtocolClient(new TargetConfiguration { BaseUrl = config.BaseUrl, UserId = 2 },
+            directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await LoginStatusReplay.Run(client, observer, store, statusPath, observerPath, statusOutput);
         return;
     }
     if (args is ["--replay-profile-honor", var honorPath, _, var honorOutput])
@@ -685,7 +695,7 @@ sealed class TestedControllers : Microsoft.AspNetCore.Mvc.ApplicationParts.IAppl
     public void PopulateFeature(IEnumerable<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPart> parts,
         Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)
     {
-        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(MusicVideoController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(ProfileHonorController), typeof(UserConfigController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
+        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(MusicVideoController), typeof(HomeController), typeof(LoginStatusController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(ProfileHonorController), typeof(UserConfigController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
         foreach (var controller in feature.Controllers.Where(c => !tested.Contains(c.AsType())).ToArray())
             feature.Controllers.Remove(controller);
     }

@@ -9,6 +9,11 @@ namespace PrivateSekai.Modules.Home;
 
 public sealed class HomeService(UserSession user)
 {
+    public void SetLoginStatus(string status) => user.Private.LoginStatus = new UserLoginStatus
+    {
+        loginStatus = status, loginStatusUpdatedAt = user.Now
+    };
+
     private static readonly Dictionary<int, int[]> FixedShopActionSetsByArea = new()
     {
         [3] = [4, 384, 2002, 2005],
