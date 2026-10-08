@@ -64,11 +64,28 @@ public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore
         }
     }
 
-    public void UpdateProfile(UserProfile newProfile)
+    public int UpdateProfile(PutUserProfileRequest request)
     {
-        if (user.Data.userProfile == null) return;
-        user.Data.userProfile = newProfile;
+        if (request.profileImageType == "leader")
+        {
+            if (request.profileImageId != null) return 400;
+        }
+        else
+        {
+            if (request.profileImageId == null) return 400;
+            var card = (user.Data.userCards ?? []).SingleOrDefault(c => c.cardId == request.profileImageId);
+            if (card == null) return 404;
+            if (request.profileImageType == "card_after_special_training" && card.specialTrainingStatus != "done")
+                return 409;
+        }
+        if (user.Data.userProfile == null) return 200;
+        user.Data.userProfile = new UserProfile
+        {
+            userId = user.UserId, word = request.word, twitterId = request.twitterId,
+            profileImageType = request.profileImageType, profileImageId = request.profileImageId ?? 0
+        };
         user.MarkChanged(nameof(SuiteUser.userProfile));
+        return 200;
     }
 
     public void SaveCustomProfile(

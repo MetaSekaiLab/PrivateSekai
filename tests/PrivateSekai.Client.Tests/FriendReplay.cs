@@ -32,7 +32,7 @@ internal static class FriendReplay
             throw new InvalidOperationException("需要好友写入样本。");
         var rejected = official["status"]?.GetValue<string>() == "stopped";
         var expectedStatus = (rejected ? official["lastHttpStatus"] : official["httpStatus"])!.GetValue<int>();
-        if (rejected && (official["failurePhase"]?.GetValue<string>() != "request" || expectedStatus is not (400 or 409)))
+        if (rejected && (official["failurePhase"]?.GetValue<string>() != "request" || expectedStatus is not (400 or 404 or 409)))
             throw new InvalidOperationException("需要成功或已收到明确拒绝的记录。");
         long Map(long id) => id == input["callerId"]!.GetValue<long>() ? 1 : id == input["peerId"]!.GetValue<long>() ? 2 : id;
         void Remap(JsonNode? node, long owner)
@@ -84,7 +84,7 @@ internal static class FriendReplay
         JsonNode? Clean(JsonNode? source, bool includeStatus)
         {
             var result = caller.Redactor.Clean(source);
-            if (result is not JsonObject obj || obj.ContainsKey("httpStatus")) return result;
+            if (result is not JsonObject obj || obj.ContainsKey("httpStatus") || obj.ContainsKey("format")) return result;
             var selected = new JsonObject();
             if (operation == "profile-save" && obj.ContainsKey("userProfile"))
                 selected["userProfile"] = obj["userProfile"]!.DeepClone();

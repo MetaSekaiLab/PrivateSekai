@@ -70,24 +70,24 @@ public sealed class ProfileController(UserOperation operations, UserSession user
     /// 更新玩家个人资料中的留言、Twitter ID 和头像显示信息。客户端在个人资料页离开或保存时检测到资料字段变化后提交，成功后合并返回的用户资源差异。
     /// </summary>
     [HttpPut("api/user/{userId}/profile")]
+    [PrskEmptyErrorResponse]
     public IActionResult HandleUserProfile(long userId, [FromBody] PutUserProfileRequest request)
     {
-        return Encoded(operations.Execute(userId, () =>
+        if (request.profileImageType is not ("leader" or "card_before_special_training" or "card_after_special_training"))
         {
-            profiles.UpdateProfile(new UserProfile
-            {
-                userId = userId,
-                word = request.word,
-                twitterId = request.twitterId,
-                profileImageType = request.profileImageType,
-                profileImageId = request.profileImageId ?? 0
-            });
-
-            return new SuiteUserCommonResponse
-            {
-                updatedResources = user.BuildRefresh()
-            };
-        }));
+            Response.StatusCode = 400;
+            return Encoded([]);
+        }
+        var status = 200;
+        var bytes = operations.Execute(userId, () =>
+        {
+            status = profiles.UpdateProfile(request);
+            return status == 200
+                ? (object)new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() }
+                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
+        });
+        Response.StatusCode = status;
+        return Encoded(bytes);
     }
 
 }

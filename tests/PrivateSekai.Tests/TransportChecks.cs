@@ -41,6 +41,7 @@ internal static class TransportChecks
     {
         var state = TestUsers.Create(1);
         state.Data.userProfile = new UserProfile { word = "before" };
+        state.Data.userCards = [new() { cardId = 7 }];
         var store = new MemoryUserStore();
         store.Save(1, state);
         using var provider = TestUsers.Provider(store);
@@ -54,7 +55,7 @@ internal static class TransportChecks
         controller.ControllerContext = new ControllerContext { HttpContext = context };
         using var originalBody = new MemoryStream();
         context.Response.Body = originalBody;
-        var request = new PutUserProfileRequest { word = "profile-fixture", profileImageType = "card", profileImageId = 7 };
+        var request = new PutUserProfileRequest { word = "profile-fixture", profileImageType = "card_before_special_training", profileImageId = 7 };
         var ciphertext = PrskCrypto.PrskEnc(request);
         context.Request.Method = HttpMethods.Put;
         context.Request.ContentType = "application/octet-stream";

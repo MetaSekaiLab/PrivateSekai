@@ -27,6 +27,7 @@ internal static class Program
         DeckMissionChecks.Run();
         MusicVideoChecks.Run();
         UserConfigChecks.Run();
+        ProfileChecks.Run();
         LoginStatusChecks.Run();
         FriendChecks.Run();
         PairedUserOperationChecks.Run();

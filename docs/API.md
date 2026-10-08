@@ -306,7 +306,20 @@ PATCH 保留名称和列表记录，只清空歌曲；重复重置空列表返�
 
 - `updatedResources`: `SuiteUser` 局部更新数据；客户端成功后会合并到本地用户数据，主要用于刷新 `userProfile` 相关状态。
 
-官方样本已确认持有卡牌的 `card_before_special_training` 保存，以及 `leader` 且省略 `profileImageId` 的恢复。响应和回读的 `userProfile` 保留当前 `userId`；恢复队长头像后省略 `profileImageId`。两组 HTTP 对拍比较了资料响应、当前账号回读及另一账号好友列表，均无差异。显式 `leader` 加 `profileImageId=0` 返回 400、空错误码与空错误消息，独立回读确认未修改资料；这一拒绝分支尚未实现，其他非法值及特训后头像仍待采样。
+官方样本已确认持有卡牌的 `card_before_special_training` 保存、特训完成卡牌的 `card_after_special_training` 保存，以及 `leader` 且省略 `profileImageId` 的恢复。响应和回读的 `userProfile` 保留当前 `userId`；恢复队长头像后省略 `profileImageId`。头像选择与好友资料中的主队队长卡分开，三个头像类型均已验证这一映射。
+
+头像参数边界如下；除非法类型外，错误体均为 `ClientErrorResponse`，包含对应 `httpStatus`、空 `errorCode` 与空 `errorMessage`。
+
+| 请求组合 | 官方结果 |
+| --- | --- |
+| 非枚举类型 `card` | 400，零字节正文 |
+| `leader` 附带 ID（已采样 0 和已持有卡牌） | 400 |
+| 特训前自选头像缺少 ID | 400 |
+| 特训前自选头像 ID 为 0 或未持有的有效卡牌 | 404 |
+| 不可特训、状态为 not_doing 的卡牌选特训后头像 | 409 |
+| 特训完成的卡牌选特训后头像 | 200 |
+
+Client 的 `profile-save` 保留可空 ID，不把缺失值补成 0。Server 在事务中校验头像与卡牌状态，拒绝时不更新资料；特训后头像按 `specialTrainingStatus=done` 放行。新补 8 组 HTTP 对拍覆盖表中拒绝、特训后成功与恢复，比较错误体或资料响应、本人独立回读及另一账号好友列表，均无差异。先前两组特训前头像与恢复对拍仍保留；编码失败回滚另有业务检查。未特训但可特训的高稀有度卡牌、生日卡、空字符串／缺失类型、留言校验及错误优先级仍需样本，不能视为整个个人资料接口已完全核验。
 
 ### 客户端请求时机
 
@@ -2338,7 +2351,7 @@ Server 在用户事务中保存私有状态，认证和 Suite 入口提交在线
 - 无已有关系时，接收方 `friendRequestScope=reject` 返回 409，错误码 `opponent_friend_request_scope_reject`；`id_search` 范围接受同名来源，`multi_live` 来源返回 409、`opponent_friend_request_scope_id_search`。错误体 errorMessage 为空；双方独立回读没有新关系。实现按是否为 id_search 判定来源匹配，其余来源尚未逐项联网采样。
 - 范围允许时，双方已经是好友再 POST 或 PUT 返回 409；命中已采样 NG 词的消息返回 400。这些样本的错误体为 `httpStatus`、空 `errorCode`、空 `errorMessage`，独立回读无关系变化。客户端 NG 检查按 `String.Contains` 匹配 master 词条；消息上限来自 master 的 30 字符配置。
 - POST 的范围校验先于已有关系处理：接收方改为 reject 后，原申请重发及反向申请都返回范围错误，保留原消息和期限；已是好友时也优先返回范围错误，id_search 与 multi_live 不匹配同样如此。直接 PUT 接受已有申请不检查拒收新申请的配置，双方都为 reject 时仍可接受。
-- 好友卡牌仅含 `cardId`、`level`、`masterRank`、`specialTrainingStatus`、`defaultImage`。默认队长头像和特训前自选卡牌头像均已对拍：`userProfile` 描述头像选择，`userCard` 始终取当前主队队长卡，即使自选头像是另一张卡。客户端 `FriendViewData` 将其构造成 `LeaderCardInfo`。当前资料覆盖空称号、空边框、未设置 Mysekai 访问；查询使用对方当前快照，响应投影不写回存档。未接受记录省略 `approvedAt`。
+- 好友卡牌仅含 `cardId`、`level`、`masterRank`、`specialTrainingStatus`、`defaultImage`。默认队长头像及特训前／后的自选卡牌头像均已对拍：`userProfile` 描述头像选择，`userCard` 始终取当前主队队长卡，即使自选头像是另一张卡。客户端 `FriendViewData` 将其构造成 `LeaderCardInfo`。当前资料覆盖空称号、空边框、未设置 Mysekai 访问；查询使用对方当前快照，响应投影不写回存档。未接受记录省略 `approvedAt`。
 
 证据：`PostUserFriendRequestAPI.Execute`（RVA `0x6179364`）、`PutUserFriendApprovalAPI.Execute`（RVA `0x6179668`）、请求／响应契约、申请弹窗、NG 检查 lambda（RVA `0x627e174`）、master 配置及三个测试账号的官方写入与双方回读。
 
@@ -2348,7 +2361,7 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 
 范围优先级再以 5 组 HTTP 对拍确认：已有申请重发、反向 POST、直接 PUT 接受、已是好友的 reject／id_search 拒绝。修正了先反向接受或先返回通用好友冲突而跳过范围校验的问题。申请被拒绝后双方关系不变；直接接受则原子提交双方 friend 状态。
 
-待核验：自身或未知目标、其他来源、无效消息与范围限制的错误优先级、已拒绝或过期申请、数量上限，以及特训后自选头像、称号、边框、Mysekai 资料映射。未知状态保留未支持分支，不能将当前实现视为完整好友系统。
+待核验：自身或未知目标、其他来源、无效消息与范围限制的错误优先级、已拒绝或过期申请、数量上限，以及称号、边框、Mysekai 资料映射。未知状态保留未支持分支，不能将当前实现视为完整好友系统。
 
 ## DELETE `/api/user/{userId}/friend/{opponentUserId}?type={type}`
 

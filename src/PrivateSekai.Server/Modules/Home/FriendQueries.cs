@@ -20,7 +20,7 @@ public sealed class FriendQueries(UserOperation operations)
             if (opponent == null) continue;
             var data = opponent.Data;
             var profile = data.userProfile ?? throw new InvalidOperationException("缺少好友个人资料。");
-            if (profile.profileImageType is not ("leader" or "card_before_special_training"))
+            if (profile.profileImageType is not ("leader" or "card_before_special_training" or "card_after_special_training"))
                 throw new NotSupportedException("尚未核验该好友头像类型。");
             var cardId = (data.userDecks ?? []).Single(d => d.deckId == data.userGamedata.deck).leader;
             var card = (data.userCards ?? []).Single(c => c.cardId == cardId);
