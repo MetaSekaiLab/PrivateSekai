@@ -1,6 +1,7 @@
 extern alias game;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
 using PrivateSekai.Protocol;
@@ -26,6 +27,7 @@ public sealed class FriendQueries(UserOperation operations, MasterData master)
             var cardId = (data.userDecks ?? []).Single(d => d.deckId == data.userGamedata.deck).leader;
             var card = (data.userCards ?? []).Single(c => c.cardId == cardId);
             var honors = data.userProfileHonors ?? [];
+            var missionTypes = new HashSet<string>(StringComparer.Ordinal);
             foreach (var honor in honors)
             {
                 if (honor.profileHonorType != "normal")
@@ -33,7 +35,7 @@ public sealed class FriendQueries(UserOperation operations, MasterData master)
                 var definition = master.GetTable<MasterHonor>("honors", h => h.id).FindById(honor.honorId)
                     ?? throw new InvalidOperationException("缺少好友称号 master 定义。");
                 if (!string.IsNullOrEmpty(definition.honorMissionType))
-                    throw new NotSupportedException("尚未核验好友称号任务资料映射。");
+                    missionTypes.Add(definition.honorMissionType);
             }
             if (data.userMysekaiVisitSetting != null || (data.userPlayerFrames ?? []).Length != 0)
                 throw new NotSupportedException("尚未核验好友 Mysekai 设置或玩家边框映射。");
@@ -43,7 +45,9 @@ public sealed class FriendQueries(UserOperation operations, MasterData master)
                 userProfile = new UserProfile { userId = friend.opponentUserId, profileImageType = profile.profileImageType, profileImageId = profile.profileImageId },
                 userCard = DumpSerializer.Deserialize<UserCard>(DumpSerializer.Serialize(card)),
                 userProfileHonors = DumpSerializer.Deserialize<UserProfileHonor[]>(DumpSerializer.Serialize(honors)),
-                userHonorMissions = [], userPlayerFrames = [],
+                userHonorMissions = (data.userHonorMissions ?? []).Where(m => missionTypes.Contains(m.honorMissionType))
+                    .Select(m => new UserHonorMission { honorMissionType = m.honorMissionType, progress = m.progress }).ToArray(),
+                userPlayerFrames = [],
                 isMysekaiOwnerAcceptVisitForFriend = false
             };
             if (data.userConfig?.isDisplayLoginStatus == false)

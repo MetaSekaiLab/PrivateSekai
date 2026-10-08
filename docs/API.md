@@ -2359,7 +2359,7 @@ Server 在用户事务中保存私有状态，认证和 Suite 入口提交在线
 - 无已有关系时，接收方 `friendRequestScope=reject` 返回 409，错误码 `opponent_friend_request_scope_reject`；`id_search` 范围接受同名来源，`multi_live` 来源返回 409、`opponent_friend_request_scope_id_search`。错误体 errorMessage 为空；双方独立回读没有新关系。实现按是否为 id_search 判定来源匹配，其余来源尚未逐项联网采样。
 - 范围允许时，双方已经是好友再 POST 或 PUT 返回 409；命中已采样 NG 词的消息返回 400。这些样本的错误体为 `httpStatus`、空 `errorCode`、空 `errorMessage`，独立回读无关系变化。客户端 NG 检查按 `String.Contains` 匹配 master 词条；消息上限来自 master 的 30 字符配置。
 - POST 的范围校验先于已有关系处理：接收方改为 reject 后，原申请重发及反向申请都返回范围错误，保留原消息和期限；已是好友时也优先返回范围错误，id_search 与 multi_live 不匹配同样如此。直接 PUT 接受已有申请不检查拒收新申请的配置，双方都为 reject 时仍可接受。
-- 好友卡牌仅含 `cardId`、`level`、`masterRank`、`specialTrainingStatus`、`defaultImage`。默认队长头像及特训前／后的自选卡牌头像均已对拍：`userProfile` 描述头像选择，`userCard` 始终取当前主队队长卡，即使自选头像是另一张卡。客户端 `FriendViewData` 将其构造成 `LeaderCardInfo`。当前资料覆盖无任务的普通称号、空边框、未设置 Mysekai 访问；查询使用对方当前快照，响应投影不写回存档。未接受记录省略 `approvedAt`。
+- 好友卡牌仅含 `cardId`、`level`、`masterRank`、`specialTrainingStatus`、`defaultImage`。默认队长头像及特训前／后的自选卡牌头像均已对拍：`userProfile` 描述头像选择，`userCard` 始终取当前主队队长卡，即使自选头像是另一张卡。客户端 `FriendViewData` 将其构造成 `LeaderCardInfo`。当前资料覆盖普通称号及其任务进度、空边框、未设置 Mysekai 访问；查询使用对方当前快照，响应投影不写回存档。未接受记录省略 `approvedAt`。
 
 证据：`PostUserFriendRequestAPI.Execute`（RVA `0x6179364`）、`PutUserFriendApprovalAPI.Execute`（RVA `0x6179668`）、请求／响应契约、申请弹窗、NG 检查 lambda（RVA `0x627e174`）、master 配置及三个测试账号的官方写入与双方回读。
 
@@ -2369,9 +2369,13 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 
 范围优先级再以 5 组 HTTP 对拍确认：已有申请重发、反向 POST、直接 PUT 接受、已是好友的 reject／id_search 拒绝。修正了先反向接受或先返回通用好友冲突而跳过范围校验的问题。申请被拒绝后双方关系不变；直接接受则原子提交双方 friend 状态。
 
-待核验：自身或未知目标、其他来源、无效消息与范围限制的错误优先级、已拒绝或过期申请、数量上限，以及任务／羁绊称号、边框、Mysekai 资料映射。未知状态保留未支持分支，不能将当前实现视为完整好友系统。
+待核验：自身或未知目标、其他来源、无效消息与范围限制的错误优先级、已拒绝或过期申请、数量上限，以及多种任务称号、羁绊称号、边框、Mysekai 资料映射。未知状态保留未支持分支，不能将当前实现视为完整好友系统。
 
-好友普通称号补充：当 master 未定义 honorMissionType 时，userProfileHonors 按当前装备返回，保留槽位、称号等级、背景与文字，未设置的可选字段仍省略；userHonorMissions 为空，不复制账号的其他称号任务。单称号、双称号、带背景／文字及清空共 4 组双账号 HTTP 对拍无差异，响应投影与存档引用隔离。FriendViewData 使用两张列表构造 HonorInfo；HonorUtility.TryFindUserHonorMission（RVA 0x4daf600）及其 lambda（RVA 0x4db2a40）按 master 的 honorMissionType 匹配任务。任务称号与羁绊称号尚无好友样本，当前仍明确保留未支持分支。
+好友普通称号补充：`userProfileHonors` 按当前装备返回，保留槽位、称号等级、背景与文字，未设置的可选字段仍省略。master 未定义 `honorMissionType` 时不关联任务。单称号、双称号、带背景／文字及清空共 4 组双账号 HTTP 对拍无差异，响应投影与存档引用隔离。
+
+好友任务进度补充：`FriendViewData` 使用两张列表构造 `HonorInfo`；`HonorUtility.TryFindUserHonorMission`（RVA `0x4daf600`）及其 lambda（RVA `0x4db2a40`）按 master 的 `honorMissionType` 匹配任务。官方称号 3009 样本仅返回 `userHonorMissions=[{honorMissionType:"easy_full_combo",progress:5}]`，省略 `userId`、`achievedMissionIds`，不带账号其他任务。单独装备、混合普通称号、清空共 3 组双账号 HTTP 对拍通过，清空后任务列表为空。Server 依据装备关联类型投影当前进度；多种进度称号并存时的排序、缺失任务记录、羁绊称号仍需样本。
+
+获取样本时新增四首不同 Easy FC，进度从 1 逐次增至 5。跨门槛结算响应临时携带 `achievedMissionIds=[10001]`，随后 Suite 回读为空；任务状态为 `achieved`，领取后为 `received` 并获得称号 3009 等级 1，领取 HTTP 对拍通过。本地 Live 尚未实现此类称号进度累计，好友映射验证不代表演出达成链路已完成。
 
 ## DELETE `/api/user/{userId}/friend/{opponentUserId}?type={type}`
 

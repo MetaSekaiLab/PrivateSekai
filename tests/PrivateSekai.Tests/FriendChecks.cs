@@ -98,6 +98,21 @@ internal static class FriendChecks
         projection.userProfileHonors[0].honorLevel = 9;
         Check.That(store.Read(2)!.Data.userProfileHonors[0].honorLevel == 1,
             "好友称号投影与对方存档引用隔离");
+        avatar.Data.userProfileHonors = [new() { seq = 1, profileHonorType = "normal", honorId = 2, honorLevel = 1 }];
+        avatar.Data.userHonorMissions = [new() { userId = 2, honorMissionType = "fixture_mission", progress = 42, achievedMissionIds = [123] },
+            new() { honorMissionType = "unrelated", progress = 99 }];
+        store.Save(2, avatar);
+        projection = queries.Project(store.Read(1)!.Data).userFriends.Single().opponentUserFriendProfile;
+        Check.That(projection.userHonorMissions.Length == 1 && projection.userHonorMissions[0].progress == 42 &&
+            projection.userHonorMissions[0].achievedMissionIds == null && projection.userHonorMissions[0].userId == 0,
+            "好友称号仅映射装备对应的任务类型与进度，不输出达成提示或账号字段");
+        projection.userHonorMissions[0].progress = 0;
+        Check.That(store.Read(2)!.Data.userHonorMissions[0].progress == 42,
+            "好友任务进度投影不修改对方存档");
+        avatar.Data.userProfileHonors = [];
+        store.Save(2, avatar);
+        Check.That(queries.Project(store.Read(1)!.Data).userFriends.Single().opponentUserFriendProfile.userHonorMissions.Length == 0,
+            "移除任务称号后好友资料不再返回任务进度");
         foreach (var id in new long[] { 1, 2 })
         {
             var state = store.Read(id)!;
@@ -291,9 +306,9 @@ internal static class FriendChecks
         Check.That(store.Read(1)!.Data.userFriends.Single(f => f.opponentUserId == 2).friendStatus == "friend" &&
             store.Read(2)!.Data.userFriends.Single().friendStatus == "friend", "好友状态下拒绝失败保留双方关系");
         var missionHonor = store.Read(2)!;
-        missionHonor.Data.userProfileHonors[0].honorId = 2;
+        missionHonor.Data.userProfileHonors = [new() { seq = 1, profileHonorType = "bonds", honorId = 2 }];
         store.Save(2, missionHonor);
         Check.Throws<NotSupportedException>(() => queries.Project(store.Read(1)!.Data),
-            "未采样的任务称号不伪造空任务映射");
+            "未采样的羁绊称号不伪造普通称号映射");
     }
 }
