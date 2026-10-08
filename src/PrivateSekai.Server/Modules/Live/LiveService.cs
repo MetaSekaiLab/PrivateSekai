@@ -53,8 +53,12 @@ public sealed class LiveService(
         return 200;
     }
 
-    public UserLive StartUserLive(UserLiveRequest request)
+    public (int Status, string ErrorCode, UserLive? Response) StartUserLive(UserLiveRequest request)
     {
+        if (master.IsLimitedMusicOutOfTerm(request.musicId, user.Now))
+            return (400, "limited_time_music_out_of_term", null);
+        if (!master.HasMusicCategory(request.musicId, request.musicCategoryName))
+            return (404, "", null);
         if (request.isAuto && request.boostCount <= 0)
             throw new ArgumentException("Auto Live requires boost consumption.");
         var userLiveId = Guid.NewGuid().ToString();
@@ -74,13 +78,13 @@ public sealed class LiveService(
 
         user.NormalizeEventBreakTime();
         user.MarkChanged(nameof(SuiteUser.userEventBreakTime));
-        return new UserLive
+        return (200, "", new UserLive
         {
             userLiveId = userLiveId,
             skills = BuildIngameLotterySkills(request.deckId),
             comboCutins = [],
             isInBreakTime = false
-        };
+        });
     }
 
     public LiveClearResponse ClearUserLive(string userLiveId, UserLiveClearRequest request)

@@ -160,6 +160,11 @@ if (args is ["--replay-honor-mission", var honorMissionCapture, var honorMission
 }
 if (args is ["--replay-music-video", _, var videoMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, videoMaster));
+if (args is ["--replay-live-start-rejection", var startCapture, _, var startMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, startMaster));
+    builder.Services.AddSingleton(LiveStartReplay.Clock(startCapture));
+}
 if (args is ["--replay-friend", var friendManifest, var friendMaster, _])
 {
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, friendMaster));
@@ -409,6 +414,12 @@ try
     {
         using var honorReadback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await LiveReplay.Run(client, store, liveStartPath, liveClearPath, liveOutput, args[0] == "--replay-live-honor" ? honorReadback : null);
+        return;
+    }
+    if (args is ["--replay-live-start-rejection", var rejectedStart, var startReadback, _, var startOutput])
+    {
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await LiveStartReplay.Run(client, readback, store, rejectedStart, startReadback, startOutput);
         return;
     }
     if (args is ["--replay-story", var storyPath, _, var storyOutput])

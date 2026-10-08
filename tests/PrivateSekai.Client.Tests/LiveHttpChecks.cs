@@ -20,6 +20,8 @@ internal static class LiveHttpChecks
         var tables = new Dictionary<string, string>
         {
             ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
+            ["musicCategories"] = """[{"musicId":7,"musicCategoryName":"original"}]""",
+            ["limitedTimeMusics"] = "[]",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
             ["boosts"] = """[{"id":1,"costBoost":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
@@ -36,7 +38,7 @@ internal static class LiveHttpChecks
         var scenario = new Scenario { Steps =
         [
             new() { Operation = "system" },
-            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
             new() { Operation = "live-clear", UseLiveSession = true, DelayBeforeMs = 1,
                 Body = JsonNode.Parse("""{"score":150,"perfectCount":10,"maxCombo":10,"life":1000,"ingameCutinCharacterArchiveVoiceGroupIds":[4]}""")!.AsObject(),
                 Expect = new() { ["/fullPerfectFlg"] = JsonValue.Create(true), ["/score"] = JsonValue.Create(150) } },
@@ -113,10 +115,10 @@ internal static class LiveHttpChecks
         await client.Send(new() { Operation = "system" });
         var judgments = new Scenario { Steps =
         [
-            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
             new() { Operation = "live-clear", UseLiveSession = true,
                 Body = JsonNode.Parse("""{"score":150,"perfectCount":8,"goodCount":2,"maxCombo":8,"life":1000}""")!.AsObject() },
-            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
             new() { Operation = "live-clear", UseLiveSession = true,
                 Body = JsonNode.Parse("""{"score":150,"perfectCount":8,"greatCount":2,"maxCombo":10,"life":1000}""")!.AsObject() }
         ] };

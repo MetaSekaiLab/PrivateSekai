@@ -1736,7 +1736,11 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 - Body `musicCategoryName`: 曲目分类名，例如普通曲或其他 live mode 对应分类。
 - Body `customMusicScoreId`: 自制谱面 ID；普通曲可为空。
 
-开局拒绝补充：已持有的限时曲在 `limitedTimeMusics` 期限外仍返回 400／`limited_time_music_out_of_term`。另一常驻曲的 `musicCategories` 仅有 `original`／`mv_2d`，传 `mv` 返回 404 空错误码，改为 `original` 后成功。拒绝后的独立回读确认成绩、称号任务、材料、Auto 次数及 boost 数量未变；自然恢复时间字段不作为不变性证明。这两项官方限制尚未加入本地开局实现，完整校验顺序和时间边界仍待补充。
+开局拒绝补充：已持有的限时曲在 `limitedTimeMusics` 期限外仍返回 400／`limited_time_music_out_of_term`。另一常驻曲的 `musicCategories` 仅有 `original`／`mv_2d`，传 `mv` 返回 404 空错误码，改为 `original` 后成功。两者错误响应均包含 `httpStatus`、`errorCode`、空 `errorMessage`。拒绝后的独立回读确认持有曲目、音源、成绩、任务、材料、Auto 次数及 boost 数量未变；自然恢复时间字段不作为不变性证明。
+
+Server 已在创建会话前按 master 校验期限和分类，拒绝不修改用户状态，也不创建私有 Live 会话。Client 检查支持 `--replay-live-start-rejection`，两组官方错误响应与独立回读对拍通过，另检查本地完整用户状态及会话数量不变。常规成功开局与结算的 HTTP 检查继续通过。
+
+时间规则来自 `MusicUtility.CheckLimitedTimeMusicExpiredAndShowDialog` 调用的 `TimeUtility.IsWithinTime`：包含开始、不含结束；结束为 0 且开始非 0 时仅检查开始，两者均为 0 时不开放。服务端沿用该规则，本地边界检查通过，但尚无官方恰好位于时间边界的样本。`ScreenLayerFreeLiveFinalConfirmation` 通过 `LiveUtility.GetMusicCategoryByLiveMode` 取分类并传入 `PostUserLiveAPI`。本轮未确认多个条件同时无效时的官方优先级、空分类、自定义谱面及其他开局限制；不得据此宣称开局校验完整。
 
 ### 返回字段
 

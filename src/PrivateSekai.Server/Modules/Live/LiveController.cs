@@ -30,12 +30,19 @@ public sealed class LiveController(UserOperation operations, UserSession user, L
     [HttpPost("api/user/{userId}/live")]
     public IActionResult HandleUserLiveStart(long userId, [FromBody] UserLiveRequest request)
     {
-        return Encoded(operations.Execute(userId, () =>
+        var status = 200;
+        var bytes = operations.Execute(userId, () =>
         {
-            var response = live.StartUserLive(request);
+            var result = live.StartUserLive(request);
+            status = result.Status;
+            if (status != 200)
+                return (object)new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = result.ErrorCode, ErrorMessage = "" };
+            var response = result.Response!;
             response.updatedResources = new UpdatedResources { userEventBreakTime = user.Data.userEventBreakTime };
             return response;
-        }));
+        });
+        Response.StatusCode = status;
+        return Encoded(bytes);
     }
 
     /// <summary>

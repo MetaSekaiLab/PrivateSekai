@@ -11,6 +11,16 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class LiveMasterQueries(MasterData master)
 {
+    public bool IsLimitedMusicOutOfTerm(int musicId, long now)
+    {
+        var term = master.GetTable<MasterLimitedTimeMusic>("limitedTimeMusics").Rows.SingleOrDefault(m => m.musicId == musicId);
+        return term != null && (term.startAt > now || (term.endAt == 0 ? term.startAt == 0 : now >= term.endAt));
+    }
+
+    public bool HasMusicCategory(int musicId, string category) =>
+        master.GetTable<MasterMusicCategory>("musicCategories").Rows
+            .Any(c => c.musicId == musicId && c.musicCategoryName == category);
+
     public bool IsMusicVideoSelection(int musicId, int vocalId, string category) =>
         master.GetTable<MasterMusicVocal>("musicVocals", v => v.id).FindById(vocalId)?.musicId == musicId &&
         master.GetTable<MasterMusicCategory>("musicCategories").Rows

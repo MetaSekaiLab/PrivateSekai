@@ -39,6 +39,12 @@ internal static class FeatureChecks
         {
             WriteMaster(directory);
             var master = new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
+            var liveMaster = new LiveMasterQueries(master);
+            Check.That(liveMaster.IsLimitedMusicOutOfTerm(8, 9) && !liveMaster.IsLimitedMusicOutOfTerm(8, 10) &&
+                !liveMaster.IsLimitedMusicOutOfTerm(8, 19) && liveMaster.IsLimitedMusicOutOfTerm(8, 20),
+                "限时曲按客户端时间函数采用包含开始、不含结束的区间");
+            Check.That(!liveMaster.IsLimitedMusicOutOfTerm(7, 20) && !liveMaster.IsLimitedMusicOutOfTerm(9, 20) &&
+                liveMaster.IsLimitedMusicOutOfTerm(10, 20), "非限时曲不受限，零结束时间沿用客户端规则");
             var store = new MemoryUserStore();
             using var provider = new ServiceCollection().AddPrivateSekai()
                 .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
@@ -128,10 +134,23 @@ internal static class FeatureChecks
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
         var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
         var live = scope.ServiceProvider.GetRequiredService<LiveService>();
+        var unchanged = DumpSerializer.Serialize(store.Read(3)!.Data);
+        operation.Execute(3, () =>
+        {
+            var expired = live.StartUserLive(new UserLiveRequest { musicId = 8, musicCategoryName = "original" });
+            Check.That(expired.Status == 400 && expired.ErrorCode == "limited_time_music_out_of_term" && expired.Response == null,
+                "过期限时曲开局返回专用错误");
+            var invalid = live.StartUserLive(new UserLiveRequest { musicId = 7, musicCategoryName = "mv" });
+            Check.That(invalid.Status == 404 && invalid.ErrorCode == "" && invalid.Response == null,
+                "不属于曲目的分类返回空码 404");
+            return null;
+        });
+        Check.That(store.Read(3)!.Private.UserLiveSessions.Count == 0 &&
+            unchanged.SequenceEqual(DumpSerializer.Serialize(store.Read(3)!.Data)), "开局拒绝不创建会话、不修改用户状态");
         var started = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
-            musicId = 7, musicDifficultyId = 71, deckId = 1, boostCount = 1
-        }));
+            musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, boostCount = 1
+        }).Response);
         var liveId = DumpSerializer.Deserialize<UserLive>(started).userLiveId;
         Check.That(store.Read(3)!.Private.UserLiveSessions.ContainsKey(liveId), "开始 Live 保存私有会话");
         var clearRequest = new UserLiveClearRequest
@@ -207,8 +226,8 @@ internal static class FeatureChecks
             "重复结算不重复解锁或改写解锁时间");
         var failedStart = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
-            musicId = 7, musicDifficultyId = 71, deckId = 1, boostCount = 1
-        }));
+            musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, boostCount = 1
+        }).Response);
         var failedId = DumpSerializer.Deserialize<UserLive>(failedStart).userLiveId;
         var failedBytes = operation.Execute(3, () =>
         {
@@ -237,12 +256,12 @@ internal static class FeatureChecks
             "失败结算保留已有最佳成绩，未变化成绩不重复刷新");
         Check.Throws<ArgumentException>(() => operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
-            musicId = 7, musicDifficultyId = 71, deckId = 1, isAuto = true, boostCount = 0
+            musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, isAuto = true, boostCount = 0
         })), "普通 Auto 不接受零体力消耗");
         var autoStart = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
-            musicId = 7, musicDifficultyId = 71, deckId = 1, isAuto = true, boostCount = 1
-        }));
+            musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, isAuto = true, boostCount = 1
+        }).Response);
         var autoId = DumpSerializer.Deserialize<UserLive>(autoStart).userLiveId;
         Check.That((store.Read(3)!.Data.userAutoLive?.count ?? 0) == 0 && store.Read(3)!.Data.userBoost.current == 11,
             "Auto 开局不提前累计次数或扣体力");
@@ -437,6 +456,8 @@ internal static class FeatureChecks
             ["configs"] = """[{"configKey":"rank_up_recover_boost_count","value":"10"},{"configKey":"boost_recovery_max_count","value":"25"},{"configKey":"boost_recovery_second","value":"1800"}]""",
             ["beginnerMissionV2s"] = """[{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
             ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
+            ["musicCategories"] = """[{"musicId":7,"musicCategoryName":"original"},{"musicId":8,"musicCategoryName":"original"}]""",
+            ["limitedTimeMusics"] = """[{"id":1,"musicId":8,"startAt":10,"endAt":20},{"id":2,"musicId":9,"startAt":10,"endAt":0},{"id":3,"musicId":10,"startAt":0,"endAt":0}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
             ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
