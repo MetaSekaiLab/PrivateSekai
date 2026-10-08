@@ -28,15 +28,23 @@ public sealed class MemoryUserStore : IUserStore
         return state?.DeepClone();
     }
 
-    public void Save(long userId, UserState state)
+    public void Save(long userId, UserState state) => SaveMany(new Dictionary<long, UserState> { [userId] = state });
+
+    public void SaveMany(IReadOnlyDictionary<long, UserState> states)
     {
-        if (state.Data.userRegistration?.userId != userId)
-            throw new InvalidOperationException("User identity does not match the store key.");
-        var snapshot = state.DeepClone();
+        var snapshots = states.ToDictionary(p => p.Key, p =>
+        {
+            if (p.Value.Data.userRegistration?.userId != p.Key)
+                throw new InvalidOperationException("User identity does not match the store key.");
+            return p.Value.DeepClone();
+        });
         lock (_gate)
         {
-            _users[userId] = snapshot;
-            _lastId = Math.Max(_lastId, userId);
+            foreach (var (userId, snapshot) in snapshots)
+            {
+                _users[userId] = snapshot;
+                _lastId = Math.Max(_lastId, userId);
+            }
         }
     }
 }

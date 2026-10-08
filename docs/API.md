@@ -2325,7 +2325,9 @@ Server 已接入成功结算的队长次数及角色演出任务，二者与其�
 
 Server 在用户事务中保存私有状态，认证和 Suite 入口提交在线状态，查询好友时读取对方当前快照；隐藏状态的时间戳仅在响应层省略。5 组 HTTP 对拍覆盖公开 online／solo_live、显式 offline、隐藏状态及非法输入后的另一账号回读；本地检查另覆盖编码回滚和引用隔离。未证明完整好友资料、超时、所有入口的自动状态变化或游戏场景切换均已对齐。
 
-观察工具另外支持 POST／PUT `/api/user/{userId}/friend/{opponentUserId}`，分别为 `friend-request` 和 `friend-approve`；申请 body 使用 `message` 和 `friendRequestSentLocation`，接受申请无 body。已实测空消息、`id_search` 来源的测试账号申请与接受，成功响应含 `updatedResources`；对方 ID 为正 64 位整数。这两个关系写接口的 Server 尚未实现，需先补齐双账号原子提交及失败恢复，不能用两次单账号保存伪装原子操作。
+观察工具另外支持 POST／PUT `/api/user/{userId}/friend/{opponentUserId}`，分别为 `friend-request` 和 `friend-approve`；申请 body 使用 `message` 和 `friendRequestSentLocation`，接受申请无 body。已实测空消息、`id_search` 来源的测试账号申请与接受，成功响应含 `updatedResources`；对方 ID 为正 64 位整数。申请方为 `sent_request`，接收方为 `pending_request`，样本到期时间为响应 now 加 7 天；接受后变为 `friend`，增加 `approvedAt` 并保留原到期时间。空消息样本省略 message。
+
+好友资料只返回精简字段；已观察卡牌字段为 cardId、level、masterRank、specialTrainingStatus、defaultImage，不能照搬完整卡牌数据。这两个关系写接口的 Server 尚未实现。底层已提供 `UserOperation.ExecutePair` 和存储 `SaveMany`：固定锁序、响应编码后整批提交、SQLite 同一事务及提交后更新缓存；业务异常、编码失败、第二账号写入失败和版本冲突的本地回滚检查通过。该基础能力不代表好友业务、资料映射和拒绝分支已经验证。
 
 ## POST `/api/user/{userId}/config`
 

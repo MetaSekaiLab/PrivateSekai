@@ -346,6 +346,7 @@ internal static class UserOperationChecks
         public long[] GetUserIds() => inner.GetUserIds();
         public UserState? Read(long userId) => inner.Read(userId);
         public void Save(long userId, UserState state) => inner.Save(userId, state);
+        public void SaveMany(IReadOnlyDictionary<long, UserState> states) => inner.SaveMany(states);
     }
 
     private sealed class FailingStore(IUserStore inner) : IUserStore
@@ -359,6 +360,12 @@ internal static class UserOperationChecks
             if (FailWrites)
                 throw new InvalidOperationException("fixture store failure");
             inner.Save(userId, state);
+        }
+        public void SaveMany(IReadOnlyDictionary<long, UserState> states)
+        {
+            if (FailWrites)
+                throw new InvalidOperationException("fixture store failure");
+            inner.SaveMany(states);
         }
     }
 }

@@ -15,6 +15,32 @@ public sealed class UserOperation(IUserStore store, UserLocks locks, UserSession
     public byte[] Query(long userId, Func<object?> action) =>
         Run(userId, action, null, false);
 
+    public byte[] ExecutePair(long userId, long otherUserId, Func<UserState, object?> action)
+    {
+        EnsureIdle();
+        if (userId == otherUserId)
+            throw new ArgumentException("A paired operation requires two different users.");
+        var firstGate = GetGate(Math.Min(userId, otherUserId));
+        var secondGate = GetGate(Math.Max(userId, otherUserId));
+        lock (firstGate)
+        lock (secondGate)
+        {
+            var state = store.Read(userId) ?? throw new KeyNotFoundException("User not found.");
+            var other = store.Read(otherUserId) ?? throw new KeyNotFoundException("Other user not found.");
+            session.Begin(state, clock.GetUtcNow().ToUnixTimeMilliseconds());
+            try
+            {
+                var response = UserResponseSerializer.Serialize(action(other));
+                store.SaveMany(new Dictionary<long, UserState> { [userId] = state, [otherUserId] = other });
+                return response;
+            }
+            finally
+            {
+                session.End();
+            }
+        }
+    }
+
     // 仅由已验证凭证的账号入口恢复内存中缺失的用户。
     public byte[] Restore(long userId, Func<long, long, UserState> create, Func<object?> action) =>
         Run(userId, action, now => store.Read(userId) ?? create(userId, now), true);

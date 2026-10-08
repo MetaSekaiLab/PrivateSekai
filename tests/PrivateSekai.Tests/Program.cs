@@ -28,6 +28,7 @@ internal static class Program
         MusicVideoChecks.Run();
         UserConfigChecks.Run();
         LoginStatusChecks.Run();
+        PairedUserOperationChecks.Run();
         TransportChecks.Run();
         Console.WriteLine($"通过 {Check.Count} 项检查。");
     }

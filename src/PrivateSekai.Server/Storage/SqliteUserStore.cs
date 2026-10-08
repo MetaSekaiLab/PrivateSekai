@@ -96,62 +96,77 @@ public sealed class SqliteUserStore : IUserStore, IDisposable
         }
     }
 
-    public void Save(long userId, UserState state)
+    public void Save(long userId, UserState state) => SaveMany(new Dictionary<long, UserState> { [userId] = state });
+
+    public void SaveMany(IReadOnlyDictionary<long, UserState> states)
     {
-        if (state.Data.userRegistration?.userId != userId)
+        var entries = states.ToArray();
+        if (entries.Any(p => p.Value.Data.userRegistration?.userId != p.Key))
             throw new InvalidOperationException("User identity does not match the store key.");
         lock (gate)
         {
             using var transaction = connection.BeginTransaction();
-            var saved = Load(userId, transaction);
-            if (saved != null && (!versions.TryGetValue(state, out var expected) ||
-                expected.UserId != userId || expected.Revision != saved.Revision))
-                throw new InvalidOperationException("User snapshot is stale; read it again before saving.");
-
-            var next = new UserState();
-            var changed = new List<(string Name, string Json)>();
-            foreach (var block in UserBlocks.All)
-            {
-                var value = block.Get(state);
-                var prior = saved == null ? null : block.Get(saved.State);
-                if (saved != null && UserBlocks.Equal(value, prior))
-                    block.Set(next, prior);
-                else
-                {
-                    var json = JsonSerializer.Serialize(value, block.Type, UserBlocks.Json);
-                    block.Set(next, JsonSerializer.Deserialize(json, block.Type, UserBlocks.Json));
-                    changed.Add((block.Name, json));
-                }
-            }
-            if (saved != null && changed.Count == 0) return;
-            var revision = checked((saved?.Revision ?? 0) + 1);
-            using (var user = Command("""
-                INSERT INTO users VALUES($id, $revision)
-                ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision;
-                UPDATE user_sequence SET last_id=MAX(last_id, $id) WHERE id=1;
-                """, transaction))
-            {
-                user.Parameters.AddWithValue("$id", userId);
-                user.Parameters.AddWithValue("$revision", revision);
-                user.ExecuteNonQuery();
-            }
-            foreach (var block in changed)
-            {
-                using var update = Command("""
-                    INSERT INTO user_blocks VALUES($id, $name, 1, $revision, $payload)
-                    ON CONFLICT(user_id,name) DO UPDATE SET payload=excluded.payload, revision=excluded.revision;
-                    """, transaction);
-                update.Parameters.AddWithValue("$id", userId);
-                update.Parameters.AddWithValue("$name", block.Name);
-                update.Parameters.AddWithValue("$revision", revision);
-                update.Parameters.AddWithValue("$payload", block.Json);
-                update.ExecuteNonQuery();
-            }
+            var savedStates = new Dictionary<long, Snapshot>();
+            foreach (var (userId, state) in entries)
+                savedStates[userId] = SaveInTransaction(userId, state, transaction);
             transaction.Commit();
-            cache[userId] = new(next, revision);
-            versions.Remove(state);
-            versions.Add(state, new(userId, revision));
+            foreach (var (userId, state) in entries)
+            {
+                var saved = savedStates[userId];
+                cache[userId] = saved;
+                versions.Remove(state);
+                versions.Add(state, new(userId, saved.Revision));
+            }
         }
+    }
+
+    private Snapshot SaveInTransaction(long userId, UserState state, SqliteTransaction transaction)
+    {
+        var saved = Load(userId, transaction);
+        if (saved != null && (!versions.TryGetValue(state, out var expected) ||
+            expected.UserId != userId || expected.Revision != saved.Revision))
+            throw new InvalidOperationException("User snapshot is stale; read it again before saving.");
+
+        var next = new UserState();
+        var changed = new List<(string Name, string Json)>();
+        foreach (var block in UserBlocks.All)
+        {
+            var value = block.Get(state);
+            var prior = saved == null ? null : block.Get(saved.State);
+            if (saved != null && UserBlocks.Equal(value, prior))
+                block.Set(next, prior);
+            else
+            {
+                var json = JsonSerializer.Serialize(value, block.Type, UserBlocks.Json);
+                block.Set(next, JsonSerializer.Deserialize(json, block.Type, UserBlocks.Json));
+                changed.Add((block.Name, json));
+            }
+        }
+        if (saved != null && changed.Count == 0) return saved;
+        var revision = checked((saved?.Revision ?? 0) + 1);
+        using (var user = Command("""
+            INSERT INTO users VALUES($id, $revision)
+            ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision;
+            UPDATE user_sequence SET last_id=MAX(last_id, $id) WHERE id=1;
+            """, transaction))
+        {
+            user.Parameters.AddWithValue("$id", userId);
+            user.Parameters.AddWithValue("$revision", revision);
+            user.ExecuteNonQuery();
+        }
+        foreach (var block in changed)
+        {
+            using var update = Command("""
+                INSERT INTO user_blocks VALUES($id, $name, 1, $revision, $payload)
+                ON CONFLICT(user_id,name) DO UPDATE SET payload=excluded.payload, revision=excluded.revision;
+                """, transaction);
+            update.Parameters.AddWithValue("$id", userId);
+            update.Parameters.AddWithValue("$name", block.Name);
+            update.Parameters.AddWithValue("$revision", revision);
+            update.Parameters.AddWithValue("$payload", block.Json);
+            update.ExecuteNonQuery();
+        }
+        return new(next, revision);
     }
 
     private Snapshot? Load(long userId, SqliteTransaction transaction)
