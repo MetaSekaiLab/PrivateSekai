@@ -197,5 +197,41 @@ internal static class FriendChecks
         Request(1, 2);
         Check.That(store.Read(2)!.Data.userFriends.Single().friendStatus == "pending_request",
             "仅 ID 搜索范围接受匹配来源");
+        foreach (var id in new long[] { 1, 2 })
+        {
+            var state = store.Read(id)!;
+            state.Data.userConfig.friendRequestScope = "reject";
+            store.Save(id, state);
+        }
+        foreach (var pair in new[] { (From: 1L, To: 2L), (From: 2L, To: 1L) })
+            operations.ExecutePair(pair.From, pair.To, peer =>
+            {
+                Check.That(service.Request(peer, request) == (409, "opponent_friend_request_scope_reject") &&
+                    user.BuildRefresh().userFriends == null, "范围变更拒绝已有申请的重发及反向申请");
+                return null;
+            });
+        Check.That(store.Read(1)!.Data.userFriends.Single(f => f.opponentUserId == 2).friendStatus == "sent_request" &&
+            store.Read(2)!.Data.userFriends.Single().friendStatus == "pending_request", "被范围拒绝后保留双方申请方向");
+        operations.ExecutePair(2, 1, peer =>
+        {
+            Check.That(service.Approve(peer) == 200, "直接 PUT 接受不受双方拒收新申请的配置影响");
+            return user.BuildRefresh();
+        });
+        operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Request(peer, request) == (409, "opponent_friend_request_scope_reject") &&
+                user.BuildRefresh().userFriends == null, "已有好友时范围拒绝优先于空错误码的重复申请冲突");
+            return null;
+        });
+        restricted = store.Read(2)!;
+        restricted.Data.userConfig.friendRequestScope = "id_search";
+        store.Save(2, restricted);
+        request.sentLocation = "multi_live";
+        operations.ExecutePair(1, 2, peer =>
+        {
+            Check.That(service.Request(peer, request) == (409, "opponent_friend_request_scope_id_search") &&
+                user.BuildRefresh().userFriends == null, "已有好友时来源范围错误优先于关系冲突");
+            return null;
+        });
     }
 }

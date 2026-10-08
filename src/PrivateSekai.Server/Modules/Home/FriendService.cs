@@ -38,16 +38,16 @@ public sealed class FriendService(UserSession user, FriendMasterQueries master)
             master.HasNgWord(request.message)) return (400, "");
         var own = (user.Data.userFriends ?? []).SingleOrDefault(f => f.opponentUserId == peerId);
         var other = (peer.Data.userFriends ?? []).SingleOrDefault(f => f.opponentUserId == user.UserId);
-        if (own?.friendStatus == "friend" && other?.friendStatus == "friend") return (409, "");
-        if (own?.friendStatus == "pending_request" && other?.friendStatus == "sent_request") return (Approve(peer), "");
-        var resend = own?.friendStatus == "sent_request" && other?.friendStatus == "pending_request";
-        if (!resend && (own != null || other != null))
-            throw new NotSupportedException("尚未核验该好友关系的申请转换。");
         if (peer.Data.userConfig?.friendRequestScope == "reject") return (409, "opponent_friend_request_scope_reject");
         if (peer.Data.userConfig?.friendRequestScope == "id_search" && request.sentLocation != "id_search")
             return (409, "opponent_friend_request_scope_id_search");
         if (peer.Data.userConfig?.friendRequestScope is not ("all" or "id_search"))
             throw new NotSupportedException("尚未核验限制申请范围的关系写入。");
+        if (own?.friendStatus == "friend" && other?.friendStatus == "friend") return (409, "");
+        if (own?.friendStatus == "pending_request" && other?.friendStatus == "sent_request") return (Approve(peer), "");
+        var resend = own?.friendStatus == "sent_request" && other?.friendStatus == "pending_request";
+        if (!resend && (own != null || other != null))
+            throw new NotSupportedException("尚未核验该好友关系的申请转换。");
         if ((user.Data.userFriends ?? []).Count(f => f.friendStatus == "friend") >= master.Config("friend_count_limit") ||
             (peer.Data.userFriends ?? []).Count(f => f.friendStatus == "friend") >= master.Config("friend_count_limit"))
             throw new NotSupportedException("尚未核验好友数量上限响应。");
