@@ -2313,6 +2313,19 @@ Server 已接入成功结算的队长次数及角色演出任务，二者与其�
 
 重复角色编队的官方保存尝试返回 400，未进入演出，拒绝原因及其计数规则尚未确认；本地该结算分支暂不支持。Auto 失败、其他评分和达到挑战解锁门槛后的联动仍待核验。
 
+## POST `/api/user/{userId}/music-video/{musicId}`
+
+- Path：当前 `userId`、歌曲 `musicId`；无 query。Body：`UserMusicVideoRequest`，键为 `musicVocal`（音源 ID）、`musicPlayStatus`（`start`／`end`）、`musicCategoryName`（`mv`／`mv_2d`／`image`／`original`）。
+- Response：`SuiteUserCommonResponse.updatedResources`；客户端成功回调通过 `UserDataManager.UpdateAll` 合并用户状态。
+- 请求时机：MV 确认页保存观看信息，返回 OutGame 时提交 `end` 并清除该信息；提前退出的 `MusicVideoController.OnRetire` 会清除信息。API 定义支持 `start`，尚未定位正常观看流程中的实际调用点。
+- `start` 不增加任务进度。有效 `end` 按 `musicVocals.musicId` 和 `musicCategories` 校验组合，增加 `watch_any_music_video_full` 新手任务进度；不要求先发送 `start`，也不要求持有歌曲或音源，不会解锁它们。
+- 首次达成刷新任务状态，并在本次返回的进度中设置 `isNewAchieved=true`；Suite 回读为 false。达成和领奖后继续计数，不封顶，不重复刷新任务状态；已领取状态保持不变。
+- 未知歌曲、未知音源、音源所属歌曲不符或歌曲没有该类别时，官方返回 200，但不增加任务进度。未知播放状态、未知类别以及 `none` 返回 400、零字节正文；不能仅依据客户端枚举接受 `none`。
+
+证据：`PostUserMusicVideoAPI` 构造、Execute（RVA `0x618ed5c`）及回调，`MusicUtility.ExcuteMusicVideoAPI`、MV 确认与返回流程、`MusicVideoController.OnRetire`（RVA `0x5441904`）、请求模型和两张 music master 表，以及官方样本。
+
+Client 提供 `music-video` 场景，Server 通过用户事务累计任务，响应编码失败回滚；空错误体采用该接口独立标记。19 份样本覆盖首次与重复结束、3D／2D／image／original、未持有歌曲及 Another Vocal、领奖后计数、无效组合和三种拒绝；任务、歌曲与音源持有、材料、水晶及对应响应字段的 HTTP 对拍通过。三次拒绝后独立官方 Suite 回读在上述范围内不变。该结论不包含完整游戏播放、缺失请求字段、其他任务类型或全量 Suite；这些行为需要对应调用链和官方样本补充。
+
 ## PUT `/api/user/{userId}/mission/live_mission`
 
 - Path：当前 `userId`；无 query。Body：`UserMissionReceiveRequest.missionIds`，待领取的任务 ID 数组。

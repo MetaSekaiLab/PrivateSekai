@@ -51,6 +51,13 @@ public sealed class PrskCryptoMiddleware(RequestDelegate next)
             return;
         }
 
+        if (plaintext.Length == 0 && ctx.Response.StatusCode >= 400 &&
+            endpoint?.Metadata.GetMetadata<PrskEmptyErrorResponseAttribute>() is not null)
+        {
+            ctx.Response.ContentLength = 0;
+            return;
+        }
+
         var encrypted = PrskCrypto.EncryptAesCbc(plaintext);
         ctx.Response.ContentType = "application/octet-stream";
         ctx.Response.ContentLength = encrypted.Length;

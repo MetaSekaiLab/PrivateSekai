@@ -74,6 +74,7 @@ public static class ServerServices
         services.AddScoped<PresentService>();
         services.AddScoped<ProfileService>();
         services.AddScoped<ProfileHonorService>();
+        services.AddScoped<MusicVideoService>();
         services.AddScoped<CostumeService>();
         services.AddScoped<CostumeMasterQueries>();
         services.AddScoped<ShopService>();

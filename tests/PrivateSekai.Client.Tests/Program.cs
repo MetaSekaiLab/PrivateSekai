@@ -42,6 +42,7 @@ void Fails(Action action, string name)
 }
 MusicMyListContractChecks.Run(Check);
 ProfileHonorContractChecks.Run(Check);
+MusicVideoContractChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
     "sensitive-diagnostic-placeholder", new IOException("sensitive-diagnostic-placeholder")))!;
 Check(networkFailure["httpRequestError"]!.GetValue<string>() == "SecureConnectionError" &&
@@ -149,6 +150,8 @@ builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
 if (args is ["--replay-profile-honor", _, var honorMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, honorMaster));
+if (args is ["--replay-music-video", _, var videoMaster, _])
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, videoMaster));
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
@@ -273,6 +276,12 @@ try
     if (args is ["--replay-stamp-favorite", var stampFavoritePath, var stampFavoriteOutput])
     {
         await StampFavoriteReplay.Run(client, store, stampFavoritePath, stampFavoriteOutput);
+        return;
+    }
+    if (args is ["--replay-music-video", var videoPath, _, var videoOutput])
+    {
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await MusicVideoReplay.Run(client, readback, store, videoPath, videoOutput);
         return;
     }
     if (args is ["--replay-profile-honor", var honorPath, _, var honorOutput])
@@ -669,7 +678,7 @@ sealed class TestedControllers : Microsoft.AspNetCore.Mvc.ApplicationParts.IAppl
     public void PopulateFeature(IEnumerable<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPart> parts,
         Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)
     {
-        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(ProfileHonorController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
+        Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(MusicVideoController), typeof(HomeController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(ProfileHonorController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
         foreach (var controller in feature.Controllers.Where(c => !tested.Contains(c.AsType())).ToArray())
             feature.Controllers.Remove(controller);
     }

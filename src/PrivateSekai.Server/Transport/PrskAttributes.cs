@@ -13,6 +13,8 @@ public sealed class PrskOptionalBodyAttribute : Attribute;
 
 public sealed class PrskPlaintextResponseAttribute : Attribute;
 
+public sealed class PrskEmptyErrorResponseAttribute : Attribute;
+
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public sealed class PrskEncryptResponseAttribute : Attribute, IAsyncResultFilter, IOrderedFilter
 {

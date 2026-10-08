@@ -11,6 +11,11 @@ namespace PrivateSekai.Modules.Live;
 
 public sealed class LiveMasterQueries(MasterData master)
 {
+    public bool IsMusicVideoSelection(int musicId, int vocalId, string category) =>
+        master.GetTable<MasterMusicVocal>("musicVocals", v => v.id).FindById(vocalId)?.musicId == musicId &&
+        master.GetTable<MasterMusicCategory>("musicCategories").Rows
+            .Any(c => c.musicId == musicId && c.musicCategoryName == category);
+
     public MasterBoostItem GetBoostItem(int id) => master.GetTable<MasterBoostItem>("boostItems", item => item.id)
         .FindById(id) ?? throw new ArgumentException("Unknown boost item.");
 
