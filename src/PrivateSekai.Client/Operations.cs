@@ -54,6 +54,7 @@ public static class Operations
         ["tutorial"] = new("PATCH", "/api/user/{userId}/tutorial", typeof(UserTutorialRequest), "updatedResources"),
         ["user-name"] = new("PATCH", "/api/user/{userId}", typeof(UserNameAPIRequest), "updatedResources"),
         ["profile-save"] = new("PUT", "/api/user/{userId}/profile", typeof(PutUserProfileRequest), "updatedResources"),
+        ["profile-honor-save"] = new("PUT", "/api/user/{userId}/profile-honor", typeof(PutUserProfileHonorRequest), "updatedResources"),
         ["stamp-favorite-save"] = new("PATCH", "/api/user/{userId}/stamp-favorite", typeof(UserStampFavoriteRequest), "updatedResources"),
         ["music-my-list-save"] = new("PUT", "/api/user/{userId}/myList/{listNo}", typeof(PutUserMusicMyListRequest), "updateResources"),
         ["music-my-list-reset"] = new("PATCH", "/api/user/{userId}/myList/{listNo}", null, "updateResources"),

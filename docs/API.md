@@ -6,6 +6,24 @@
 
 [MetaSekaiLab/PrivateSekai](https://github.com/MetaSekaiLab/PrivateSekai) by [MetaMiku](https://github.com/MetaMikuAI)
 
+## PUT `/api/user/{userId}/profile-honor`
+
+- Path：当前 `userId`，无 query。Client 操作为 `profile-honor-save`。
+- Body：`PutUserProfileHonorRequest.profileHonors`。每条包含 `seq`、`profileHonorType`、`honorId`、`honorLevel`、`bondsHonorViewType`、`bondsHonorWordId`，以及可空的 `honorBackgroundId`、`honorWordId`。
+- Response：`SuiteUserCommonResponse.updatedResources.userProfileHonors`。成功后客户端通过 `UserDataManager.UpdateAll` 合并资源。
+- 请求时机：称号设置页复制当前装备，修改目标槽位、移除空项后提交。普通称号使用 `profileHonorType=normal`、`bondsHonorViewType=none`、`bondsHonorWordId=0`；主、副槽位为 1～3。
+
+普通称号官方样本确认：
+
+- 装备列表全量替换，按 `seq` 升序返回。空列表清空装备，响应包含空数组；同值重复保存仍返回 200 和装备列表。
+- 背景、文字可为空，此时响应省略对应字段。已持有等级为 1 时，请求等级 0、1、2 均保存并返回等级 1；服务端使用持有等级。
+- 未持有称号、未持有的同组背景或文字、已持有但属于其他组的背景或文字，均返回 409，错误体为 `httpStatus` 与空字符串 `errorCode`、`errorMessage`。独立登录回读确认这些拒绝不修改称号相关状态。
+- 背景和文字通过 master 的 `honorGroupId` 对应称号 `groupId`，不按 ID 前缀推断。
+
+证据：`PutUserProfileHonorAPI`、`ScreenLayerHonorSetting.ExecuteHonorAPI`、请求响应与称号模型、master 映射和官方请求记录。7 份成功、6 份拒绝样本的专项 HTTP 对拍通过，覆盖装备、持有称号、背景、文字、相关响应及独立回读；不代表完整 Suite 已对齐。
+
+当前实现普通称号。羁绊称号、重复称号、非法或重复槽位、更高持有等级及其他称号类别仍待样本；本地对超出支持范围的输入校验不声明为官方错误语义。
+
 ## PUT / PATCH `/api/user/{userId}/myList/{listNo}`
 
 - Path：当前 `userId`、列表号 `listNo`。客户端提供 1～5 号列表；无 query。

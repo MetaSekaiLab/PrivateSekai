@@ -18,6 +18,7 @@ internal static class Program
         AreaShopChecks.Run();
         StampShopChecks.Run();
         StampFavoriteChecks.Run();
+        ProfileHonorChecks.Run();
         MusicMyListChecks.Run();
         VocalShopChecks.Run();
         SkillPracticeChecks.Run();

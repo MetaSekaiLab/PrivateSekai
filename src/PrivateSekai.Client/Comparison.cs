@@ -53,6 +53,7 @@ public static class Comparison
         ["userStamps"] = ["stampId"],
         ["userMusics"] = ["musicId"], ["userMusicVocals"] = ["musicVocalId"],
         ["userMyLists"] = ["listNo"],
+        ["userProfileHonors"] = ["seq"],
         ["userStampFavoriteTabs"] = ["tabNum"], ["userStampFavorites"] = ["tabNum", "num"],
         ["userSkillPracticeTickets"] = ["skillPracticeTicketId"], ["userDecks"] = ["deckId"],
         ["userShops"] = ["shopId"], ["userShopItems"] = ["shopItemId"], ["userAreaItems"] = ["areaItemId"],
