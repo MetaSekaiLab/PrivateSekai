@@ -21,6 +21,8 @@ internal static class UserResponseSerializer
                 new MissionReceiveFormatter(),
                 new CostumeShopFormatter(),
                 new CharacterMissionFormatter(),
+                new FriendProfileFormatter(),
+                new FieldFilterFormatter<UserFriend>((s, key) => key == "approvedAt" && s.approvedAt == 0),
                 new FieldFilterFormatter<UserLoginStatus>((s, key) =>
                     key == "loginStatusUpdatedAt" && s.loginStatus == "offline" && s.loginStatusUpdatedAt == 0),
                 new FieldFilterFormatter<UserHonor>((s, key) => key == "userId" && s.userId == 0),
@@ -52,6 +54,21 @@ internal static class UserResponseSerializer
 
     public static byte[] Serialize(object? value) => value == null ? [0xc0] :
         MessagePackSerializer.Serialize(value.GetType(), value, Options);
+
+    internal sealed class FriendProfileFormatter : IMessagePackFormatter<UserFriendProfile?>
+    {
+        public void Serialize(ref MessagePackWriter writer, UserFriendProfile? value, MessagePackSerializerOptions options)
+        {
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserCard>((_, key) =>
+                    key is not ("cardId" or "level" or "masterRank" or "specialTrainingStatus" or "defaultImage")) },
+                new[] { options.Resolver }));
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserFriendProfile>().Serialize(ref writer, value!, scoped);
+        }
+
+        public UserFriendProfile? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserFriendProfile>().Deserialize(ref reader, DumpSerializer.Options);
+    }
 
     internal sealed class EventExchangeFormatter : IMessagePackFormatter<UserEventExchangeResponse?>
     {

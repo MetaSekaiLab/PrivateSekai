@@ -19,6 +19,10 @@ internal static class LoginStatusChecks
         var store = new MemoryUserStore();
         var writer = TestUsers.Create(1);
         writer.Data.userConfig = new UserConfig { isDisplayLoginStatus = true };
+        writer.Data.userProfile = new UserProfile { profileImageType = "leader" };
+        writer.Data.userGamedata.deck = 1;
+        writer.Data.userDecks = [new() { deckId = 1, leader = 1 }];
+        writer.Data.userCards = [new UserCard { cardId = 1 }];
         var viewer = TestUsers.Create(2);
         viewer.Data.userFriends = [new UserFriend { opponentUserId = 1, friendStatus = "friend" }];
         store.Save(1, writer);
@@ -38,7 +42,7 @@ internal static class LoginStatusChecks
             return new BrokenResponse();
         }), "在线状态编码失败回滚");
         Check.That(store.Read(1)!.Private.LoginStatus?.loginStatus == "solo_live", "失败不覆盖已有状态");
-        var controller = new LoginController(operations, user, null!, home, null!);
+        var controller = new LoginController(operations, user, null!, home, null!, new FriendQueries(operations));
         JsonObject ReadFriend()
         {
             var result = (FileContentResult)controller.HandleSuiteUserParts(2, ["user_friend"]);

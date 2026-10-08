@@ -2327,7 +2327,20 @@ Server 在用户事务中保存私有状态，认证和 Suite 入口提交在线
 
 观察工具另外支持 POST／PUT `/api/user/{userId}/friend/{opponentUserId}`，分别为 `friend-request` 和 `friend-approve`；申请 body 使用 `message` 和 `friendRequestSentLocation`，接受申请无 body。已实测空消息、`id_search` 来源的测试账号申请与接受，成功响应含 `updatedResources`；对方 ID 为正 64 位整数。申请方为 `sent_request`，接收方为 `pending_request`，样本到期时间为响应 now 加 7 天；接受后变为 `friend`，增加 `approvedAt` 并保留原到期时间。空消息样本省略 message。
 
-好友资料只返回精简字段；已观察卡牌字段为 cardId、level、masterRank、specialTrainingStatus、defaultImage，不能照搬完整卡牌数据。这两个关系写接口的 Server 尚未实现。底层已提供 `UserOperation.ExecutePair` 和存储 `SaveMany`：固定锁序、响应编码后整批提交、SQLite 同一事务及提交后更新缓存；业务异常、编码失败、第二账号写入失败和版本冲突的本地回滚检查通过。该基础能力不代表好友业务、资料映射和拒绝分支已经验证。
+## POST／PUT `/api/user/{userId}/friend/{opponentUserId}`
+
+- Path：当前账号和对方的 64 位 ID；无 query。POST body 为 `message`、`friendRequestSentLocation`；PUT 无 body。
+- 请求时机：申请弹窗提交 POST，接受操作提交 PUT；成功回调通过 `UserDataManager.UpdateAll` 合并 `SuiteUserCommonResponse.updatedResources`。申请弹窗先检查消息长度及 NG 词。
+- 成功返回完整 `userFriends` 列表。首次申请建立双方 `sent_request`／`pending_request`，期限为 now 加 master 的 168 小时；空消息省略，普通日文消息原样保留。
+- 相同消息重复申请返回 200，更新双方期限，不追加记录。接收方反向 POST 相当于接受，双方成为 `friend`，增加相同 `approvedAt`，保留原消息和期限。PUT 接受具有相同关系结果。
+- 双方已经是好友时，再 POST 或 PUT 返回 409；命中已采样 NG 词的消息返回 400。上述错误体为 `httpStatus`、空 `errorCode`、空 `errorMessage`，独立回读无关系变化。客户端 NG 检查按 `String.Contains` 匹配 master 词条；消息上限来自 master 的 30 字符配置。
+- 好友卡牌仅含 `cardId`、`level`、`masterRank`、`specialTrainingStatus`、`defaultImage`。已对拍默认队长头像及空称号、空边框、未设置 Mysekai 访问的资料；好友查询使用对方当前快照，响应投影不写回存档。未接受记录省略 `approvedAt`。
+
+证据：`PostUserFriendRequestAPI.Execute`（RVA `0x6179364`）、`PutUserFriendApprovalAPI.Execute`（RVA `0x6179668`）、请求／响应契约、申请弹窗、NG 检查 lambda（RVA `0x627e174`）、master 配置及三个测试账号的官方写入与双方回读。
+
+Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOperation.ExecutePair` 原子提交双方关系。6 组 HTTP 对拍覆盖空消息、日文消息、重复申请、反向申请、接受和 NG 拒绝，比较完整好友列表及双方独立回读；回读中的在线状态因会话刷新单独排除，写响应仍比较该字段。业务检查覆盖双边回滚、重复记录及响应隔离。未启动实际游戏。
+
+待核验：重复申请修改消息、自身或未知目标、其他来源、拒收范围、已拒绝或过期申请、数量上限，以及自选卡牌头像、称号、边框、Mysekai 资料映射。当前实现不为这些未支持分支伪造官方结果；需补充对应官方操作与双方回读后扩展。未支持分支可能导致请求失败，不能将当前实现视为完整好友系统。
 
 ## POST `/api/user/{userId}/config`
 

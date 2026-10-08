@@ -154,6 +154,11 @@ if (args is ["--replay-profile-honor", _, var honorMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, honorMaster));
 if (args is ["--replay-music-video", _, var videoMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, videoMaster));
+if (args is ["--replay-friend", var friendManifest, var friendMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, friendMaster));
+    builder.Services.AddSingleton(FriendReplay.Clock(friendManifest));
+}
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
@@ -299,6 +304,14 @@ try
         using var observer = new ProtocolClient(new TargetConfiguration { BaseUrl = config.BaseUrl, UserId = 2 },
             directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await LoginStatusReplay.Run(client, observer, store, statusPath, observerPath, statusOutput);
+        return;
+    }
+    if (args is ["--replay-friend", var friendPath, _, var friendOutput])
+    {
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        using var peer = new ProtocolClient(new TargetConfiguration { BaseUrl = config.BaseUrl, UserId = 2 },
+            directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await FriendReplay.Run(client, readback, peer, store, friendPath, friendOutput);
         return;
     }
     if (args is ["--replay-profile-honor", var honorPath, _, var honorOutput])
@@ -696,7 +709,7 @@ sealed class TestedControllers : Microsoft.AspNetCore.Mvc.ApplicationParts.IAppl
         Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)
     {
         Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(MusicVideoController), typeof(HomeController), typeof(LoginStatusController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(ProfileHonorController), typeof(UserConfigController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
-        foreach (var controller in feature.Controllers.Where(c => !tested.Contains(c.AsType())).ToArray())
+        foreach (var controller in feature.Controllers.Where(c => c.AsType() != typeof(FriendController) && !tested.Contains(c.AsType())).ToArray())
             feature.Controllers.Remove(controller);
     }
 }

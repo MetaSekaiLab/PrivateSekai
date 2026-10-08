@@ -26,6 +26,7 @@ internal static class LoginStatusReplay
         var expected = Status(observerPath);
         var state = store.Read(1)!;
         state.Data.userConfig = new UserConfig { isDisplayLoginStatus = expected.ContainsKey("loginStatusUpdatedAt") };
+        state.Data.userProfile = new UserProfile { profileImageType = "leader" };
         state.Private.LoginStatus = new UserLoginStatus
         {
             loginStatus = rejected ? expected["loginStatus"]!.GetValue<string>() : "online",

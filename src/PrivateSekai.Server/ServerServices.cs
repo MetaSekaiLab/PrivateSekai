@@ -63,6 +63,9 @@ public static class ServerServices
         services.AddScoped<CardService>();
         services.AddScoped<GachaService>();
         services.AddScoped<HomeService>();
+        services.AddScoped<FriendMasterQueries>();
+        services.AddScoped<FriendService>();
+        services.AddScoped<FriendQueries>();
         services.AddScoped<LoginBonusService>();
         services.AddScoped<LoginBonusStatusFilter>();
         services.AddScoped<LiveService>();
