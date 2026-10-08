@@ -183,9 +183,13 @@ internal static class FeatureChecks
             "演出卡牌经验使用卡牌等级上限");
         Check.That(!store.Read(3)!.Private.UserLiveSessions.ContainsKey(liveId), "Live 成功后移除会话");
         Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "easy_full_combo").progress == 1 &&
-            store.Read(3)!.Data.userMissionStatuses.Single(s => s.missionType == "honor_mission").missionStatus == "achieved" &&
+            store.Read(3)!.Data.userMissionStatuses.Single(s => s.missionType == "honor_mission" && s.missionId == 10001).missionStatus == "achieved" &&
             store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "easy_full_combo").achievedMissionIds.Length == 0,
             "首次 Easy FC 跨门槛持久化进度与达成状态，不持久化提示 ID");
+        Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "play_level_clear").progress == 6 &&
+            store.Read(3)!.Data.userMissionStatuses.Count(s => s.missionType == "honor_mission" && s.missionId is 20001 or 20002 &&
+                s.missionStatus == "achieved") == 2,
+            "较高谱面等级一次达成所有已跨过的称号任务门槛");
         Check.That(result.updatedResources.userCharacterLiveUsageCounts.Single(c => c.characterLiveUsageType == "leader").usageCount == 1 &&
             result.updatedResources.userCharacterLiveUsageCounts.Single(c => c.characterLiveUsageType == "leader").characterId == 1 &&
             store.Read(3)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "play_live").progress == 1,
@@ -216,6 +220,8 @@ internal static class FeatureChecks
             return response;
         });
         var failed = DumpSerializer.Deserialize<UserLiveClearResponse>(failedBytes);
+        Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "clear_live_combo").progress == 10,
+            "失败演出不覆盖先前成功演出的连击称号进度");
         Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "clear_live").progress == 1 &&
             store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "finish_live_with_empty_life").progress == 1,
             "失败结算只累计生命耗尽，不增加通关次数");
@@ -259,6 +265,8 @@ internal static class FeatureChecks
             return response;
         });
         var auto = DumpSerializer.Deserialize<UserLiveClearResponse>(autoBytes);
+        Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "clear_live_combo").progress == 10,
+            "Auto 不改变手动成功演出的最大连击统计");
         Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "clear_live").progress == 2 &&
             store.Read(3)!.Data.userMissionStatuses.Single(s => s.missionType == "honor_mission" && s.missionId == 101).missionStatus == "achieved",
             "成功 Auto 累计通关次数并按小型 master 达成任务");
@@ -433,7 +441,7 @@ internal static class FeatureChecks
             ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = "[]",
-            ["honorMissions"] = """[{"id":10001,"honorMissionType":"easy_full_combo","requirement":1},{"id":101,"honorMissionType":"clear_live","requirement":2}]""",
+            ["honorMissions"] = """[{"id":10001,"honorMissionType":"easy_full_combo","requirement":1},{"id":101,"honorMissionType":"clear_live","requirement":2},{"id":20001,"honorMissionType":"play_level_clear","requirement":5},{"id":20002,"honorMissionType":"play_level_clear","requirement":6}]""",
             ["musicAchievements"] = """[{"id":1,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_c","resourceBoxId":80}]"""
         };
         foreach (var (table, json) in tables)

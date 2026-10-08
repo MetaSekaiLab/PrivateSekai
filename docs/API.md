@@ -1736,6 +1736,8 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 - Body `musicCategoryName`: 曲目分类名，例如普通曲或其他 live mode 对应分类。
 - Body `customMusicScoreId`: 自制谱面 ID；普通曲可为空。
 
+开局拒绝补充：已持有的限时曲在 `limitedTimeMusics` 期限外仍返回 400／`limited_time_music_out_of_term`。另一常驻曲的 `musicCategories` 仅有 `original`／`mv_2d`，传 `mv` 返回 404 空错误码，改为 `original` 后成功。拒绝后的独立回读确认成绩、称号任务、材料、Auto 次数及 boost 数量未变；自然恢复时间字段不作为不变性证明。这两项官方限制尚未加入本地开局实现，完整校验顺序和时间边界仍待补充。
+
 ### 返回字段
 
 - `updatedResources`: Live 开始后需要合并的局部资源；客户端模型中主要关注 break time 相关更新。
@@ -2384,7 +2386,7 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 - 达到 `honorMissions.requirement` 后新增 `honor_mission` 的 `achieved` 状态；已达成或已领取的任务不重复标记。响应的对应任务 `achievedMissionIds` 仅含本次新增 ID；存档及随后 Suite 保留空数组，`userId` 省略。
 - 进度、成绩与任务状态在同一用户操作中提交，响应编码失败整体回滚。Controller 只在响应副本上填写临时提示，不写入持久任务。
 
-四次新增 FC（含首次门槛）、同曲重复、Auto、已有失败样本共 7 组 HTTP 对拍通过，覆盖 Easy FC 进度、称号任务状态、判定标志、临时提示及独立回读。Client 检查支持 `--replay-live-honor`。不据此声明全量 Live 响应一致：金币收集、最大连击等其他称号进度仍有缺口；其他难度、AP、多人、挑战与自定义谱面需各自证据。跨门槛后更高等级领取的奖励升级仍待核验。
+四次新增 FC（含首次门槛）、同曲重复、Auto、已有失败样本共 7 组 HTTP 对拍通过，覆盖 Easy FC 进度、称号任务状态、判定标志、临时提示及独立回读。Client 检查支持 `--replay-live-honor`。不据此声明全量 Live 响应一致：金币收集、指定生命值等其他称号进度仍有缺口；其他难度、AP、多人、挑战与自定义谱面需各自证据。跨门槛后更高等级领取的奖励升级仍待核验。
 
 证据：`PutUserLiveClearAPI` 请求、成功回调对 `updatedResources` 的合并，`UserHonorMission` 契约、`musicDifficulties`／`honorMissions` master，以及上述官方结算和 Suite 回读。
 
@@ -2396,6 +2398,17 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 - `clear_live` 当前 master 门槛为 39、3939。通关计数的手动、重复和 Auto 已有官方样本，39 次首次达成本轮仅有 master 及小型夹具验证，尚未官方采样。不得把生命耗尽的门槛样本当成通关门槛证明。
 
 手动成功、同曲重复、Auto、旧失败、生命耗尽跨门槛及达成后共 6 组 HTTP 对拍通过。`--replay-live-honor` 同时比较 Easy FC、通关、生命耗尽三类进度、称号任务状态、提示和独立回读。其他 Live 类型与 Auto 生命耗尽组合未确认；该检查不包含其他称号进度或完整结算奖励。
+
+### 普通单人 Live 的最高连击与通关等级
+
+- 手动成功结算将 `clear_live_combo` 更新为历史进度与请求 `maxCombo` 的较大值。它不是累计连击，也不要求 FC：一次带 Good、`fullComboFlg=false` 的 1000 连击成功结算达成任务 1401；此前 1100 连击失败结算没有改变原有 210 的进度。
+- 同一成功结算将 `play_level_clear` 更新为历史进度与 `musicDifficulties.playLevel` 的较大值。等级 5→27 的官方样本一次达成 master 中要求 15～27 的 13 个任务。不得把谱面等级误用为用户等级或难度 ID。
+- 新达成 ID 仅进入本次对应类型的 `achievedMissionIds`；任务状态持久化，随后 Suite 的提示列表为空。后续成功 1100 连击继续提升纪录，已达成的任务不重复提示；相同 Level 27 不重复刷新任务状态。
+- 失败演出不更新这两种纪录。高于手动最高等级的 Level 31 Auto 样本也不更新手动的 Level 27 或连击纪录；低于既有纪录的手动样本不降低进度。
+
+高连击失败、跨门槛成功、更高连击成功、较低连击成功、普通 Auto、高等级 Auto 共 6 组 HTTP 对拍通过。`--replay-live-honor` 扩大到上述五类进度，并保留完整 `honor_mission` 状态比较及独立回读。首次对拍暴露的等级任务缺口已补齐；不宣称其余称号进度和全量奖励一致。实现复用称号门槛与事务流程，本地检查覆盖一次跨多个门槛和编码失败回滚。
+
+证据：`ScreenLayerFreeLiveResult` 将演出结果的最大连击写入请求，`UserLiveClearRequest.maxCombo` 契约位于 offset `0x28`，以及 master、上述成功／失败／Auto 样本。其他 Live 模式和自定义谱面仍需各自样本。
 
 ## DELETE `/api/user/{userId}/friend/{opponentUserId}?type={type}`
 

@@ -161,12 +161,18 @@ public sealed class MissionService(
 
     public void RecordManualLiveClear() => RecordLimitedBeginnerProgress(master.GetLiveClearMissions());
 
-    public void RecordEasyFullCombo() => IncrementHonorProgress("easy_full_combo");
+    public void RecordEasyFullCombo() => UpdateHonorProgress("easy_full_combo");
 
     public void RecordLiveFinish(bool cleared) =>
-        IncrementHonorProgress(cleared ? "clear_live" : "finish_live_with_empty_life");
+        UpdateHonorProgress(cleared ? "clear_live" : "finish_live_with_empty_life");
 
-    private void IncrementHonorProgress(string type)
+    public void RecordLiveRecords(int combo, int playLevel)
+    {
+        UpdateHonorProgress("clear_live_combo", combo);
+        UpdateHonorProgress("play_level_clear", playLevel);
+    }
+
+    private void UpdateHonorProgress(string type, int? maximum = null)
     {
         var records = (user.Data.userHonorMissions ?? []).ToList();
         var progress = records.SingleOrDefault(m => m.honorMissionType == type);
@@ -175,7 +181,7 @@ public sealed class MissionService(
             progress = new UserHonorMission { honorMissionType = type, achievedMissionIds = [] };
             records.Add(progress);
         }
-        progress.progress = checked(progress.progress + 1);
+        progress.progress = maximum.HasValue ? Math.Max(progress.progress, maximum.Value) : checked(progress.progress + 1);
         user.Data.userHonorMissions = records.OrderBy(m => m.honorMissionType, StringComparer.Ordinal).ToArray();
         user.MarkChanged(nameof(SuiteUser.userHonorMissions));
         foreach (var definition in master.GetHonorMissions(type))

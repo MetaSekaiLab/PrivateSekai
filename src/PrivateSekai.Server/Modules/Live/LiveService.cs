@@ -109,6 +109,8 @@ public sealed class LiveService(
             boosts.Consume(session.BoostCount);
             if (!session.IsAuto)
             {
+                if (request.life > 0)
+                    missions.RecordLiveRecords(request.maxCombo, master.ResolveMusicPlayLevel(session.MusicDifficultyId));
                 if (request.life > 0 && fullCombo && master.ResolveMusicDifficultyType(session.MusicDifficultyId) == "easy" &&
                     !(user.Data.userMusicResults ?? []).Any(r => r.musicId == session.MusicId &&
                         r.musicDifficultyType == "easy" && r.fullComboFlg))
