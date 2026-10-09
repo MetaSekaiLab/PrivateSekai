@@ -1941,6 +1941,8 @@ Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通�
 
 `UserMultiLiveClearResponse` 同样返回 `UserLivePoint`，是后续取证入口。其请求 `UserMultiLiveClearRequest` 包含五个玩家成绩槽、总分、Super Fever、断线玩家及私人房间设置，不能将单人结算请求直接换路由发送。当前Server与协议Client未接入完整多人房间和结算流程；下一步需取得测试账号私人房间的开局、成功结算、随后单人结算及跨日回读，验证共享次数。`colorfulPassV2s.livePointRate` 提供通行证倍率，但本次查阅未证明每日加成以购买通行证为前提。
 
+私人房间前置链路：`MultiRoomMatchingOrganizer.PublishReserveRoomRequest` 调用 `MultiLiveRoomMatchingController.ReserveRoom`，先准备实时连接，再由 `MatchingRoom.Create` 序列化 `CreateMultiLivePrivateRoomData` 并发送命令3060。其字段为 `MultiLiveRuleType`、`RoomTTL`、`RoomProperty`；预留成功后，创建流程才以返回的房间标识调用 `PatchPrivateRoomNumberAPI`。实时认证由 `GetUserDiarkisAuth` 发起，响应 `UserDiarkisAuthResponse` 包含TCP／UDP连接信息、会话和密钥。协议Client的记录脱敏现已覆盖 `clientKey`、`sid`、`encryptionKey`、`encryptionIv`、`encryptionMacKey`，保留端口及业务字段且不修改原始认证对象；这不表示实时连接或建房已实现。命令封装、同步属性键、HTTP路由字符串映射和实际响应仍需继续核验。
+
 歌曲1／Easy、零体力的C档样本中金币均为150、初级练习券均为2，材料组合不同；两份B档样本金币180、初级练习券2，材料组合也不同。其中一份B档响应将同一材料ID的数量2和4分成两条返回，奖励响应不能擅自按资源ID合并。当前固定掉落箱序列不覆盖这些结果；master奖励明细、倍率和评分门槛本身不足以确定池选择及抽取权重。
 
 ## POST `/api/user/{userId}/live-character-archive-voice/live-result`

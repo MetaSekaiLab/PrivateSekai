@@ -9,7 +9,7 @@ public sealed class Redactor
     private readonly HashSet<string> secrets = [];
     private readonly HashSet<long> accounts = [];
     public static bool IsSensitive(string name) => Regex.IsMatch(name,
-        "credential|token|cookie|authorization|password|signature|deviceid|install.?id|email|phone|inherit", RegexOptions.IgnoreCase);
+        "credential|token|cookie|authorization|password|signature|deviceid|install.?id|email|phone|inherit|^(clientKey|sid|encryptionKey|encryptionIv|encryptionMacKey)$", RegexOptions.IgnoreCase);
     public void AddSecret(string? value) { if (!string.IsNullOrEmpty(value)) secrets.Add(value); }
     public void AddAccount(long id) { if (id > 0) accounts.Add(id); }
 

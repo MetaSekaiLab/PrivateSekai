@@ -731,6 +731,16 @@ try
     redactor.AddSecret("fixture-secret");
     var cleaned = redactor.Clean(JsonNode.Parse("""{"sessionToken":"fixture-secret","nested":{"detail":"contains fixture-secret","deviceId":"private"}}"""))!.ToJsonString();
     Check(!cleaned.Contains("fixture-secret") && !cleaned.Contains("private"), "凭证字段与已知秘密嵌套脱敏");
+    var realtimeAuth = JsonNode.Parse("""{"clientKey":"fixture-client-key","sid":"fixture-session","encryptionKey":"fixture-key","encryptionIv":"fixture-iv","encryptionMacKey":"fixture-mac","tcpPort":1234,"udpPort":5678,"nested":[{"SID":"fixture-nested-session"}],"side":"left","musicKey":7}""")!;
+    var realtimeCleaned = redactor.Clean(realtimeAuth)!;
+    Check(new[] { "clientKey", "sid", "encryptionKey", "encryptionIv", "encryptionMacKey" }
+        .All(key => realtimeCleaned[key]!.GetValue<string>() == "<redacted>") &&
+        realtimeCleaned["nested"]![0]!["SID"]!.GetValue<string>() == "<redacted>", "实时认证凭证无需预先登记即可嵌套脱敏");
+    Check(realtimeCleaned["tcpPort"]!.GetValue<int>() == 1234 && realtimeCleaned["udpPort"]!.GetValue<int>() == 5678 &&
+        realtimeCleaned["side"]!.GetValue<string>() == "left" && realtimeCleaned["musicKey"]!.GetValue<int>() == 7,
+        "实时凭证匹配不误删端口或名称相近的业务字段");
+    Check(realtimeAuth["clientKey"]!.GetValue<string>() == "fixture-client-key" &&
+        realtimeAuth["nested"]![0]!["SID"]!.GetValue<string>() == "fixture-nested-session", "脱敏不修改运行中的实时认证对象");
     Fails(() => new TargetConfiguration { BaseUrl = "https://example.invalid" }.Validate(), "不能将远端伪装为 local");
     Fails(() => ScenarioRunner.Validate(scenario, [new() { Kind = "official", BaseUrl = "https://example.invalid" }], new HashSet<string>()), "官方写入需显式列出操作");
     Fails(() => Operations.Path(Operations.All["favorite-delete"], new() { Args = new() { ["shareNo"] = "../auth" } }, 1), "拒绝路径注入");
