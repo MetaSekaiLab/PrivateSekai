@@ -20,9 +20,17 @@ internal static class Program
                 Console.WriteLine("对比报告已写入；差异不能自动判定哪一端正确。");
                 return report["complete"]!.GetValue<bool>() ? 0 : 2;
             }
+            if (args is ["audit-live-rewards", var capturePath, var boxesPath, var reportPath])
+            {
+                var report = LiveRewardAudit.Analyze(JsonNode.Parse(File.ReadAllText(capturePath))!.AsObject(),
+                    JsonNode.Parse(File.ReadAllText(boxesPath))!.AsArray());
+                JsonFiles.Write(reportPath, report);
+                Console.WriteLine("奖励资源箱候选与资源增量报告已写入；候选不能证明抽取规则或概率。");
+                return report["balancesVerified"]!.GetValue<bool>() ? 0 : 2;
+            }
             if (args.Length < 4 || args[0] is not ("plan" or "run"))
             {
-                Console.WriteLine("list\nplan|run <config> <scenario> <target[,target]> [--official-write <operation[,operation]>]\ncompare <left.json> <right.json> <report.json>");
+                Console.WriteLine("list\nplan|run <config> <scenario> <target[,target]> [--official-write <operation[,operation]>]\ncompare <left.json> <right.json> <report.json>\naudit-live-rewards <capture.json> <resourceBoxes.json> <report.json>");
                 return args.Length == 0 ? 0 : 2;
             }
             var configuration = JsonFiles.Read<ClientConfiguration>(args[1]);

@@ -45,6 +45,7 @@ ProfileHonorContractChecks.Run(Check);
 MusicVideoContractChecks.Run(Check);
 UserConfigContractChecks.Run(Check);
 SocialContractChecks.Run(Check);
+LiveRewardAuditChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
     "sensitive-diagnostic-placeholder", new IOException("sensitive-diagnostic-placeholder")))!;
 Check(networkFailure["httpRequestError"]!.GetValue<string>() == "SecureConnectionError" &&

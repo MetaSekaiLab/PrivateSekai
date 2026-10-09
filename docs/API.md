@@ -1848,6 +1848,10 @@ Boost 契约补充：官方结算的 `boost` 包含整数 `bondsExpRate`，零�
 
 仍待确认：`userLivePoint.livePointBonusRemaining` 当前本地误用 `costBoost`；官方零体力样本为 3。逆向 `LiveReward.SetData` 将该字段传给 `LiveResultLiveMission.Initialize`，再由 `SetBonusRemaining` 填写剩余次数文本，但尚未确定服务端生成规则、每日重置与付费状态关系。需补充不同剩余次数及跨日样本，不能直接将本地逻辑替换为固定 3。
 
+普通奖励重复采样：同曲 Normal、同音源、零体力、零分及生命耗尽的开局和结算请求完全相同，两次均获得 15 金币、2 个材料，但材料 ID 分别为 1、4。结算后快照和额外 Suite 回读确认材料到账；不能用单次观测固定资源箱序列。按 `resourceBoxes` 的 purpose、资源类型、ID、数量及倍率匹配，两个材料分别对应候选箱 18、21，金币对应 61；这只能证明资源内容匹配，尚不能证明选择算法、概率或适用的难度／评分范围。当前 Server 的两个历史组合仍是未完成实现，不扩展该硬编码。
+
+Client 的 `audit-live-rewards <capture.json> <resourceBoxes.json> <report.json>` 离线检查成功结算，列出评分奖励的单明细展开箱候选，并核对金币、材料、练习券的前后增量。收入包含评分、曲目成就、玩家升级和限时 `obtainedRewards`；响应外新增或少发资源也会报差异，遇到未覆盖资源类型返回未验证。报告不含账号信息，不能代替独立官方回读或完整奖励算法对拍。逆向 `ScreenLayerFreeLiveResult` 将响应 `scoreRankRewards` 直接交给 `LiveReward.Data` 展示；该调用未提供服务端抽取规则，仍需奖励选择表或足以区分规则的后续样本。
+
 ### 客户端请求时机
 
 目前确认有这些时机：
