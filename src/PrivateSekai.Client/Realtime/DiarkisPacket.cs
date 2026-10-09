@@ -30,6 +30,23 @@ public static class DiarkisPacket
         return CreateRequest(version, command, securePayload);
     }
 
+    public static IReadOnlyList<byte[]> CreateReliableRequests(byte version, ushort command, ReadOnlySpan<byte> payload,
+        ReadOnlySpan<byte> sid, byte[] key, byte[] iv, byte[] macKey, short splitId)
+    {
+        var request = CreateEncryptedRequest(version, command, payload, sid, key, iv, macKey);
+        if (request.Length <= 1300)
+            return [request];
+        var result = new List<byte[]>();
+        foreach (var fragment in DiarkisSplitPacket.Create(splitId, request, 1300))
+        {
+            var wrapped = new byte[checked(sid.Length + fragment.Length)];
+            sid.CopyTo(wrapped);
+            fragment.CopyTo(wrapped, sid.Length);
+            result.Add(CreateRequest(version, command, wrapped));
+        }
+        return result;
+    }
+
     // 响应比请求多一个状态字节；返回消费长度，剩余数据交给传输层处理。
     public static DiarkisResponse ParseResponse(ReadOnlySpan<byte> packet)
     {
