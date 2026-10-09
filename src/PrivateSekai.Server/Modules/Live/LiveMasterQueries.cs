@@ -105,15 +105,7 @@ public sealed class LiveMasterQueries(MasterData master)
     public string GetChallengeScoreRank(int musicDifficultyId, int score)
     {
         if (score < 0) throw new ArgumentOutOfRangeException(nameof(score));
-        var difficulty = GetMasterMusicDifficulty(musicDifficultyId)
-            ?? throw new ArgumentException("Unknown music difficulty.");
-        var thresholds = master.GetTable<MasterPlayLevelScore>("playLevelScores").Rows
-            .SingleOrDefault(s => s.liveType == "challenge_live" && s.playLevel == difficulty.playLevel)
-            ?? throw new InvalidOperationException("Missing challenge score thresholds.");
-        if (score >= thresholds.s) return "rank_s";
-        if (score >= thresholds.a) return "rank_a";
-        if (score >= thresholds.b) return "rank_b";
-        return score >= thresholds.c ? "rank_c" : "rank_d";
+        return GetScoreRank(musicDifficultyId, score, "challenge_live");
     }
 
     public MasterChallengeLiveStage GetChallengeStage(int characterId, int rank) =>
@@ -275,7 +267,10 @@ public sealed class LiveMasterQueries(MasterData master)
         master.GetTable<MasterMusicAchievement>("musicAchievements", a => a.id)
             .FindById(musicAchievementId)?.resourceBoxId ?? 0;
 
-    public string BuildScoreRank(int musicDifficultyId, int score)
+    public string BuildScoreRank(int musicDifficultyId, int score) =>
+        GetScoreRank(musicDifficultyId, score, "solo");
+
+    private string GetScoreRank(int musicDifficultyId, int score, string liveType)
     {
         var selected = GetMasterMusicDifficulty(musicDifficultyId)
             ?? throw new ArgumentException("Unknown music difficulty.");
@@ -287,8 +282,8 @@ public sealed class LiveMasterQueries(MasterData master)
             .FirstOrDefault().Row
             ?? throw new InvalidOperationException("Missing score reference difficulty.");
         var thresholds = master.GetTable<MasterPlayLevelScore>("playLevelScores").Rows
-            .SingleOrDefault(s => s.liveType == "solo" && s.playLevel == reference.playLevel)
-            ?? throw new InvalidOperationException("Missing solo score thresholds.");
+            .SingleOrDefault(s => s.liveType == liveType && s.playLevel == reference.playLevel)
+            ?? throw new InvalidOperationException("Missing score thresholds.");
         if (score >= thresholds.s) return "rank_s";
         if (score >= thresholds.a) return "rank_a";
         if (score >= thresholds.b) return "rank_b";

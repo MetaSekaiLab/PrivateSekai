@@ -2227,7 +2227,9 @@ Client 阶段回放已加入活动前后积分、道具数量及 `userEvents`、
 
 普通阶段及角色升级业务已实现，完整结算路由尚未接入。已完成阶段保留为 `complete`，其 `point` 为该阶段门槛；当前阶段为 `in_progress`，保存剩余点数。逐阶段按 `challenge_live_stage` 用途读取资源盒，保留各份奖励，并累计 `completeStageCharacterExp`。角色等级按 `levels.levelType=character` 的累计门槛计算，更新 `userCharacters` 的等级、总经验和余经验；跨越的等级按 `characterRanks.rewardResourceBoxIds` 与 `character_rank_reward` 用途发奖。EX、角色满级及含额外解锁奖励的等级暂不支持。
 
-Server 的挑战评分查询目前按曲目难度的 `playLevel` 选择 `playLevelScores.liveType=challenge_live`，从 S 到 C 比较包含边界的门槛，低于 C 返回 D。已有 `MusicUtility.GetScoreRankStr`、master 及低档官方样本支持，但普通演出审计发现了参考难度与游玩难度的区别，挑战入口是否共用该选表规则仍需追踪；不能以现有低档样本证明选表已完整泛化。缺少对应表项时不回退普通 Live 的评分门槛。该查询尚未接入完整挑战结算路由。
+挑战评分与普通演出共用歌曲参考难度规则：`ChallengeLiveBootData` 向 `LiveBootDataBase` 传入 `LiveType.challenge_live`，后者构造 `LiveMusicData`，最终由 `MusicUtility.GetPlayLevelScore` 选择同曲难度枚举升序首个高于 Hard 的谱面，以其 `playLevel` 查询 `playLevelScores.liveType=challenge_live`。Server 已共用这段查询，从 S 到 C 比较包含边界的门槛，低于 C 返回 D；缺参考谱面或表项时拒绝猜测，也不回退 solo 表。实际游玩难度不改变评分表。小型夹具用不同的游玩／参考等级及 solo／challenge 门槛验证所有档位边界，既有官方 D／C 档阶段业务回放通过。该查询尚未接入完整挑战结算路由。
+
+新增官方区分样本：歌曲1/Easy 的4339分返回D，玩家经验增加400，额外Suite确认到账；歌曲参考Expert22的挑战C门槛为4340，旧查询误用Easy5会判C。新样本的评分、阶段及经验业务回放一致，但整体回放因新手任务进度差异失败：任务13的挑战次数由1增至2，本地仍为1；任务14在结算与额外Suite之间也继续增长，原因待查。保留失败报告，不将任务差异忽略后宣称完整对齐。
 
 普通挑战点数按 `challenge_base_point + floor(score / challenge_point_calc_value)` 计算；当前 master 参数为 200、8000。[公开分析](https://note.com/notnishikori_18/n/nd3b1719c555f) 明确给出同一公式，五份官方样本交叉验证了 3999、7999、8000、10000、100000 分的结果。Server 已将其接入手动成功、无会员的阶段业务；会员倍率、自动和失败结算仍待核验。
 
