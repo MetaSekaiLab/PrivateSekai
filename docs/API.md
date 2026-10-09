@@ -26,13 +26,13 @@
 
 Client 已提供 `diarkis-auth` 操作，在场景 `args.diarkisServerType` 指定类型，不自动读写前后Suite。隔离HTTP检查验证了查询、无body、响应解密、凭证脱敏和后续会话轮换；服务器类型及参数注入另有检查。
 
-官方 `multi` 样本已核验：HTTP200，返回 `userId`、`clientKey`、`udpHost`、`udpPort`、`sid` 和三项加密字段，未返回 `tcpHost`／`tcpPort`。响应有 `X-Session-Token`，随后独立Suite请求成功；场景记录和HTTP记录中的连接凭证均已脱敏。不能要求TCP与UDP同时存在：客户端 `IsValidTCP`／`IsValidUDP` 分别判断对应host是否非空，`SetupProtocol` 按可用分支配置连接。隔离HTTP夹具覆盖仅UDP字段的形状。其他服务器类型、错误语义、有效期及实时握手仍待核验；Server 未实现该接口，也不伪造连接凭证。
+官方 `multi` 样本已核验：HTTP200，返回 `userId`、`clientKey`、`udpHost`、`udpPort`、`sid` 和三项加密字段，未返回 `tcpHost`／`tcpPort`。响应有 `X-Session-Token`，随后独立Suite请求成功；场景记录和HTTP记录中的连接凭证均已脱敏。不能要求TCP与UDP同时存在：客户端 `IsValidTCP`／`IsValidUDP` 分别判断对应host是否非空，`SetupProtocol` 按可用分支配置连接。隔离HTTP夹具覆盖仅UDP字段的形状。其他服务器类型、错误语义及有效期仍待核验；Server 未实现该接口，也不伪造连接凭证。
 
-实时加密层已按 `Diarkis.Lib.Encryption` 的完整导出实现为 Client 的 `DiarkisEncryption`，尚未接入UDP收发。`SetupProtocol` 将SID及三项加密参数按十六进制解码。消息布局为4字节大端原文长度、32字节HMAC-SHA256、AES-CBC密文；MAC只覆盖密文，不覆盖长度头。加密前补1～16字节零，空原文和整块原文也额外补一块；解密按长度截取，保留原文末尾的零。AES模式及Padding枚举已与dump核对，不能复用HTTP的PKCS7封装。
+实时加密层已按 `Diarkis.Lib.Encryption` 的完整导出实现为 Client 的 `DiarkisEncryption`，并接入下述 UDP 客户端。`SetupProtocol` 将SID及三项加密参数按十六进制解码。消息布局为4字节大端原文长度、32字节HMAC-SHA256、AES-CBC密文；MAC只覆盖密文，不覆盖长度头。加密前补1～16字节零，空原文和整块原文也额外补一块；解密按长度截取，保留原文末尾的零。AES模式及Padding枚举已与dump核对，不能复用HTTP的PKCS7封装。
 
-验证包括独立Python加密库生成的空原文、16字节及17字节固定向量，认证码／密文损坏、截断和长度越界检查。非法长度本地拒绝，不声明为官方错误语义；未修改协议MAC覆盖范围。此结果证明编解码与静态规则及独立向量一致，尚无官方UDP报文对拍，不表示握手、可靠重传、业务命令或建房已完成。
+验证包括独立Python加密库生成的空原文、16字节及17字节固定向量，认证码／密文损坏、截断和长度越界检查。非法长度本地拒绝，不声明为官方错误语义；未修改协议MAC覆盖范围。固定向量只证明编解码范围，官方 UDP 连接验证见下文，不能据此推定建房或多人结算已完成。
 
-Client 的 `DiarkisPacket` 已接入请求封装、响应解析和 UDP 头编解码，供后续实时连接使用。字段布局来自 `Packet.Create`（RVA `0x640e7f0`）、`ParseHeader`（`0x640ecf4`）、`Parse`（`0x640eb9c`）、`CreateUDPPacket`（`0x640e7a8`）和 `ParseUDPPacket`（`0x640ea84`）：
+Client 的 `DiarkisPacket` 已接入请求封装、响应解析和 UDP 头编解码，供实时连接使用。字段布局来自 `Packet.Create`（RVA `0x640e7f0`）、`ParseHeader`（`0x640ecf4`）、`Parse`（`0x640eb9c`）、`CreateUDPPacket`（`0x640e7a8`）和 `ParseUDPPacket`（`0x640ea84`）：
 
 | 字段 | 请求偏移／长度 | 响应偏移／长度 | 编码 |
 | --- | --- | --- | --- |
@@ -49,11 +49,11 @@ Client 的 `DiarkisPacket` 已接入请求封装、响应解析和 UDP 头编解
 
 握手静态链路：`Connect_` 将初始发送序号设为 0；`SendSyn_`（`0x60b8258`）发送 UDP 头加 SID，不添加业务头或加密封装。收到 SYN 后 `HandleSyn_` 初始化连接并排队 ACK；收到 ACK／EACK 也有尚未握手时的初始化分支。随后 `SendClientKey_` 回调（`0x60bc170`）将 clientKey 按 UTF-8 编码，调用可靠发送，版本 0、命令 4。SID 和加密参数使用十六进制解码，不能把 clientKey 同样处理。
 
-本地检查覆盖手工固定字节样本、全部长度字节、版本／命令边界、推送与其他状态、消费长度、SYN／ACK、UDP 标志与序号、截断／错误头及加密层组合。长度和序号越界在本地拒绝，不模仿原编码器的静默截断，也不声明为官方错误语义。尚未实现实时连接状态机、重传和实际收发；没有新增官方 UDP 样本，Server 端认证和多人业务仍待实现。
+本地检查覆盖手工固定字节样本、全部长度字节、版本／命令边界、推送与其他状态、消费长度、SYN／ACK、UDP 标志与序号、截断／错误头及加密层组合。长度和序号越界在本地拒绝，不模仿原编码器的静默截断，也不声明为官方错误语义。Server 端认证和多人业务仍待实现。
 
 ### 可靠 UDP 与分片
 
-`SendAck_`（RVA `0x60b8894`）和 `SendEack_`（`0x60b8cf4`）为每个序号生成 ACK／EACK 头，再附加 SID；多个确认可拼在同一数据报中。不能把入站的无载荷 ACK 样本直接作为出站格式。`RSend_`（`0x60b972c`）首次发送 DAT，保存相同序号的 RST 作为重试内容，发送序号随后加一。构造器的原始常量及字段偏移确认 ACK 间隔 400 毫秒、重试间隔 1000 毫秒、最大重试计数 10。`RudpRetry_`（`0x60b9154`）按全局间隔扫描未确认消息；达到上限后有超时累计和断开分支，不能把收到 ACK 等同于业务响应成功。上述可靠发送调度仍处于审计阶段，尚未接入运行。
+`SendAck_`（RVA `0x60b8894`）和 `SendEack_`（`0x60b8cf4`）为每个序号生成 ACK／EACK 头，再附加 SID；多个确认可拼在同一数据报中。不能把入站的无载荷 ACK 样本直接作为出站格式。`RSend_`（`0x60b972c`）首次发送 DAT，保存相同序号的 RST 作为重试内容，发送序号随后加一。构造器的原始常量及字段偏移确认 ACK 间隔 400 毫秒、重试间隔 1000 毫秒、最大重试计数 10。`RudpRetry_`（`0x60b9154`）按全局间隔扫描未确认消息；达到上限后有超时累计和断开分支，不能把收到 ACK 等同于业务响应成功。下述协议客户端采用独立的确认和停止策略。
 
 `DiarkisSplitPacket` 已实现分片和单组重组，依据完整的 `SplitPacket.Create`（`0x640f140`）、构造器（`0x640f6ac`）、`Add`（`0x640f90c`）及 `GetBytes`（`0x640fda8`）：
 
@@ -65,6 +65,18 @@ Client 的 `DiarkisPacket` 已接入请求封装、响应解析和 UDP 头编解
 `DiarkisPacket.CreateReliableRequests` 按原 `Udp.RSend` 封装：完整加密请求不超过 1300 字节时直接返回；超过时，先将这个完整请求按 1300 字节分片，再为每片加 SID 和相同版本／命令的业务头。因此 1300 是内部切分大小，不是最终数据报长度上限；不能把每片分别加密或统一缩到 1300 字节。传输层还需分配各片可靠序号、处理确认、重传及接收顺序。
 
 本地检查覆盖固定字节样本、1300 边界及多片、三片全部到达顺序、重复片、其他组、两种拼接模式、大请求整体加密与分片后恢复。非法片索引、片数溢出和同组总数变化在本地拒绝，属于本地校验，不代表官方错误语义。尚无官方分片或完整多人连接验证。
+
+### UDP 连接与官方 Ping 验证
+
+`DiarkisUdpClient` 已接入双栈 UDP、SYN、clientKey 可靠发送、ACK／EACK、RST 重传、按序交付、重复消息过滤及分片重组。调用方串行使用；`ReceiveAsync`／`FlushAsync` 推进收发和重传，不另开后台线程。ACK 立即发送，重试按每条消息间隔 1000 毫秒、最多 10 次，超时即向调用方报错；这些是本协议客户端的调度与停止策略，不宣称完整复刻 SDK 的批量确认和两次超时累计逻辑。
+
+新增命令 `realtime-check <config> <target> --official-write auth`，仅针对留档测试账号的 `multi` 链路执行认证、UDP 握手、clientKey 确认、Ping 和随后 Suite 回读，不创建房间。凭证直接使用本次认证原对象；HTTP 记录仍脱敏，实时报告只保存阶段、报文计数、状态和校验结果，不保存连接地址、密钥或原始 UDP 报文。
+
+Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、命令 3，载荷是小端 double 的 Unix 毫秒时间戳。`HandlePingEvent_`（`0x60bbf84`）将响应偏移 9 之后解码为地址；回调（`0x61c23ec`）从偏移 1 读取 8 字节时间戳。报告只比较回显时间戳，不记录地址，也不擅自解释首字节。
+
+2026-10-09 官方测试结果：HTTP 实时认证、UDP 握手、clientKey 确认全部成功；解密后的 Ping 载荷 18 字节，回显时间戳一致，响应状态为 **1**；随后独立 Suite 请求成功。共发送 16、接收 16 个数据报，业务重传为 0；认证记录的五项实时凭证均已确认脱敏。这证明当前测试账号的基础加密通信可用，不能把“状态 0”写成所有命令统一成功条件，也不代表多人房间或结算可用。
+
+本地真实回环 UDP 检查主动丢弃首个 clientKey 消息，验证同序号 RST 重传；随后模拟乱序、重复旧消息、分片乱序、普通 Ping 和取消接收。438 项客户端检查通过。官方分片、长连接 Echo 保活、断线迁移、私人房间和多人结算尚未验证或接入；SDK 初始化后立即安排 Echo 的链路也仍需补齐。
 
 ## PUT `/api/user/{userId}/profile-honor`
 

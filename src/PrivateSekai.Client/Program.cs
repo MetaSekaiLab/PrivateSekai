@@ -8,6 +8,8 @@ internal static class Program
     {
         try
         {
+            if (args is ["realtime-check", var realtimeConfig, var realtimeTarget, "--official-write", "auth"])
+                return await Realtime.RealtimeProbe.Run(realtimeConfig, realtimeTarget) ? 0 : 2;
             if (args.Length == 1 && args[0] == "list")
             {
                 foreach (var pair in Operations.All) Console.WriteLine($"{pair.Key,-24} {pair.Value.Method,-6} {pair.Value.Path}");
@@ -30,7 +32,7 @@ internal static class Program
             }
             if (args.Length < 4 || args[0] is not ("plan" or "run"))
             {
-                Console.WriteLine("list\nplan|run <config> <scenario> <target[,target]> [--official-write <operation[,operation]>]\ncompare <left.json> <right.json> <report.json>\naudit-live-rewards <capture.json> <resourceBoxes.json> <report.json>");
+                Console.WriteLine("list\nplan|run <config> <scenario> <target[,target]> [--official-write <operation[,operation]>]\nrealtime-check <config> <target> --official-write auth\ncompare <left.json> <right.json> <report.json>\naudit-live-rewards <capture.json> <resourceBoxes.json> <report.json>");
                 return args.Length == 0 ? 0 : 2;
             }
             var configuration = JsonFiles.Read<ClientConfiguration>(args[1]);
