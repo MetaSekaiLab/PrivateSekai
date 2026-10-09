@@ -155,6 +155,38 @@ Client 命令 `realtime-room <config> <target> <clientConfigs.json> <lobbyId> --
 
 559 项客户端检查、Server 构建、协议检查通过；隔离 HTTP 覆盖 POST／PATCH 不同请求模型、64 位创建时间、会话轮换及记录脱敏，另检查错误房间标识和缺失字段。隔离端点不是 Server 房间实现。官方自定义规则、失败响应、到期回收及实时入房仍待核验；创建时间单位未单独验证。
 
+## 私人房间实时入房：命令 3080（静态审计，未接入）
+
+`StartPrivateRoom` 在 HTTP 房间准备后等待 ReadyConnection，新建 MatchingRoom、AttachRoomModule、SetupPrivatePartyMatching，再调用 Core.Connect。不能假定旧预留对象已具有玩家资料或已完成入房。
+
+- `JoinPrivateRoom` 调用重写后的 `MatchingRoom.Join(roomId, 0)`。该方法要求 RoomID 长度为52，序列化 dump `MultiLiveDirectJoinData`，按当前房间命令版本可靠发送 **3080**。通用 `CP.Realtime.Room.Join` 的1019与解除锁定的3120均不是此入口。
+- 请求包含 `RoomID`、`TotalPower`、`PlayerProperty`。TotalPower 取 `CreateMyBasicInfo().TotalPowerIncludeBuff`；PlayerProperty 为本机玩家属性 `PackToObject(true)`，不能替换为空 map。
+- `SetupPrivatePartyMatching` 设置 JoinRoute=1、RoomEnterType=1、房号、大厅、规则、总力上下限及自定义设置，再准备房间／玩家属性。普通规则查不到对应 master 大厅时返回失败，不继续入房。
+
+`CreateCommonPlayerProperty` 清空属性和待发送数据后写入以下四项；ID 来自 MatchingRoom 的玩家属性映射，不复用房间属性 ID：
+
+| ID | 属性 | 类型 | 初始来源 |
+| --- | --- | --- | --- |
+| 1 | nickname | string | 当前用户资料昵称 |
+| 2 | BASIC_INFO | Object | RoomUserBasicInfo |
+| 5 | JOIN_ROUTE | Int32 | 私人入房为1 |
+| 7 | SELECT_DIFFICULTY | string | 初始 normal，原枚举值2转字符串 |
+
+RoomUserBasicInfo 是整数键0～19的 MessagePack 数组，来源包括：
+
+- 当前选择的编队及其 leader：卡牌编号、等级、技能等级、Master Rank、默认卡面及特训状态；IsTraining 比较状态字符串 `done`。
+- 按 member1～member5 顺序排除 leader 后生成 SubCardIds、SubCardSkillLv、SubCardImages，不能假定 leader 总在第一位。角色等级数组则保留全部五个成员及其顺序。
+- 编队 TotalPowerIncludeBuff 先送入当前活动的 TotalPowerDataModel，再取 TotalPower。UpdateTotalPower 先取 max(0, 输入)，有活动总力上限表时再取 min(该值, upperTotalPower)；不能把原编队总力或某次抓包总力固定写入。
+- 主称号槽1、副称号槽2／3，结合对应荣誉任务构造 RoomUserHonorInfo；空槽走原空称号构造。服装取当前队长卡对应的穿戴资料，好友申请状态取 UserConfig，玩家框与部件布局取当前玩家框资料。
+
+回包边界：`MultiLiveRoomBase.OnResponse` 对3080/status1直接返回；status5／102交给带错误码的入房处理，其他失败走通用错误。该方法另在3000／3001成功分支反序列化 MultiLiveRoomSyncData，写入房间基本数据并触发 ResponseJoinPostProcess。因此只收到3080成功或可靠ACK都不能报告“已入房”；完整同步、推送与后处理仍需继续审计。
+
+退出的已确认发送链：`CP.Realtime.Room.Leave()` 先组成 UTF8(innerRoomId)+UTF8(myUserId)，再调用基类 Leave(roomId,message)；基类再前置一次UTF8(roomId)，通过SDK可靠发送版本1／命令102。这是两层组合，不能直接简化为一次房间ID。退出成功回包、当前房间ID赋值及后续清理尚未完成审计，暂不暴露可执行退出入口。
+
+证据：完整 `StartPrivateRoom.MoveNext`（RVA `0x5cbd880`）、`JoinPrivateRoom`（`0x5cb6c7c`）、重写 Join（`0x5cb6e7c`）、SetupPrivatePartyMatching（`0x5cb7074`）、CreateCommonPlayerProperty（`0x5cb0f34`）、CreateMyBasicInfo（`0x4fda240`）、TotalPowerDataModel.UpdateTotalPower（`0x627d138`）及 getter、CreateCurrentEventTotalPowerDataModel（`0x4d988a0`）；Room.Leave（`0x5deaf3c`）、SDK双参数Leave（`0x62fdea4`）及Send_。属性字符串已与原字符串表核对，模型键及字段与dump核对。
+
+当前缺口：LiveDeckData 总力及各加成的完整计算、当前活动选择的时间边界、服装选择和荣誉任务映射、RoomUserBasicInfo 原 formatter、连接回调到 Join 的完整链路，以及入房／退出响应状态机。以上是静态依据，没有新增官方入房或退出样本；实现前继续补齐，不使用默认资料冒充测试账号。
+
 ## PUT `/api/user/{userId}/profile-honor`
 
 - Path：当前 `userId`，无 query。Client 操作为 `profile-honor-save`。
