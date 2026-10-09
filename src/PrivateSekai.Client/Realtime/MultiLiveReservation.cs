@@ -16,6 +16,16 @@ public static class MultiLiveReservation
     public const byte Version = 2;
     public const ushort Command = 3060;
 
+    public static int ReadRoomNumber(JsonObject response, string roomId)
+    {
+        var number = response["roomNo"]?.GetValue<int>() ?? 0;
+        if (number <= 0 || response["roomId"]?.GetValue<string>() != roomId
+            || response["privateRoomType"]?.GetValue<string>() != "multi_live"
+            || response["liveRuleType"]?.GetValue<string>() != "normal")
+            throw new InvalidDataException("普通多人房间响应缺少有效房号或与当前预留不一致。");
+        return number;
+    }
+
     public static int ReadRoomTtl(JsonArray clientConfigs, LiveRuleType rule)
     {
         var id = rule switch

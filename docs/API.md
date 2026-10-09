@@ -121,7 +121,7 @@ Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、�
 
 自定义设置的原 formatter 固定写出 `ScoreCalculateType`、`MusicSelectionType`、`MusicDifficultyTypes`、`IsDisplayPlayerInfo`、`ScoreSelectType` 五个字段。难度数组为 null 时仍写 `nil`，与空数组不同；枚举按数值序列化。此处按 dump 成员契约写出全部字段，保留既有 HTTP 序列化器省略 null 的行为。
 
-响应：`OnResponse` 对命令 3060 以状态 **1** 判定成功，反序列化 `CreateMultiLivePrivateRoomResponse`（`RoomID`、`RoomCreateTime`），取 `RoomID` 交给空房间创建回调。该分支将本地房间基本数据重置为空、加入状态设为 0，未将返回的创建时间设为已加入房间状态；`OnReserveComplete` 再驱动申请房号。预留成功不等于已入房。非成功状态进入加入错误处理，错误载荷的具体取值仍缺样本。
+响应：`OnResponse` 对命令 3060 以状态 **1** 判定成功，反序列化 `CreateMultiLivePrivateRoomResponse`（`RoomID`、`RoomCreateTime`），取 `RoomID` 交给空房间创建回调。该分支将本地房间基本数据重置为空、加入状态设为 0，未将返回的创建时间设为已加入房间状态；`OnReserveComplete` 再驱动 POST 申请房号，之后才是 PATCH 设置大厅。预留成功不等于已入房。非成功状态进入加入错误处理，错误载荷的具体取值仍缺样本。
 
 证据：`SetupReserveRoom`（RVA `0x5cb6600`）、`Create`（`0x5cb6890`）、`CreateCommonRoomProperty`（`0x5cb0b9c`）、`CreatePartyRoomProperty`（`0x5cb66c4`）、构造器属性表、`SyncProperty.PackToObject`（`0x5df32e0`）及各 `AddSendData`、`GetObjectValue`、静态构造器；自定义 formatter（`0x6049798`）、`MultiLiveRoomBase.OnResponse`（`0x5cb2944`）、`MatchingRoom.OnEmptyRoomCreated`（`0x5cbb60c`）。属性字符串与类型均已和 dump 核对。
 
@@ -133,15 +133,27 @@ Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、�
 
 545 项客户端检查通过，覆盖七类属性固定字节向量、数值边界、UTF-8 字节长度、外层整数键和 bin 类型，以及普通／自定义规则、不同 TTL／战力限制、nil／空／多难度数组；新增配置异常、响应版本／命令／状态和缺少 RoomID 的检查。Server 构建与协议检查通过，保留模板未映射字段提示。下一步接通申请房号及入房流程；Server 实时房间服务尚未实现。
 
+## POST `/api/user/{userId}/diarkis-room/{roomId}/no`
+
+- Path：当前 userId 和本次实时预留返回的 roomId，无 query。Client 操作 `private-room-number`。
+- Body：dump `PrivateRoomNumberRequest`，`privateRoomType` 为枚举字符串，普通多人是 `multi_live`；`liveRuleType` 为规则字符串，普通规则为 `normal`。原构造器允许规则空值，当前连贯调试只覆盖普通规则。
+- Response：`PrivateRoomNumberPayload`。官方普通规则样本包含 `privateRoomType`、`roomNo`、`roomId`、`createdAt`、`liveRuleType`，未返回大厅或 parameter。
+- 时机及状态：`BaseMatchingOrganizer.OnSuccessReserveRoom` 保存 ReservedRoomId 后调用此 API；成功回调把 response.roomNo 写入 GeneratedRoomNumber，再触发完成回调。随后 CreatePrivateRoom 才 PATCH 设置大厅，最后调用 StartPrivateRoom；不能把 PATCH 当作分配房号的入口。
+- 证据：完整 `OnSuccessReserveRoom`（RVA `0x9c4dfd0`，有局部变量分配警告）、独立成功回调（`0x9c4e498`），以及 `PostPrivateLiveRoomNumberAPI` 构造器（`0x61948bc`）、Execute（`0x6194a5c`）和 OnCallBack（`0x6194c14`）。StringLiteral_30351（`0xBB43B28`）为上述路径，method1 为 POST；PrivateRoomType 枚举值1为 multi_live。API 回调不合并 Suite。
+
 ## PATCH `/api/user/{userId}/diarkis-room/{roomId}`
 
-- Path：当前 userId 与实时预留返回的 roomId；无 query。Client 操作 `private-room-number`，不自动生成 Suite 快照。
+- Path：当前 userId 与实时预留返回的 roomId；无 query。Client 操作 `private-room-update`，不自动生成 Suite 快照。
 - Body：dump `PrivateRoomNumberPatchRequest`，含可空 `multiLiveLobbyId`、字符串 `parameter` 和 `liveRuleType`。普通多人调用方填写所选大厅 ID 和规则枚举字符串，构造器及调用方均不填写 parameter；不将其猜为房间密码或设置 JSON。
 - Response：`PrivateRoomNumberPayload`，字段为 `privateRoomType`、`roomNo`、`roomId`、64 位 `createdAt`、可空 `multiLiveLobbyId`、`liveRuleType`、`parameter`。Client 当前检查 roomNo 存在，不要求 updatedResources；创建时间单位及错误响应仍缺官方样本。
-- 时机：实时预留成功后，`MultiRoomMatchingOrganizer.CreatePrivateRoom` 使用 ReservedRoomId 申请房号；成功分支继续调用 `StartPrivateRoom`。该 PATCH 的 OnCallBack 只转发结果，不调用 UpdateAll，房号申请不等于已入房。
+- 时机：实时预留及 POST 分配房号完成后，`MultiRoomMatchingOrganizer.CreatePrivateRoom` 使用 ReservedRoomId 设置大厅和规则；成功分支继续调用 `StartPrivateRoom`。该 PATCH 的 OnCallBack 只转发结果，不调用 UpdateAll，设置成功不等于已入房。
 - 证据：`PatchPrivateRoomNumberAPI.Execute`（RVA `0x61946e8`）及 OnCallBack（`0x61948a0`）；StringLiteral_30350（`0xBB43B20`）为 `user/{0}/diarkis-room/{1}`，method3 经 APICoreParam.Method 确认为 PATCH；调用方 `CreatePrivateRoom`（`0x5cbf080`）、其完整成功回调及 dump 请求／响应模型。
 
-已接入独立 Client HTTP 操作，隔离端点用于验证加密请求、路径、请求字段、64 位响应及后续会话轮换，不是 Server 业务实现。尚未对官方执行此 PATCH，也未接入 realtime-reserve 的连续申请流程；实际验证需新建预留并在同一连接内继续，不复用历史房间标识。房号如何写入 Organizer.GeneratedRoomNumber 的完整链路仍需继续核对。
+Client 命令 `realtime-room <config> <target> <clientConfigs.json> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update` 已串联实时预留、POST 分配房号、PATCH 设置大厅及最后 Suite 回读。大厅 ID 显式传入，测试选择 master 中普通规则、总力门槛为0的大厅1，不将其写死为所有房间的默认值。普通流程要求返回标识与本次预留一致、房号为正、类型和规则匹配；PATCH 后还核对房号未变及大厅与请求一致，异常时停止，不自动重发。
+
+2026-10-09 官方普通规则验证通过：上述 POST、PATCH 均 HTTP200，POST 返回五个字段，PATCH 增加 multiLiveLobbyId=1；两次房间标识及房号一致，最终 Suite 读取成功。本轮七次 HTTP 均200，UDP收发各24个数据报、重传0。RoomID、roomId、roomNo 字段及请求路径中的预留标识均脱敏，原响应保留在内存供后续使用。Suite 的时间、区域、新手任务、体力和活动休息字段有变化，不声称账号状态不变。
+
+559 项客户端检查、Server 构建、协议检查通过；隔离 HTTP 覆盖 POST／PATCH 不同请求模型、64 位创建时间、会话轮换及记录脱敏，另检查错误房间标识和缺失字段。隔离端点不是 Server 房间实现。官方自定义规则、失败响应、到期回收及实时入房仍待核验；创建时间单位未单独验证。
 
 ## PUT `/api/user/{userId}/profile-honor`
 

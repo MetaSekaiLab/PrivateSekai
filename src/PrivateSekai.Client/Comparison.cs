@@ -16,7 +16,7 @@ public sealed class Redactor
     public JsonNode? Clean(JsonNode? node, string field = "")
     {
         if (node == null) return null;
-        if (IsSensitive(field) || field is "userId" or "friendId" or "targetUserId" or "name" or "tabName" or "word" or "twitterId" or "text" or "thumbnail")
+        if (IsSensitive(field) || field is "userId" or "friendId" or "targetUserId" or "name" or "tabName" or "word" or "twitterId" or "text" or "thumbnail" or "roomId" or "RoomID" or "roomNo")
             return JsonValue.Create("<redacted>");
         if (node is JsonObject obj)
         {

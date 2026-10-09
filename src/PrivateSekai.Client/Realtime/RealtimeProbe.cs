@@ -8,8 +8,10 @@ namespace PrivateSekai.Client.Realtime;
 
 public static class RealtimeProbe
 {
-    public static async Task<bool> Run(string configurationPath, string targetName, string? clientConfigsPath = null)
+    public static async Task<bool> Run(string configurationPath, string targetName, string? clientConfigsPath = null, int? lobbyId = null)
     {
+        if (lobbyId.HasValue && (lobbyId <= 0 || clientConfigsPath == null))
+            throw new InvalidOperationException("房间设置需要客户端配置和有效大厅 ID。");
         var roomTtl = clientConfigsPath == null ? (int?)null : MultiLiveReservation.ReadRoomTtl(
             JsonNode.Parse(File.ReadAllText(clientConfigsPath))!.AsArray(), LiveRuleType.normal);
         var configuration = JsonFiles.Read<ClientConfiguration>(configurationPath);
@@ -84,6 +86,28 @@ public static class RealtimeProbe
                 report["reservedRoomIdPresent"] = !string.IsNullOrEmpty(reserved.roomId);
                 report["roomCreateTime"] = reserved.roomCreateTime;
                 report["reservationSucceeded"] = true;
+                if (lobbyId.HasValue)
+                {
+                    report["phase"] = "room-number";
+                    var numbered = await http.Send(new ScenarioStep
+                    {
+                        Operation = "private-room-number", Args = new() { ["roomId"] = reserved.roomId },
+                        Body = new() { ["privateRoomType"] = "multi_live", ["liveRuleType"] = "normal" }
+                    });
+                    var roomNumber = MultiLiveReservation.ReadRoomNumber(numbered, reserved.roomId);
+                    report["roomNumberSucceeded"] = true;
+                    report["phase"] = "room-settings";
+                    var updated = await http.Send(new ScenarioStep
+                    {
+                        Operation = "private-room-update", Args = new() { ["roomId"] = reserved.roomId },
+                        Body = new() { ["multiLiveLobbyId"] = lobbyId.Value, ["liveRuleType"] = "normal" }
+                    });
+                    if (MultiLiveReservation.ReadRoomNumber(updated, reserved.roomId) != roomNumber
+                        || updated["multiLiveLobbyId"]?.GetValue<int>() != lobbyId.Value)
+                        throw new InvalidDataException("房间设置响应与已分配房号或请求大厅不一致。");
+                    report["roomSettingsSucceeded"] = true;
+                    report["multiLiveLobbyId"] = lobbyId.Value;
+                }
             }
             report["phase"] = "suite-readback";
             await http.Suite();

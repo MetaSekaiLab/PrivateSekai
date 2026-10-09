@@ -12,6 +12,9 @@ internal static class Program
                 return await Realtime.RealtimeProbe.Run(realtimeConfig, realtimeTarget) ? 0 : 2;
             if (args is ["realtime-reserve", var reserveConfig, var reserveTarget, var clientConfigs, "--official-write", "auth,reserve-room"])
                 return await Realtime.RealtimeProbe.Run(reserveConfig, reserveTarget, clientConfigs) ? 0 : 2;
+            if (args is ["realtime-room", var roomConfig, var roomTarget, var roomConfigs, var lobby, "--official-write", "auth,reserve-room,private-room-number,private-room-update"])
+                return await Realtime.RealtimeProbe.Run(roomConfig, roomTarget, roomConfigs,
+                    int.Parse(lobby, System.Globalization.CultureInfo.InvariantCulture)) ? 0 : 2;
             if (args.Length == 1 && args[0] == "list")
             {
                 foreach (var pair in Operations.All) Console.WriteLine($"{pair.Key,-24} {pair.Value.Method,-6} {pair.Value.Path}");
@@ -34,6 +37,7 @@ internal static class Program
             }
             if (args.Length < 4 || args[0] is not ("plan" or "run"))
             {
+                Console.WriteLine("realtime-room <config> <target> <clientConfigs.json> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update");
                 Console.WriteLine("list\nplan|run <config> <scenario> <target[,target]> [--official-write <operation[,operation]>]\nrealtime-check <config> <target> --official-write auth\nrealtime-reserve <config> <target> <clientConfigs.json> --official-write auth,reserve-room\ncompare <left.json> <right.json> <report.json>\naudit-live-rewards <capture.json> <resourceBoxes.json> <report.json>");
                 return args.Length == 0 ? 0 : 2;
             }

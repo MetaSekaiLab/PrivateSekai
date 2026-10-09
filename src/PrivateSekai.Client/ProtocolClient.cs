@@ -208,6 +208,8 @@ public sealed class ProtocolClient : IDisposable
                     }
             var packed = Operations.EncodeBody(definition, body);
             var path = Operations.Path(definition, step, UserId);
+            if (step.Operation is "private-room-number" or "private-room-update")
+                Redactor.AddSecret(step.Args["roomId"]);
             using var request = new HttpRequestMessage(new HttpMethod(definition.Method), path);
             foreach (var pair in headers)
                 if (!pair.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))

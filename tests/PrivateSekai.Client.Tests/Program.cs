@@ -311,6 +311,19 @@ app.MapGet("/api/user/1/diarkis-auth", (HttpContext context) =>
         ["encryptionIv"] = "fixture-iv", ["encryptionMacKey"] = "fixture-mac"
     })));
 });
+app.MapPost("/api/user/1/diarkis-room/fixture-room/no", async (HttpContext context) =>
+{
+    using var body = new MemoryStream();
+    await context.Request.Body.CopyToAsync(body);
+    var request = DumpSerializer.Deserialize<PrivateRoomNumberRequest>(body.ToArray());
+    Check(!context.Request.Query.Any() && request.privateRoomType == "multi_live" && request.liveRuleType == "normal",
+        "生成房号以POST发送房间类型和规则，不混入PATCH大厅字段");
+    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new PrivateRoomNumberPayload
+    {
+        privateRoomType = "multi_live", roomNo = 12345, roomId = "fixture-room",
+        createdAt = 1791524750000L, liveRuleType = "normal"
+    })));
+}).WithMetadata(new PrskDecryptRequestAttribute());
 app.MapPatch("/api/user/1/diarkis-room/fixture-room", async (HttpContext context) =>
 {
     using var body = new MemoryStream();
@@ -318,10 +331,10 @@ app.MapPatch("/api/user/1/diarkis-room/fixture-room", async (HttpContext context
     var request = DumpSerializer.Deserialize<PrivateRoomNumberPatchRequest>(body.ToArray());
     Check(!context.Request.Query.Any() && request.multiLiveLobbyId == 7
         && request.liveRuleType == "normal" && request.parameter == null,
-        "申请房号以PATCH发送dump请求，保留大厅和规则且无查询参数");
+        "更新房间以PATCH发送dump请求，保留大厅和规则且无查询参数");
     return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new PrivateRoomNumberPayload
     {
-        privateRoomType = "multi", roomNo = 12345, roomId = "fixture-room",
+        privateRoomType = "multi_live", roomNo = 12345, roomId = "fixture-room",
         createdAt = 1791524750000L, multiLiveLobbyId = 7, liveRuleType = "normal"
     })));
 }).WithMetadata(new PrskDecryptRequestAttribute());
@@ -679,6 +692,15 @@ try
     var roomNumberResponse = await client.Send(new()
     {
         Operation = "private-room-number", Args = new() { ["roomId"] = "fixture-room" },
+        Body = new() { ["privateRoomType"] = "multi_live", ["liveRuleType"] = "normal" }
+    });
+    Check(PrivateSekai.Client.Realtime.MultiLiveReservation.ReadRoomNumber(roomNumberResponse, "fixture-room") == 12345,
+        "POST房号响应匹配当前预留");
+    Check(client.LastResponse!["roomId"]!.GetValue<string>() == "<redacted>"
+        && client.LastResponse["roomNo"]!.GetValue<string>() == "<redacted>", "房间标识和房号不写入响应记录");
+    roomNumberResponse = await client.Send(new()
+    {
+        Operation = "private-room-update", Args = new() { ["roomId"] = "fixture-room" },
         Body = new() { ["multiLiveLobbyId"] = 7, ["liveRuleType"] = "normal" }
     });
     Check(roomNumberResponse["roomNo"]!.GetValue<int>() == 12345

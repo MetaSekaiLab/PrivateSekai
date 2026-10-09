@@ -41,6 +41,14 @@ internal static class MultiLiveReservationChecks
         Reject(() => MultiLiveReservation.ParseResponse(response with { Version = 0 }));
         Reject(() => MultiLiveReservation.ParseResponse(response with { Command = 3000 }));
         Reject(() => MultiLiveReservation.ParseResponse(response with { Payload = DumpSerializer.Serialize(new CreateMultiLivePrivateRoomResponse()) }));
+        var numbered = JsonNode.Parse("""{"roomNo":12345,"roomId":"fixture-room","privateRoomType":"multi_live","liveRuleType":"normal"}""")!.AsObject();
+        Reject(() => MultiLiveReservation.ReadRoomNumber(numbered, "other-room"));
+        foreach (var field in new[] { "roomNo", "roomId", "privateRoomType", "liveRuleType" })
+        {
+            var incomplete = numbered.DeepClone().AsObject();
+            incomplete.Remove(field);
+            Reject(() => MultiLiveReservation.ReadRoomNumber(incomplete, "fixture-room"));
+        }
 
         void Reject(Action action)
         {
