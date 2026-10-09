@@ -197,7 +197,7 @@ public sealed class MissionService(
         }
     }
 
-    public void RecordChallengeLiveClear() => RecordLimitedBeginnerProgress(master.GetChallengeLiveClearMissions());
+    public void RecordChallengeLiveClear() => RecordBeginnerMissionProgress(master.GetChallengeLiveClearMissions());
 
     public void RecordCharacterLiveClear(int characterId)
     {

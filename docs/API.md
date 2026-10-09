@@ -2229,7 +2229,7 @@ Client 阶段回放已加入活动前后积分、道具数量及 `userEvents`、
 
 挑战评分与普通演出共用歌曲参考难度规则：`ChallengeLiveBootData` 向 `LiveBootDataBase` 传入 `LiveType.challenge_live`，后者构造 `LiveMusicData`，最终由 `MusicUtility.GetPlayLevelScore` 选择同曲难度枚举升序首个高于 Hard 的谱面，以其 `playLevel` 查询 `playLevelScores.liveType=challenge_live`。Server 已共用这段查询，从 S 到 C 比较包含边界的门槛，低于 C 返回 D；缺参考谱面或表项时拒绝猜测，也不回退 solo 表。实际游玩难度不改变评分表。小型夹具用不同的游玩／参考等级及 solo／challenge 门槛验证所有档位边界，既有官方 D／C 档阶段业务回放通过。该查询尚未接入完整挑战结算路由。
 
-新增官方区分样本：歌曲1/Easy 的4339分返回D，玩家经验增加400，额外Suite确认到账；歌曲参考Expert22的挑战C门槛为4340，旧查询误用Easy5会判C。新样本的评分、阶段及经验业务回放一致，但整体回放因新手任务进度差异失败：任务13的挑战次数由1增至2，本地仍为1；任务14在结算与额外Suite之间也继续增长，原因待查。保留失败报告，不将任务差异忽略后宣称完整对齐。
+新增官方区分样本：歌曲1/Easy 的4339分返回D，玩家经验增加400，额外Suite确认到账；歌曲参考Expert22的挑战C门槛为4340，旧查询误用Easy5会判C。新样本还确认已领奖的挑战新手任务继续计数，现已修复。评分、阶段、经验及挑战任务回放一致，但整体报告仍因任务14的进度差异失败；该任务在额外Suite和后续纯读取中也继续增长，原因待查。保留完整失败报告，不将任务差异忽略后宣称完整对齐。
 
 普通挑战点数按 `challenge_base_point + floor(score / challenge_point_calc_value)` 计算；当前 master 参数为 200、8000。[公开分析](https://note.com/notnishikori_18/n/nd3b1719c555f) 明确给出同一公式，五份官方样本交叉验证了 3999、7999、8000、10000、100000 分的结果。Server 已将其接入手动成功、无会员的阶段业务；会员倍率、自动和失败结算仍待核验。
 
@@ -2237,7 +2237,7 @@ Client 阶段回放已加入活动前后积分、道具数量及 `userEvents`、
 
 Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 从请求分数独立计算评分和点数，再重放阶段业务，不使用官方 `addPoint` 作为输入。五份样本的评分、点数、阶段记录、角色状态及解码后的完整 `userChallengeLiveStageResult` 一致，涵盖角色 1 和 21 从等级 1 升至 3 的经验与奖励；该检查不覆盖网络字段省略规则或完整 HTTP 结算。样本新增的释放条件来自活动积分，不属于角色升级。
 
-该回放同时比较 `userLiveMissions`、`userBeginnerMissionV2s`、`userMissionStatuses` 的完整业务状态，五份样本一致。回放时间固定为官方结算响应的 `updatedResources.now`，周期独立查询 master；D／C 档样本通过。用户 ID 映射为本地测试账号，不据此验证网络字段省略规则。后续挑战不重复推进已达成新手任务，以及编码失败回滚两类任务，另有本地检查。
+该回放同时比较 `userLiveMissions`、`userBeginnerMissionV2s`、`userMissionStatuses` 的完整业务状态，早期五份首次样本一致。回放时间固定为官方结算响应的 `updatedResources.now`，周期独立查询 master；用户 ID 映射为本地测试账号，不据此验证网络字段省略规则。后续官方样本确认挑战新手任务在 `received` 状态下仍由1增至2，状态保持已领取、`isNewAchieved=false`；额外Suite及后续只读请求保持此进度。Server 按 master 类型复用持续计数逻辑，达成及领奖只影响状态，不截断计数；不将此规则套用到已有封顶证据的普通Live任务。检查覆盖达成前后、领奖后计数及编码失败回滚，不重复达成或发奖。
 
 成功挑战的完成状态已接入业务层：核对私有会话与参与状态后，将 `liveStatus` 从 `start` 改为 `cleared`、`playCount` 从 0 改为 1，并记录 `playEndAt`，保留开局时间和曲目字段。对应角色的 `play_live` 任务进度增加 1，首次新增时按任务类型、角色 ID 排序；`userCharacterLiveUsageCounts` 不增加队长或成员次数。五份官方样本的完成状态、角色任务及使用次数回放一致，覆盖首次新增和已有进度递增；角色任务跨门槛仍待官方样本。
 

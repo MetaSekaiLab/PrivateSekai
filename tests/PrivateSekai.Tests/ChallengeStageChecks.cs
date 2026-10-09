@@ -233,8 +233,27 @@ internal static class ChallengeStageChecks
             "挑战增加配置点数并达成两类任务，不推进普通 Live 新手任务");
         operations.Execute(1, () => { UpdateMissions(); return user.BuildRefresh(); });
         Check.That(store.Read(1)!.Data.userLiveMissions.Single().progress == 60 &&
-            store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 1,
-            "后续挑战累计 Live 点数，已达成新手任务不重复累计");
+            store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 2 &&
+            store.Read(1)!.Data.userMissionStatuses.Count(s => s.missionStatus == "achieved") == 2,
+            "后续挑战继续累积新手进度，已达成状态不重复建立");
+        operations.Execute(1, () =>
+        {
+            user.Data.userMissionStatuses.Single(s => s.missionId == 71).missionStatus = "received";
+            return user.BuildRefresh();
+        });
+        operations.Execute(1, () => { UpdateMissions(); return user.BuildRefresh(); });
+        Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 3 &&
+            !store.Read(1)!.Data.userBeginnerMissionV2s.Single().isNewAchieved &&
+            store.Read(1)!.Data.userMissionStatuses.Single(s => s.missionId == 71).missionStatus == "received",
+            "挑战任务领奖后仍计数，保留已领取状态且不重新提示达成");
+        Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+        {
+            UpdateMissions();
+            return new BrokenResponse();
+        }), "已领取挑战任务计数编码失败");
+        Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 3 &&
+            store.Read(1)!.Data.userLiveMissions.Single().progress == 90,
+            "编码失败回滚门槛后的挑战计数和Live点数");
         Reset();
         operations.Execute(1, () =>
         {
