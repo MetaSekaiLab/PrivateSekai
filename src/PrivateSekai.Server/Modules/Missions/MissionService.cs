@@ -163,6 +163,8 @@ public sealed class MissionService(
 
     public void RecordEasyFullCombo() => UpdateHonorProgress("easy_full_combo");
 
+    public void RecordNormalFullCombo() => UpdateHonorProgress("normal_full_combo");
+
     public void RecordLiveFinish(bool cleared) =>
         UpdateHonorProgress(cleared ? "clear_live" : "finish_live_with_empty_life");
 

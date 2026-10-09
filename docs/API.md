@@ -2426,6 +2426,12 @@ Client 已提供申请、接受、好友 parts 操作；Server 通过 `UserOpera
 
 证据：`PutUserLiveClearAPI` 请求、成功回调对 `updatedResources` 的合并，`UserHonorMission` 契约、`musicDifficulties`／`honorMissions` master，以及上述官方结算和 Suite 回读。
 
+### 普通单人 Live 的 Normal FC 称号进度
+
+Normal FC 补充：同一普通结算入口中，首次成功手动完成某曲 Normal FC 新增 `normal_full_combo.progress=1`；同曲再次 FC 保持 1，两个样本的 Suite 回读一致。Server 按曲目和难度检查旧 FC 标志，再更新对应称号进度；同曲 Easy 成绩不会阻止首次 Normal 计数，原有 Easy 路径保留。客户端 `MusicUtility.CheckAnyUserMusicFullCombo` 按曲目、难度查询记录，并检查 `fullComboFlg`；多人已有 FC 的跨模式情形尚无官方样本。
+
+`--replay-live-honor` 已纳入 Normal 类型；首次、重复及旧 Easy 回归三组 HTTP 对拍通过。master 中 Normal 的首个任务 11001 要求 5 首；当前官方进度仅 1，未达成该任务。独立进度、重复去重与按门槛达成有小型夹具检查，不能将其称为官方跨门槛证明。Normal Auto、失败、5 首门槛与领奖仍需各自采样。
+
 ### 普通单人 Live 的通关与生命耗尽次数
 
 - 同一结算入口中，`life > 0` 的手动或 Auto 演出增加 `clear_live`；同曲重复成功也增加，不采用 FC 的曲目去重规则。失败不增加通关次数。

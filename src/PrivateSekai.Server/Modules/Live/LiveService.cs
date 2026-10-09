@@ -122,10 +122,14 @@ public sealed class LiveService(
             {
                 if (request.life > 0)
                     missions.RecordLiveRecords(request.maxCombo, master.ResolveMusicPlayLevel(session.MusicDifficultyId));
-                if (request.life > 0 && fullCombo && master.ResolveMusicDifficultyType(session.MusicDifficultyId) == "easy" &&
+                var difficultyType = master.ResolveMusicDifficultyType(session.MusicDifficultyId);
+                if (request.life > 0 && fullCombo && difficultyType is "easy" or "normal" &&
                     !(user.Data.userMusicResults ?? []).Any(r => r.musicId == session.MusicId &&
-                        r.musicDifficultyType == "easy" && r.fullComboFlg))
-                    missions.RecordEasyFullCombo();
+                        r.musicDifficultyType == difficultyType && r.fullComboFlg))
+                {
+                    if (difficultyType == "easy") missions.RecordEasyFullCombo();
+                    else missions.RecordNormalFullCombo();
+                }
                 highScoreFlg = UpdateUserMusicResult(session, request, fullCombo, fullPerfect);
             }
             deckCardExpResults = BuildDeckCardExpResults(session.DeckId);

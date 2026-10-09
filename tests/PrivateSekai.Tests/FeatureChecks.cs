@@ -62,6 +62,7 @@ internal static class FeatureChecks
             SpecialTraining(provider, store);
             LiveSettlement(provider, store);
             LiveResultPlayTypes(provider, store);
+            NormalFullCombo(provider, store);
             SeasonalLive(provider, store);
             GachaDraw(provider, store);
             Console.WriteLine("业务：正式 DI 注册、商店、卡牌与任务联动、Live 结算、确定性抽卡检查通过。");
@@ -363,6 +364,41 @@ internal static class FeatureChecks
             store.Read(3)!.Data.userBoost.current == 10, "重复 Auto 结算不重复计数、发经验或扣体力");
     }
 
+    private static void NormalFullCombo(ServiceProvider provider, IUserStore store)
+    {
+        var state = TestUsers.Create(10);
+        state.Data.userCards = [new() { cardId = 1, level = 1 }];
+        state.Data.userDecks = [new() { deckId = 1, member1 = 1, leader = 1 }];
+        state.Data.userMusics = [new() { musicId = 7 }];
+        state.Data.userMusicVocals = [new() { musicId = 7, musicVocalId = 1 }];
+        state.Data.userMusicResults = [new() { musicId = 7, musicDifficultyType = "easy", playType = "solo", fullComboFlg = true }];
+        state.Data.userHonorMissions = [new() { honorMissionType = "easy_full_combo", progress = 1, achievedMissionIds = [] }];
+        store.Save(10, state);
+        using var scope = provider.CreateScope();
+        var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+        var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
+        var live = scope.ServiceProvider.GetRequiredService<LiveService>();
+        for (var i = 0; i < 2; i++)
+        {
+            var start = operation.Execute(10, () => live.StartUserLive(new UserLiveRequest
+            {
+                musicId = 7, musicDifficultyId = 72, musicVocalId = 1, musicCategoryName = "original", deckId = 1
+            }).Response);
+            var liveId = DumpSerializer.Deserialize<UserLive>(start).userLiveId;
+            operation.Execute(10, () =>
+            {
+                live.ClearUserLive(liveId, new UserLiveClearRequest { score = 100, perfectCount = 10, maxCombo = 10, life = 1000 });
+                return user.BuildRefresh();
+            });
+            var saved = store.Read(10)!.Data;
+            Check.That(saved.userHonorMissions.Single(m => m.honorMissionType == "normal_full_combo").progress == 1 &&
+                saved.userHonorMissions.Single(m => m.honorMissionType == "easy_full_combo").progress == 1,
+                "Normal 首次 FC 独立于同曲 Easy，重复完成不重复计数");
+            Check.That(saved.userMissionStatuses.Count(m => m.missionType == "honor_mission" && m.missionId == 11001 && m.missionStatus == "achieved") == 1,
+                "Normal 按小型 master 门槛达成且不重复建立任务状态");
+        }
+    }
+
     private static void LiveResultPlayTypes(ServiceProvider provider, IUserStore store)
     {
         foreach (var hasSolo in new[] { false, true })
@@ -572,7 +608,7 @@ internal static class FeatureChecks
             ["releaseConditions"] = """[{"id":92002,"releaseConditionType":"user_rank","releaseConditionTypeLevel":2},{"id":92003,"releaseConditionType":"user_rank","releaseConditionTypeLevel":3},{"id":93002,"releaseConditionType":"card_level","releaseConditionTypeId":1,"releaseConditionTypeLevel":2}]""",
             ["configs"] = """[{"configKey":"rank_up_recover_boost_count","value":"10"},{"configKey":"boost_recovery_max_count","value":"25"},{"configKey":"boost_recovery_second","value":"1800"}]""",
             ["beginnerMissionV2s"] = """[{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
-            ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
+            ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10},{"id":72,"musicId":7,"musicDifficulty":"normal","playLevel":6,"totalNoteCount":10}]""",
             ["musicCategories"] = """[{"musicId":7,"musicCategoryName":"original"},{"musicId":8,"musicCategoryName":"original"},{"musicId":11,"musicCategoryName":"image"}]""",
             ["limitedTimeMusics"] = """[{"id":1,"musicId":8,"startAt":10,"endAt":20},{"id":2,"musicId":9,"startAt":10,"endAt":0},{"id":3,"musicId":10,"startAt":0,"endAt":0}]""",
             ["musicVocals"] = """[{"id":1,"musicId":99,"musicVocalType":"original_song"},{"id":3,"musicId":7,"musicVocalType":"april_fool_2022","specialSeasonId":1}]""",
@@ -581,7 +617,7 @@ internal static class FeatureChecks
             ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3,"bondsExpRate":4}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = "[]",
-            ["honorMissions"] = """[{"id":10001,"honorMissionType":"easy_full_combo","requirement":1},{"id":101,"honorMissionType":"clear_live","requirement":2},{"id":20001,"honorMissionType":"play_level_clear","requirement":5},{"id":20002,"honorMissionType":"play_level_clear","requirement":6}]""",
+            ["honorMissions"] = """[{"id":10001,"honorMissionType":"easy_full_combo","requirement":1},{"id":11001,"honorMissionType":"normal_full_combo","requirement":1},{"id":101,"honorMissionType":"clear_live","requirement":2},{"id":20001,"honorMissionType":"play_level_clear","requirement":5},{"id":20002,"honorMissionType":"play_level_clear","requirement":6}]""",
             ["musicAchievements"] = """[{"id":1,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_c","resourceBoxId":80}]"""
         };
         foreach (var (table, json) in tables)
