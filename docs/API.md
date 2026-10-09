@@ -1917,6 +1917,26 @@ Client 测试入口 `--replay-live-experience <start> <clear> <master> <output>`
 - `Sekai.Result.ScreenLayerFreeLiveResult.OnFinishLiveClearAPI`: 结算成功后的结果页数据处理入口。
 - `Sekai.ResultUtility.GetUnreadPlayedCutInVoiceGroupIds`: 确认 `ingameCutinCharacterArchiveVoiceGroupIds` 的来源是本次已播放且未读的切入语音组。
 
+### 普通结算奖励的样本覆盖与缺口
+
+现有场景记录中汇总了76份成功的普通结算响应，按响应的评分、体力消耗和经验倍率分组如下。数量表示记录数，不表示独立账号数；该汇总未按 Auto、失败条件、游戏版本和谱面进一步分层，也未替代逐份持久状态对拍。
+
+| 评分 | costBoost | expRate | 玩家总经验增量 | 记录数 |
+| --- | --- | --- | --- | --- |
+| D | 0 | 1 | 20 | 8 |
+| D | 3 | 15 | 300 | 1 |
+| C | 0 | 1 | 200 | 27 |
+| C | 1 | 5 | 1000 | 4 |
+| C | 5 | 25 | 5000 | 9 |
+| C | 10 | 30 | 6000 | 25 |
+| B | 0 | 1 | 240 | 2 |
+
+C档样本符合基础经验200乘 `boost.expRate`；两份B档样本增量240，但尚无B档其他倍率及A／S档成功样本，不能据此宣称全档经验规则已还原。当前Server的B档零经验与这些样本不一致。
+
+76份响应的 `addDailyBonusProgress` 均为0，`livePointBonusRemaining` 均为3，覆盖0、1、3、5、10体力消耗。这反证当前Server将 `costBoost` 填入剩余次数的实现，但不能证明该字段应永远固定为3。客户端 `LiveReward.SetData` 将这两个字段直接传给 `LiveResultLiveMission.Initialize`，后者分别保存并展示；未在该路径从体力重新计算剩余次数。每日发放条件、次数扣减、跨日及付费状态仍需补证。
+
+歌曲1／Easy、零体力的C档样本中金币均为150、初级练习券均为2，材料组合不同；两份B档样本金币180、初级练习券2，材料组合也不同。其中一份B档响应将同一材料ID的数量2和4分成两条返回，奖励响应不能擅自按资源ID合并。当前固定掉落箱序列不覆盖这些结果；master奖励明细、倍率和评分门槛本身不足以确定池选择及抽取权重。
+
 ## POST `/api/user/{userId}/live-character-archive-voice/live-result`
 
 > 审计版本: jp-6.5.5
