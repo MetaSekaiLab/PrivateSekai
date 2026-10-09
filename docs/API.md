@@ -191,16 +191,16 @@ RoomUserBasicInfo 是整数键0～19的 MessagePack 数组，来源包括：
 
 总力继续追溯到 `DeckUtility.GetTotalPowerByDeckId(deckId, true)`（`0x4d82d7c`）：通过 DeckListData 找到编队，再调用 `DeckData.GetTotalPowerIncludeBuff(0)`（`0x634b658`）。后者按 IsSumCard 筛选成员，累加每名成员的 TotalPowerIncludeBuff，最后加上 HonorUtility.GetTotalPowerBuff；参数0时排除第六名 MV 成员。LiveDeckData 构造和 CreateMyBasicInfo 均调用当前活动总力模型限制总力；该链路不等于额外叠加一次活动加成。GetTotalPowerIncludeBuff 导出含局部变量分配警告，筛选与求和已交叉核对完整 lambda 和 IsSumCard，但未独立核验汇编。
 
-### 入房总力计算来源（静态审计，尚未实现）
+### 入房总力计算来源（区域计算已实现，完整总力尚未接入）
 
-`CardViewDataBase.SetupUserCardData`（`0x622fb90`）分别保存卡牌基础总力、区域道具、角色等级、MYSEKAI 门和家具加成，再相加写入 TotalPowerIncludeBuff。其后的 EventBonus 是另一个字段，不能将活动奖励倍率再乘进入房总力。以下为已追到的计算规则，完整成员资料初始化及区域道具适用条件仍待审计。
+`CardViewDataBase.SetupUserCardData`（`0x622fb90`）分别保存卡牌基础总力、区域道具、角色等级、MYSEKAI 门和家具加成，再相加写入 TotalPowerIncludeBuff。其后的 EventBonus 是另一个字段，不能将活动奖励倍率再乘进入房总力。以下为已追到的计算规则，完整总力计算与入房资料构造仍待接入。
 
 | 部分 | 已确认规则 | 实现时需保留的区别 |
 | --- | --- | --- |
 | 卡牌基础总力 | 三项等级属性，加画布、特训、Master Rank 和已读剧情奖励 | 特训仅在状态为 done 时加固定属性；等级属性来自参数表，不做线性插值 |
 | 称号 | 遍历全部持有的 userHonors，按 honorId 和持有 level 查 honors.levels.bonus 后相加 | 与穿戴槽位无关；精确匹配当前等级，不累计此前各级，也不使用最高级替代 |
 | 角色等级 | 以角色 ID 和 characterRank 查三项 powerBonusRate；各项卡牌属性分别乘百分比并向下取整，再相加 | 不先合并三项属性；卡牌属性计算包含画布、特训、Master Rank、剧情奖励 |
-| 区域道具 | 对每项卡牌属性累加适用道具的浮点加成，完成该项累加后向下取整，再合计三项 | 不逐道具取整；适用道具列表与编队及 multiUnitEval 有关，筛选规则尚未补齐 |
+| 区域道具 | 先按角色、组合、属性等规则筛选及合并，再逐属性累加浮点加成，最后各属性向下取整并求和 | Client 计算组件已实现；持有等级到 master 的数据装配及完整入房尚未接入 |
 | MYSEKAI 门 | 优先卡牌 supportUnit，否则角色 unit；piapro 选持有门中最高等级，其余选择对应 unit 的门；按门 ID 和等级查倍率 | 以卡牌基础总力乘倍率，先截断至两位小数，再向下取整；不按所有门倍率求和 |
 | MYSEKAI 家具 | 按卡牌角色查用户家具加成，应用普通及活动上限，再乘卡牌基础总力并向下取整 | 用户比例与上限均依赖配置缩放；上限选取的活动时机仍待核对 |
 
@@ -208,7 +208,19 @@ RoomUserBasicInfo 是整数键0～19的 MessagePack 数组，来源包括：
 
 家具缩放配置为 `mysekai_fixture_game_character_bonus_rate_scale`。普通上限和可显示活动上限取较小值，缺失的一方不参与限制；两者都缺失则上限0。原实现先将上限除以缩放配置，四舍五入至三位小数后截断至两位；用户 totalBonusRate 除以同一配置，再与此上限分别除以100后取较小值。配置不大于0时原实现记录错误并保留0，不能硬编码一个常用倍率。浮点运算和每一步取整需要独立边界检查。
 
-证据：HonorUtility.GetTotalPowerBuff（`0x4daf8d4`、`0x4db0914`）、UserDataManager.GetHonors（`0x63292dc`）、MasterHonor.GetBonus／ExistsBonus（`0x614e428`／`0x614e3a8`）；CardUtility.GetTotalPower（`0x4d67be4`）、GetTotalPowerBy（`0x4d69f5c`）、GetDefaultParameterBy（`0x4d685d8`）、GetMasterRankBonus（`0x4d68a70`）、GetEpisodeReadBonusAll（`0x4d6a9cc`）、GetCharacterRankBonusPowerBy（`0x4d6c400`）、GetAreaItemPowerBy（`0x4d6c0d8`）、GetGateBonus（`0x4d68110`）及完整筛选 lambda、GetFixtureBonus（`0x4d695d0`）、GetFixtureBonusLimitRate（`0x4d69328`）、家具加成模型构造（`0x6148e00`）和 FloatExtensions 取整方法。部分导出存在局部变量或类型别名噪声；尚缺参数表初始化、区域道具筛选、活动选择、完整编队构造及实际总力对照，不能据此宣称已能构造完整入房资料。
+证据：HonorUtility.GetTotalPowerBuff（`0x4daf8d4`、`0x4db0914`）、UserDataManager.GetHonors（`0x63292dc`）、MasterHonor.GetBonus／ExistsBonus（`0x614e428`／`0x614e3a8`）；CardUtility.GetTotalPower（`0x4d67be4`）、GetTotalPowerBy（`0x4d69f5c`）、GetDefaultParameterBy（`0x4d685d8`）、GetMasterRankBonus（`0x4d68a70`）、GetEpisodeReadBonusAll（`0x4d6a9cc`）、GetCharacterRankBonusPowerBy（`0x4d6c400`）、GetAreaItemPowerBy（`0x4d6c0d8`）、GetGateBonus（`0x4d68110`）及完整筛选 lambda、GetFixtureBonus（`0x4d695d0`）、GetFixtureBonusLimitRate（`0x4d69328`）、家具加成模型构造（`0x6148e00`）和 FloatExtensions 取整方法。部分导出存在局部变量或类型别名噪声；尚缺 Master Lesson 缓存排序、活动选择和实际总力对照，不能据此宣称已能构造完整入房资料。
+
+Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 master 卡牌、角色、编队、已选择持有等级的区域效果，以及三项卡牌属性；它尚未接入官方请求或 Server。
+
+- 先按角色限定、multi_unit、指定组合、指定属性、通用效果的顺序分支。同类倍率先合并，不逐条取整。
+- 组合和属性全员匹配检查前五项，要求至少五项且均匹配；组合允许角色 unit 或卡牌 supportUnit 匹配。三项全员倍率必须同时存在，否则全部回退普通倍率。属性全员倍率先转整数，组合全员倍率保留小数。
+- 所属组合和支援组合分别累计，比较三项倍率之和，仅保留较高者，相等保留所属组合。再比较保留组合的全员额外倍率与混合组合倍率；相等保留全员效果，混合更高时只将组合效果回退为普通倍率。
+- 自动混合判断遍历输入编队：普通角色加入其 unit，piapro 的 supportUnit 后处理；空支援、none 或已存在的支援组合会加入 piapro。不能简单用角色 unit 去重。multiUnitEval=1／2分别强制启用／禁用，其余自动判断。
+- 百分比换算保留 `(float)(rate * 0.01)` 的转换顺序，再以 float 乘属性并累计；直接使用 `0.01f` 会改变部分整数边界。每项最后 floor，三项求和。
+
+参数表初始化也已确认：MasterCard 反序列化将 cardParameters 按类型分组、按 cardLevel 升序排列；读取时用 level−1 索引。普通 DeckListData 构造先为每个成员以空 DeckInfo／自动混合判断构造卡牌资料，计算会回退到主编队；随后才补写包含 MV 槽的 DeckInfo。当前入房读取主编队，不应把任意指定编队的首次计算误认为已经使用其自身区域组合条件。
+
+证据：完整 GetAreaItemBuffList（`0x4d6adb0`）、AddUnitBonus（`0x4d6ba88`）、AddAttributeBonus（`0x4d6bd9c`）、DeckUtility.IsMultiUnitDeck（`0x4d832a8`）、CheckAllMemberAttributeMatch（`0x4d8368c`）、DeckUtility.GetAreaItemBuffList（`0x4d819d8`）、MasterCard.OnAfterDeserialize（`0x614b71c`）及三个排序 lambda、DeckListData.Setup（`0x6346f10`）、DeckData 构造（`0x63473c8`）和成员构造链。独立小型夹具验证组合竞争、缺少全员字段、混合规则及取整边界；仍无官方区域总力对拍。
 
 回包边界：`MultiLiveRoomBase.OnResponse` 对3080/status1直接返回；status5／102交给带错误码的入房处理，其他失败走通用错误。该方法另在3000／3001成功分支反序列化 MultiLiveRoomSyncData，写入房间基本数据并触发 ResponseJoinPostProcess。因此只收到3080成功或可靠ACK都不能报告“已入房”；完整同步、推送与后处理仍需继续审计。
 
