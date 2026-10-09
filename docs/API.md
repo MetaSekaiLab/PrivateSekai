@@ -1937,6 +1937,10 @@ C档样本符合基础经验200乘 `boost.expRate`；两份B档样本增量240�
 
 Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通过实际本地 HTTP 结算比较完整 `userLivePoint`，校验成功状态与 HTTP 状态；缺少该对象或存在差异即失败。零体力官方样本确认仅剩余次数字段不同：官方3、本地0。该检查覆盖响应中的普通进度、每日加成、剩余次数及周期，不替代任务持久状态、独立回读和跨日验证。
 
+每日加成适用范围已从[官方 FAQ](https://pjsekai.sega.jp/faq/index.html)确认（2026-10-09查阅）：多人 Live 或 Cheerful Live 通关时，当日前三次获得额外 Live P，次数每日凌晨4点重置。普通单人演出不属于该触发范围，因此上述单人样本无法验证次数扣减；不能为单人结算按游玩次数新增每日奖励。FAQ未在该条注明时区、具体加成量或网络存档字段，这些仍需匹配版本的配置及多人样本。
+
+`UserMultiLiveClearResponse` 同样返回 `UserLivePoint`，是后续取证入口。其请求 `UserMultiLiveClearRequest` 包含五个玩家成绩槽、总分、Super Fever、断线玩家及私人房间设置，不能将单人结算请求直接换路由发送。当前Server与协议Client未接入完整多人房间和结算流程；下一步需取得测试账号私人房间的开局、成功结算、随后单人结算及跨日回读，验证共享次数。`colorfulPassV2s.livePointRate` 提供通行证倍率，但本次查阅未证明每日加成以购买通行证为前提。
+
 歌曲1／Easy、零体力的C档样本中金币均为150、初级练习券均为2，材料组合不同；两份B档样本金币180、初级练习券2，材料组合也不同。其中一份B档响应将同一材料ID的数量2和4分成两条返回，奖励响应不能擅自按资源ID合并。当前固定掉落箱序列不覆盖这些结果；master奖励明细、倍率和评分门槛本身不足以确定池选择及抽取权重。
 
 ## POST `/api/user/{userId}/live-character-archive-voice/live-result`
