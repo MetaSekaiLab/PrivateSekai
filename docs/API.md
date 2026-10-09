@@ -441,7 +441,7 @@ Client 的 `profile-save` 保留可空 ID，不把缺失值补成 0。Server 在
 - 官方首次购买样本同步推进该角色的 `collect_stamp` 任务与同名荣誉进度；角色任务当次达成项仅放入响应，不持久化提示。
 - 商品状态持久化为 `sold_out`，购买响应省略 `userShops`；后续 Suite 回读显示售罄。材料、贴图、商店及相关任务的专项 HTTP 重放无差异，不覆盖其他背景字段。
 - 已售罄商品重复购买、缺少兑换券均采得官方 HTTP 409，Server 已对应拒绝且不改变库存和任务。使用 `ClientErrorResponse`：缺券为 `not_enough_resource`，重复购买为空错误码，`errorMessage` 为空；两类错误响应与独立会话回读已完成 HTTP 对拍。
-- 多角色贴图、其他成本、荣誉达成领奖仍待官方样本，当前不扩展这些分支。
+- 多角色贴图、其他成本及收集称号达成领奖的官方样本仍待补充；称号门槛现按下述通用规则处理。
 
 Client 复用 `shop-purchase`，专项重放使用 `--replay-stamp-shop`。证据为贴图商店调用链、贴图与商店 master、首次购买及拒绝样本。
 
@@ -452,7 +452,11 @@ Client 复用 `shop-purchase`，专项重放使用 `--replay-stamp-shop`。证�
 - 每个参与角色的 `collect_another_vocal` 进度各加 1，荣誉同名进度按购买的一个音源加 1；双角色版本不把荣誉加 2。角色任务的当次达成项只出现在响应，Suite 回读为空提示列表。
 - 缺券与重复购买均返回 HTTP 409；分别使用 `not_enough_resource` 和空错误码，错误消息为空。拒绝后库存、音源和相关任务不变。
 - 单角色、双角色购买及两种拒绝的专项 HTTP 对拍无差异，范围为音源、歌曲、商店、材料及相关任务。新手任务未变化；其他背景字段不在核验范围内。
-- 当前接入 `characters` 为 `game_character` 的版本和材料成本。其他音源类型、角色类型、荣誉达成门槛及对应奖励仍待样本；未核验的荣誉达成暂不执行购买，事务失败不保留扣券。
+- 当前接入 `characters` 为 `game_character` 的版本和材料成本。其他音源类型、角色类型仍未扩展；收集称号跨门槛不再阻止购买，规则及证据边界见下文。
+
+收集称号门槛：贴图、Another Vocal 和服装制作共用 `honorMissions` 的类型与 requirement，不写死 30、10、50 等门槛。每次成功购买一个音源或制作一套服装仍只加一次荣誉进度；双角色音源分别增加角色任务，头饰组合不增加两次荣誉进度。遍历所有满足条件的称号任务，已有 `achieved`／`received` 不重复达成，超过最高门槛仍可继续购买和制作。达成仅写任务状态，奖励仍通过称号任务领取接口发放；已有称号升级的资源处理限制未在此修复。
+
+响应沿用演出称号已核验的通用形式：`updatedResources.userHonorMissions[].achievedMissionIds` 仅包含本次新达成项，Suite 持久记录为空；`userMissionStatuses` 保存达成或已领取状态。逆向 `UserDataManager.UpdateHonorMission` 按响应数组重建类型映射，因此保留完整进度列表；本次更新不重排无关的旧记录。**三类收集跨门槛行为是基于 master、现有低进度购买样本与通用称号流程的推导，尚无收集门槛的官方成功样本。** 本地检查覆盖门槛前、跨多档、领奖续增、高进度补齐、失败回滚及合唱只计一次；服装 HTTP 检查覆盖 49→50→51。既有贴图、Vocal、服装官方记录回归通过，演出称号门槛回归也通过，不将这些报告冒充收集门槛官方对拍。
 
 Client 复用 `shop-purchase`；成功样本重放使用 `--replay-vocal-shop <record> <master> <output>`，拒绝样本使用 `--replay-vocal-rejection`。贴图拒绝另有 `--replay-stamp-rejection`。证据为 `AnotherVocalPurchaseConfirmDialog`、`PostUserShopAPI`、音源及商店 master 和官方请求及 Suite 回读。
 
@@ -2337,7 +2341,7 @@ Server 已接入已有穿戴槽位保存、角色与部位匹配、持有检查�
 
 Server 当前接入普通身体服装及同角色头饰组合制作，Client 提供 `costume-craft` 和 `--replay-costume-craft`。官方组合样本按头饰、身体顺序发放，两件取得时间相同；只扣一次商品材料，角色服装收集和荣誉进度各加 1。两类样本的材料、服装、商店及三类任务字段 HTTP 对拍一致。
 
-荣誉任务达到门槛后的变化、部分组件已持有时的处理，以及失败请求的官方错误码仍待核验；需要对应制作响应和前后 Suite。未核验的荣誉达成暂不执行，事务失败不保留扣材。
+荣誉进度现复用商店章节所述通用称号门槛规则，达到门槛不再拒绝制作；收集门槛官方样本、部分组件已持有时的处理及失败请求错误码仍待核验，需要对应制作响应和前后 Suite。事务失败不保留扣材、服装或任务变化。
 
 证据：`PostUserCostume3DShopAPI`、`UserCostume3DShopResponse`、服装商店和任务 master，以及官方制作与 Suite 回读样本。
 

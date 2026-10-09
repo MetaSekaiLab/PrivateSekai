@@ -134,17 +134,6 @@ internal static class CostumeHttpChecks
         state.Data.userMaterials.Single(m => m.materialId == 12).quantity = 32;
         state.Data.userHonorMissions = [new() { honorMissionType = "collect_costume_3d", progress = 49, achievedMissionIds = [] }];
         store.Save(1, state);
-        rejected = false;
-        try { operation.Execute(1, () => service.Craft(1001)); }
-        catch (NotSupportedException) { rejected = true; }
-        unchanged = store.Read(1)!.Data;
-        check(rejected && unchanged.userMaterials.Single(m => m.materialId == 11).quantity == 310 &&
-            unchanged.userCostume3dStatuses.Single().status == "sale" && unchanged.userCostume3dShopItems.Single().status == "sale" &&
-            unchanged.userHonorMissions.Single().progress == 49,
-            "未核验的荣誉达成被拒绝时回滚已执行的扣材、发放及售罄状态");
-        state = store.Read(1)!;
-        state.Data.userHonorMissions = [];
-        store.Save(1, state);
         await ScenarioRunner.Run(client, new() { Steps = [new()
         {
             Operation = "costume-craft", Args = new() { ["shopItemId"] = "1001" }
@@ -157,9 +146,14 @@ internal static class CostumeHttpChecks
             "制作扣材并将已有待售服装转为持有，商品售罄且不自动穿戴");
         check(saved.userBeginnerMissionV2s.Single(m => m.beginnerMissionV2Id == 4).progress == 1 &&
             saved.userCharacterMissionStatuses.Single().missionStatus == "achieved" &&
-            saved.userCharacterMissions.Single().achievedMissions.Length == 0 && saved.userHonorMissions.Single().progress == 1,
+            saved.userCharacterMissions.Single().achievedMissions.Length == 0 && saved.userHonorMissions.Single().progress == 50,
             "制作同步新手、角色收集和荣誉进度，角色临时达成列表不持久化");
         var response = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "costume-craft/001.json")))!["response"]!;
+        check(response["updatedResources"]!["userHonorMissions"]![0]!["achievedMissionIds"]!.AsArray()
+                .Select(x => x!.GetValue<int>()).SequenceEqual([3101]) &&
+            saved.userMissionStatuses.Single(s => s.missionType == "honor_mission" && s.missionId == 3101).missionStatus == "achieved" &&
+            saved.userHonorMissions.Single().achievedMissionIds.Length == 0,
+            "制作跨五十件门槛返回临时称号提示，持久化达成状态但不保留提示");
         check(response["consumedCosts"]![0]!["resourceLevel"] == null &&
             response["obtainedResources"]![0]!["resourceLevel"]!.GetValue<int>() == 0 &&
             response["updatedResources"]!["userCharacterMissionV2s"]![0]!["achievedMissions"]!.AsArray().Count == 1,
@@ -184,7 +178,9 @@ internal static class CostumeHttpChecks
             saved.userCostume3dStatuses.All(c => c.status == "available") && saved.userCostume3dStatuses.Select(c => c.obtainedAt).Distinct().Count() == 1 &&
             saved.userMaterials.Single(m => m.materialId == 11).quantity == 10 && saved.userMaterials.Single(m => m.materialId == 12).quantity == 2,
             "组合制作按头饰、身体顺序发放，两件取得时间相同且只扣一次材料");
-        check(saved.userCharacterMissions.Single().progress == 2 && saved.userHonorMissions.Single().progress == 2,
+        check(saved.userCharacterMissions.Single().progress == 2 && saved.userHonorMissions.Single().progress == 51,
             "一次组合制作只增加一次角色服装收集与荣誉进度");
+        check(response["updatedResources"]!["userHonorMissions"]![0]!["achievedMissionIds"]!.AsArray().Count == 0,
+            "称号已达成后继续制作成功，不重复提示同一门槛");
     }
 }

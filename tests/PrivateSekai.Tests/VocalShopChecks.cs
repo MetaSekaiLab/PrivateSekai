@@ -65,7 +65,7 @@ internal static class VocalShopChecks
             state.Data.userShops = [new() { shopId = 4, userShopItems = [new() { shopItemId = 1, status = "sale" }, new() { shopItemId = 2, status = "sale" }] }];
             state.Data.userCharacterMissions = [];
             state.Data.userCharacterMissionStatuses = [];
-            state.Data.userHonorMissions = [];
+            state.Data.userHonorMissions = [new() { honorMissionType = "collect_another_vocal", progress = 9, achievedMissionIds = [] }];
             store.Save(1, state);
             operation.Execute(1, () =>
             {
@@ -84,7 +84,7 @@ internal static class VocalShopChecks
             }), "Vocal 购买响应编码失败时回滚");
             var saved = store.Read(1)!.Data;
             Check.That(saved.userMaterials.All(m => m.quantity == 2) && saved.userMusicVocals.Count == 0 &&
-                saved.userHonorMissions.Length == 0 && saved.userCharacterMissions.Length == 0 &&
+                saved.userHonorMissions.Single().progress == 9 && saved.userCharacterMissions.Length == 0 &&
                 saved.userShops.Single().userShopItems.All(i => i.status == "sale"), "券、音源、商店和任务共同回滚");
             var bytes = operation.Execute(1, () =>
             {
@@ -100,16 +100,18 @@ internal static class VocalShopChecks
                 "购买关联 Vocal 并售罄，不隐式解锁基础歌曲");
             Check.That(saved.userMaterials.Where(m => m.materialId is 18 or 20).All(m => m.quantity == 1) &&
                 saved.userCharacterMissions.Length == 2 && saved.userCharacterMissions.All(m => m.progress == 1 && m.achievedMissions.Length == 0) &&
-                saved.userHonorMissions.Single().progress == 1, "合唱扣双方各一张券，双方任务各一次，荣誉只计一次");
+                saved.userHonorMissions.Single().progress == 10, "合唱扣双方各一张券，双方任务各一次，荣誉只计一次");
             Check.That(refresh.userShops != null && refresh.userMusicVocals.Count == 1 && refresh.userMusics == null,
                 "Vocal 响应刷新商店与音源，不刷新未变化的基础歌曲");
+            Check.That(saved.userMissionStatuses.Single(s => s.missionType == "honor_mission" && s.missionId == 501).missionStatus == "achieved",
+                "合唱 Vocal 购买只增加一次收集，跨十项门槛仍正常扣券、发货和达成称号");
             operation.Execute(1, () => { Check.That(shop.PurchaseShopItem(4, 1).Status == 409, "重复 Vocal 购买拒绝"); return null; });
-            Check.That(store.Read(1)!.Data.userHonorMissions.Single().progress == 1 && store.Read(1)!.Data.userMusicVocals.Count == 1,
+            Check.That(store.Read(1)!.Data.userHonorMissions.Single().progress == 10 && store.Read(1)!.Data.userMusicVocals.Count == 1,
                 "重复购买不增加音源或收集计数");
             operation.Execute(1, () => { Check.That(shop.PurchaseShopItem(4, 2).Status == 200, "单角色 Vocal 购买成功"); return user.BuildRefresh(); });
             saved = store.Read(1)!.Data;
             Check.That(saved.userMaterials.Single(m => m.materialId == 38).quantity == 0 && saved.userMusicVocals.Count == 2 &&
-                saved.userCharacterMissions.Single(m => m.characterId == 21).progress == 1 && saved.userHonorMissions.Single().progress == 2,
+                saved.userCharacterMissions.Single(m => m.characterId == 21).progress == 1 && saved.userHonorMissions.Single().progress == 11,
                 "单角色 Vocal 扣两张券并计入角色与荣誉收集");
         }
         finally { Directory.Delete(directory, recursive: true); }

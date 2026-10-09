@@ -48,7 +48,7 @@ internal static class StampShopChecks
             state.Data.userMaterials = [new() { materialId = 44, quantity = 1 }];
             state.Data.userStamps = [];
             state.Data.userShops = [new() { shopId = 12, userShopItems = [new() { shopItemId = 1, status = "sale" }] }];
-            state.Data.userHonorMissions = [new() { honorMissionType = "collect_stamp", progress = 11, achievedMissionIds = [] }];
+            state.Data.userHonorMissions = [new() { honorMissionType = "collect_stamp", progress = 29, achievedMissionIds = [] }];
             state.Data.userCharacterMissions = [new() { characterId = 1, characterMissionType = "collect_stamp", progress = 1, achievedMissions = [] }];
             state.Data.userCharacterMissionStatuses = [];
             store.Save(1, state);
@@ -60,7 +60,7 @@ internal static class StampShopChecks
             var before = store.Read(1)!.Data;
             Check.That(before.userMaterials.Single().quantity == 1 && before.userStamps.Length == 0 &&
                 before.userShops.Single().userShopItems.Single().status == "sale" &&
-                before.userCharacterMissions.Single().progress == 1 && before.userHonorMissions.Single().progress == 11,
+                before.userCharacterMissions.Single().progress == 1 && before.userHonorMissions.Single().progress == 29,
                 "扣券、表情、商品和任务共同回滚");
             var bytes = operation.Execute(1, () =>
             {
@@ -72,8 +72,10 @@ internal static class StampShopChecks
             var saved = store.Read(1)!.Data;
             Check.That(saved.userMaterials.Single().quantity == 0 && saved.userStamps.Single().stampId == 38 &&
                 saved.userShops.Single().userShopItems.Single().status == "sold_out", "表情购买扣券、授予并持久化售罄");
-            Check.That(saved.userCharacterMissions.Single().progress == 2 && saved.userHonorMissions.Single().progress == 12 &&
+            Check.That(saved.userCharacterMissions.Single().progress == 2 && saved.userHonorMissions.Single().progress == 30 &&
                 saved.userCharacterMissions.Single().achievedMissions.Length == 0, "表情推进角色和荣誉收集，达成提示不持久化");
+            Check.That(saved.userMissionStatuses.Single(s => s.missionType == "honor_mission" && s.missionId == 1).missionStatus == "achieved",
+                "表情购买跨称号门槛仍扣券和发货，同时持久化达成状态");
             Check.That(refresh.userShops == null && refresh.userStamps.Length == 1, "表情购买响应刷新持有列表并省略商店列表");
             operation.Execute(1, () =>
             {
@@ -89,7 +91,7 @@ internal static class StampShopChecks
                 Check.That(shop.PurchaseShopItem(12, 1).Status == 409, "缺少兑换券时拒绝表情购买");
                 return null;
             });
-            Check.That(store.Read(1)!.Data.userStamps.Length == 0 && store.Read(1)!.Data.userHonorMissions.Single().progress == 12,
+            Check.That(store.Read(1)!.Data.userStamps.Length == 0 && store.Read(1)!.Data.userHonorMissions.Single().progress == 30,
                 "失败购买不新增表情或任务进度");
         }
         finally { Directory.Delete(directory, recursive: true); }

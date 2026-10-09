@@ -37,7 +37,7 @@ internal static class AreaShopReplay
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
             throw new InvalidOperationException("重放输出目录必须为空。");
         string[] fields = vocal ? ["userMusics", "userMusicVocals", "userShops", "userMaterials", "userCharacterMissionV2s", "userCharacterMissionV2Statuses", "userHonorMissions", "userBeginnerMissionV2s", "userMissionStatuses"] :
-            stamp ? ["userStamps", "userShops", "userMaterials", "userCharacterMissionV2s", "userCharacterMissionV2Statuses", "userHonorMissions"] :
+            stamp ? ["userStamps", "userShops", "userMaterials", "userCharacterMissionV2s", "userCharacterMissionV2Statuses", "userHonorMissions", "userMissionStatuses"] :
             music ? ["userMusics", "userMusicVocals", "userShops", "userMaterials", "userBeginnerMissionV2s", "userMissionStatuses"] : Fields;
         var official = Read(path);
         Seed(store, official["before"]!, fields);

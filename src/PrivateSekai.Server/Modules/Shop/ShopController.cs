@@ -53,11 +53,13 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
             var achievedBefore = (user.Data.userMissionStatuses ?? [])
                 .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
                 .Select(s => s.missionId).ToHashSet();
+            var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
             var result = shop.PurchaseShopItem(shopId, shopItemId);
             status = result.Status;
             if (status != 200)
                 return new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = result.ErrorCode, ErrorMessage = "" };
             var refresh = user.BuildRefresh(result.ExcludeShop ? [nameof(SuiteUser.userShops)] : null);
+            HonorMissionResponse.AddAchievementHints(refresh, previousHonor, missionMaster);
             if (refresh.userBeginnerMissionV2s != null)
             {
                 var newlyAchieved = (user.Data.userMissionStatuses ?? [])

@@ -181,10 +181,11 @@ public sealed class MissionService(
         if (progress == null)
         {
             progress = new UserHonorMission { honorMissionType = type, achievedMissionIds = [] };
-            records.Add(progress);
+            var index = records.FindIndex(m => string.CompareOrdinal(m.honorMissionType, type) > 0);
+            records.Insert(index < 0 ? records.Count : index, progress);
         }
         progress.progress = maximum.HasValue ? Math.Max(progress.progress, maximum.Value) : checked(progress.progress + 1);
-        user.Data.userHonorMissions = records.OrderBy(m => m.honorMissionType, StringComparer.Ordinal).ToArray();
+        user.Data.userHonorMissions = records.ToArray();
         user.MarkChanged(nameof(SuiteUser.userHonorMissions));
         foreach (var definition in master.GetHonorMissions(type))
         {
@@ -213,59 +214,20 @@ public sealed class MissionService(
 
     public UserCharacterMissionV2Status[] RecordStampPurchase(int characterId)
     {
-        var honors = (user.Data.userHonorMissions ?? []).ToList();
-        var honor = honors.SingleOrDefault(m => m.honorMissionType == "collect_stamp");
-        var progress = checked((honor?.progress ?? 0) + 1);
-        if (master.GetStampHonorMissions().Any(m => progress >= m.requirement))
-            throw new NotSupportedException("Stamp honor achievement is not verified.");
-        if (honor == null)
-        {
-            honor = new UserHonorMission { honorMissionType = "collect_stamp", achievedMissionIds = [] };
-            var index = honors.FindIndex(m => string.CompareOrdinal(m.honorMissionType, honor.honorMissionType) > 0);
-            honors.Insert(index < 0 ? honors.Count : index, honor);
-        }
-        honor.progress = progress;
-        user.Data.userHonorMissions = honors.ToArray();
-        user.MarkChanged(nameof(SuiteUser.userHonorMissions));
+        UpdateHonorProgress("collect_stamp");
         return RecordCharacterMissionProgress(master.GetStampCollectionMissions(characterId));
     }
 
     public UserCharacterMissionV2Status[] RecordCostumeCraft(int characterId)
     {
-        var honors = (user.Data.userHonorMissions ?? []).ToList();
-        var honor = honors.SingleOrDefault(m => m.honorMissionType == "collect_costume_3d");
-        var progress = checked((honor?.progress ?? 0) + 1);
-        if (master.GetCostumeHonorMissions().Any(m => progress >= m.requirement))
-            throw new NotSupportedException("Costume honor achievement is not verified.");
-        if (honor == null)
-        {
-            honor = new UserHonorMission { honorMissionType = "collect_costume_3d", achievedMissionIds = [] };
-            var index = honors.FindIndex(m => string.CompareOrdinal(m.honorMissionType, honor.honorMissionType) > 0);
-            honors.Insert(index < 0 ? honors.Count : index, honor);
-        }
-        honor.progress = progress;
-        user.Data.userHonorMissions = honors.ToArray();
-        user.MarkChanged(nameof(SuiteUser.userHonorMissions));
+        UpdateHonorProgress("collect_costume_3d");
         RecordBeginnerMissionProgress(master.GetCostumeCraftMissions());
         return RecordCharacterMissionProgress(master.GetCostumeCollectionMissions(characterId));
     }
 
     public UserCharacterMissionV2Status[] RecordAnotherVocalPurchase(int[] characterIds)
     {
-        var honors = (user.Data.userHonorMissions ?? []).ToList();
-        var honor = honors.SingleOrDefault(m => m.honorMissionType == "collect_another_vocal");
-        var progress = checked((honor?.progress ?? 0) + 1);
-        if (master.GetAnotherVocalHonorMissions().Any(m => progress >= m.requirement))
-            throw new NotSupportedException("Vocal honor achievement is not verified.");
-        if (honor == null)
-        {
-            honor = new UserHonorMission { honorMissionType = "collect_another_vocal", achievedMissionIds = [] };
-            var index = honors.FindIndex(m => string.CompareOrdinal(m.honorMissionType, honor.honorMissionType) > 0);
-            honors.Insert(index < 0 ? honors.Count : index, honor);
-        }
-        honor.progress = progress;
-        user.Data.userHonorMissions = honors.ToArray();
-        user.MarkChanged(nameof(SuiteUser.userHonorMissions));
+        UpdateHonorProgress("collect_another_vocal");
         return RecordCharacterMissionProgress(characterIds.Distinct().SelectMany(master.GetAnotherVocalCollectionMissions));
     }
 

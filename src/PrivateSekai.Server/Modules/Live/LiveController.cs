@@ -59,20 +59,10 @@ public sealed class LiveController(UserOperation operations, UserSession user, L
             var previousBeginner = (user.Data.userMissionStatuses ?? [])
                 .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
                 .Select(s => s.missionId).ToHashSet();
-            var previousHonor = (user.Data.userMissionStatuses ?? [])
-                .Where(s => s.missionType == "honor_mission" && s.missionStatus is "achieved" or "received")
-                .Select(s => s.missionId).ToHashSet();
+            var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
             var response = live.ClearUserLive(userLiveId, request);
             response.updatedResources = user.BuildRefresh();
-            var newHonors = (user.Data.userMissionStatuses ?? [])
-                .Where(s => s.missionType == "honor_mission" && s.missionStatus == "achieved" && !previousHonor.Contains(s.missionId))
-                .Select(s => missions.GetHonorMission(s.missionId)!).ToArray();
-            if (newHonors.Length > 0)
-                response.updatedResources.userHonorMissions = response.updatedResources.userHonorMissions.Select(m => new UserHonorMission
-                {
-                    honorMissionType = m.honorMissionType, progress = m.progress,
-                    achievedMissionIds = newHonors.Where(d => d.honorMissionType == m.honorMissionType).Select(d => d.id).ToArray()
-                }).ToArray();
+            HonorMissionResponse.AddAchievementHints(response.updatedResources, previousHonor, missions);
             var achieved = (user.Data.userMissionStatuses ?? [])
                 .Where(s => s.missionType == "live_mission" && s.missionStatus == "achieved" && !previous.Contains(s.missionId))
                 .Select(s => s.missionId).ToArray();

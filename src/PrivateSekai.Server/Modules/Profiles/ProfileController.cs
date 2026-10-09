@@ -3,12 +3,14 @@ extern alias game;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 
 namespace PrivateSekai.Modules.Profiles;
 
-public sealed class ProfileController(UserOperation operations, UserSession user, ProfileService profiles, CostumeService costumes) : PrskController
+public sealed class ProfileController(UserOperation operations, UserSession user, ProfileService profiles, CostumeService costumes,
+    MissionMasterQueries missionMaster) : PrskController
 {
     [HttpPatch("api/user/{userId}/stamp-favorite")]
     public IActionResult SaveStampFavorites(long userId, [FromBody] UserStampFavoriteRequest request) =>
@@ -23,8 +25,10 @@ public sealed class ProfileController(UserOperation operations, UserSession user
     {
         var previous = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "beginner_mission_v2" &&
             s.missionStatus is "achieved" or "received").Select(s => s.missionId).ToHashSet();
+        var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
         var result = costumes.Craft(shopItemId);
         var refresh = user.BuildRefresh();
+        HonorMissionResponse.AddAchievementHints(refresh, previousHonor, missionMaster);
         if (refresh.userBeginnerMissionV2s != null)
         {
             var achieved = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "beginner_mission_v2" &&
