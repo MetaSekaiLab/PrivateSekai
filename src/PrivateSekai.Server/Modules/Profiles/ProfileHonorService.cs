@@ -4,12 +4,13 @@ using System;
 using System.Linq;
 using game::Sekai;
 using game::Sekai.ApiData;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Master;
 using PrivateSekai.Shared.Users;
 
 namespace PrivateSekai.Modules.Profiles;
 
-public sealed class ProfileHonorService(UserSession user, MasterData master)
+public sealed class ProfileHonorService(UserSession user, MasterData master, MissionService missions)
 {
     public int Save(PutUserProfileHonorRequest request)
     {
@@ -40,6 +41,7 @@ public sealed class ProfileHonorService(UserSession user, MasterData master)
             honorBackgroundId = h.honorBackgroundId, honorWordId = h.honorWordId
         }).ToArray();
         user.MarkChanged(nameof(SuiteUser.userProfileHonors));
+        if (honors.Count == 3) missions.RecordFullProfileHonors();
         return 200;
     }
 }

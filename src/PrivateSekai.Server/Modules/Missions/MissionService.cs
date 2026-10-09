@@ -216,6 +216,8 @@ public sealed class MissionService(
 
     public void RecordMusicVideoWatch() => RecordBeginnerMissionProgress(master.GetMusicVideoMissions());
 
+    public void RecordFullProfileHonors() => RecordBeginnerMissionProgress(master.GetFullProfileHonorMissions());
+
     public void RecordCostumeChange() => RecordBeginnerMissionProgress(master.GetCostumeChangeMissions());
 
     public UserCharacterMissionV2Status[] RecordStampPurchase(int characterId)

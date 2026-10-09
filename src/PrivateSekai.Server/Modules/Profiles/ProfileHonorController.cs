@@ -4,6 +4,7 @@ using game::Sekai;
 #if !PRIVATESEKAI_EMBEDDED
 using Microsoft.AspNetCore.Mvc;
 #endif
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 
@@ -17,10 +18,13 @@ public sealed class ProfileHonorController(UserOperation operations, UserSession
         var status = 200;
         var encoded = operations.Execute(userId, () =>
         {
+            var previous = BeginnerMissionResponse.AchievedIds(user.Data);
             status = honors.Save(request);
-            return status == 200
-                ? (object)new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() }
-                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
+            if (status != 200)
+                return (object)new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
+            var refresh = user.BuildRefresh();
+            BeginnerMissionResponse.AddAchievementHints(refresh, previous);
+            return new SuiteUserCommonResponse { updatedResources = refresh };
         });
         Response.StatusCode = status;
         return Encoded(encoded);

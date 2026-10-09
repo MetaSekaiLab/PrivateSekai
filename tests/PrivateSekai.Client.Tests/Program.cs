@@ -154,7 +154,7 @@ store.Save(1, new UserState { Data = new SuiteUser
 builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
     .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
-if (args is ["--replay-profile-honor", _, var honorMaster, _])
+if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", _, var honorMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, honorMaster));
 if (args is ["--replay-honor-mission", var honorMissionCapture, var honorMissionMaster, _])
 {
@@ -338,10 +338,13 @@ try
         await FriendReplay.Run(client, readback, peer, store, friendPath, friendOutput);
         return;
     }
-    if (args is ["--replay-profile-honor", var honorPath, _, var honorOutput])
+    if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
     {
         using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
-        await ProfileHonorReplay.Run(client, readback, store, honorPath, honorOutput);
+        if (args[0] == "--replay-profile-honor-mission")
+            await ProfileHonorReplay.RunMission(client, readback, store, honorPath, honorOutput);
+        else
+            await ProfileHonorReplay.Run(client, readback, store, honorPath, honorOutput);
         return;
     }
     if (args is ["--replay-honor-mission", var honorMissionPath, _, var honorMissionOutput])
