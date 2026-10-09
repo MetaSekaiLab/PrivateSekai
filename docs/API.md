@@ -28,6 +28,10 @@ Client 已提供 `diarkis-auth` 操作，在场景 `args.diarkisServerType` 指�
 
 官方 `multi` 样本已核验：HTTP200，返回 `userId`、`clientKey`、`udpHost`、`udpPort`、`sid` 和三项加密字段，未返回 `tcpHost`／`tcpPort`。响应有 `X-Session-Token`，随后独立Suite请求成功；场景记录和HTTP记录中的连接凭证均已脱敏。不能要求TCP与UDP同时存在：客户端 `IsValidTCP`／`IsValidUDP` 分别判断对应host是否非空，`SetupProtocol` 按可用分支配置连接。隔离HTTP夹具覆盖仅UDP字段的形状。其他服务器类型、错误语义、有效期及实时握手仍待核验；Server 未实现该接口，也不伪造连接凭证。
 
+实时加密层已按 `Diarkis.Lib.Encryption` 的完整导出实现为 Client 的 `DiarkisEncryption`，尚未接入UDP收发。`SetupProtocol` 将SID及三项加密参数按十六进制解码。消息布局为4字节大端原文长度、32字节HMAC-SHA256、AES-CBC密文；MAC只覆盖密文，不覆盖长度头。加密前补1～16字节零，空原文和整块原文也额外补一块；解密按长度截取，保留原文末尾的零。AES模式及Padding枚举已与dump核对，不能复用HTTP的PKCS7封装。
+
+验证包括独立Python加密库生成的空原文、16字节及17字节固定向量，认证码／密文损坏、截断和长度越界检查。非法长度本地拒绝，不声明为官方错误语义；未修改协议MAC覆盖范围。此结果证明编解码与静态规则及独立向量一致，尚无官方UDP报文对拍，不表示握手、可靠重传、业务命令或建房已完成。
+
 ## PUT `/api/user/{userId}/profile-honor`
 
 - Path：当前 `userId`，无 query。Client 操作为 `profile-honor-save`。
