@@ -16,6 +16,16 @@
 
 证据：认证返回的分片路径、已有分片下载与服务端实现、当前官方分片和后续 Suite 请求。隔离 HTTP 检查覆盖真实分片控制器的加密响应、多表及空表、非法路径、错误对象，以及无轮换 token 后继续业务请求。
 
+## GET `/api/user/{userId}/diarkis-auth`
+
+- Path：当前 `userId`；Query：`diarkisServerType`；无请求体。
+- 类型来自 `MultiplayCore.ServerType`：`udp`、`multi`、`cheerful`、`virtual_live`、`streaming_live`、`rank_match`、`mysekai`、`custom_multi`。
+- Response：`UserDiarkisAuthResponse`，含 `userId`、`clientKey`、TCP／UDP主机与端口、`sid`、`encryptionKey`、`encryptionIv`、`encryptionMacKey`。这些连接凭证不得写入可提交文件或日志。
+- 时机：`MultiplayCore.Authentication` 在建立实时连接时请求，后续交给 `SetupProtocol`；该API回调只转交结果，不调用 `UpdateAll`，不生成Suite刷新。
+- 证据：`GetUserDiarkisAuth.Execute`（RVA `0x6180754`）以method0、空body调用；`APICoreParam.Method`确认0为GET。对应导出字符串为 `user/{0}/diarkis-auth?diarkisServerType={1}`；编号按该dump的1基规则解析，不能直接用0基数组下标。
+
+Client 已提供 `diarkis-auth` 操作，在场景 `args.diarkisServerType` 指定类型，不自动读写前后Suite。隔离HTTP检查验证了查询、无body、响应解密、凭证脱敏和后续会话轮换；服务器类型及参数注入另有检查。尚无官方该接口样本，真实响应头、错误语义、有效期及实时连接仍待核验；Server 未实现该接口，也不伪造连接凭证。
+
 ## PUT `/api/user/{userId}/profile-honor`
 
 - Path：当前 `userId`，无 query。Client 操作为 `profile-honor-save`。

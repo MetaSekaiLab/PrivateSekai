@@ -294,6 +294,16 @@ app.Use(async (context, next) =>
 });
 // 使用真实 MVC 业务控制器；全量状态读取使用隔离测试用户。
 app.MapGet("/api/system", () => Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new Dictionary<string, object> { ["appVersions"] = Array.Empty<object>() }))));
+app.MapGet("/api/user/1/diarkis-auth", (HttpContext context) =>
+{
+    Check(context.Request.Query["diarkisServerType"] == "multi" && context.Request.ContentLength is null or 0,
+        "实时认证以GET查询指定服务器类型且无请求体");
+    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new UserDiarkisAuthResponse
+    {
+        userId = 1, clientKey = "fixture-client", sid = "fixture-sid", tcpHost = "localhost", tcpPort = 1234,
+        udpHost = "localhost", udpPort = 5678, encryptionKey = "fixture-key", encryptionIv = "fixture-iv", encryptionMacKey = "fixture-mac"
+    })));
+});
 app.MapControllers();
 await app.StartAsync();
 try
@@ -637,6 +647,12 @@ try
     Fails(() => ThumbnailDownload.ValidatePath("image/custom-profile-card/thumbnail/../b"), "图片拒绝路径穿越");
     await AccountReadHttpChecks.Run(client, store, directory, Check);
     await SuiteMasterHttpChecks.Run(client, config, directory, Check);
+    var realtimeResponse = await client.Send(new() { Operation = "diarkis-auth", Args = new() { ["diarkisServerType"] = "multi" } });
+    Check(realtimeResponse["clientKey"]!.GetValue<string>() == "fixture-client" &&
+        client.LastResponse!["clientKey"]!.GetValue<string>() == "<redacted>" &&
+        client.LastResponse!["sid"]!.GetValue<string>() == "<redacted>", "实时认证返回可用原对象，记录副本隐藏连接凭证");
+    await client.Send(new() { Operation = "suite" });
+    Check(client.LastHttpStatus == 200, "实时认证后沿用已轮换的HTTP会话");
     await InheritHttpChecks.Run(client, config, store, directory, Check);
     await ChallengeDeckHttpChecks.Run(client, config, store, directory, Check);
     await MaterialExchangeHttpChecks.Run(client, config, store, directory, Check);
@@ -728,6 +744,11 @@ try
     Check(Comparison.Diff(Comparison.DeltaView(changes), Comparison.DeltaView(other)).Count == 0, "初始库存不同但消耗一致");
     Check(Comparison.Diff(JsonNode.Parse("{}"), JsonNode.Parse("""{"x":null}""")).Single().Kind == "added", "区分缺失与 null");
     var redactor = new Redactor();
+    foreach (var serverType in new[] { "udp", "multi", "cheerful", "virtual_live", "streaming_live", "rank_match", "mysekai", "custom_multi" })
+        Check(Operations.Path(Operations.All["diarkis-auth"], new() { Args = new() { ["diarkisServerType"] = serverType } }, 1)
+            == "/api/user/1/diarkis-auth?diarkisServerType=" + serverType, "实时认证支持客户端枚举中的服务器类型");
+    Fails(() => Operations.Path(Operations.All["diarkis-auth"], new() { Args = new() { ["diarkisServerType"] = "multi&x=1" } }, 1), "实时认证拒绝额外查询注入");
+    Fails(() => Operations.Path(Operations.All["diarkis-auth"], new(), 1), "实时认证必须指定服务器类型");
     redactor.AddSecret("fixture-secret");
     var cleaned = redactor.Clean(JsonNode.Parse("""{"sessionToken":"fixture-secret","nested":{"detail":"contains fixture-secret","deviceId":"private"}}"""))!.ToJsonString();
     Check(!cleaned.Contains("fixture-secret") && !cleaned.Contains("private"), "凭证字段与已知秘密嵌套脱敏");

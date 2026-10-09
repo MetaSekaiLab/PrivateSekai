@@ -28,6 +28,7 @@ public static class Operations
         ["thumbnail-download"] = new("GET", "<previous-response-thumbnail>", null, "sha256", false),
         ["suite"] = new("GET", "/api/suite/user/{userId}", null, "userRegistration", false),
         ["suite-friends"] = new("GET", "/api/suite/user/{userId}/parts?name=user_friend", null, "now", false),
+        ["diarkis-auth"] = new("GET", "/api/user/{userId}/diarkis-auth?diarkisServerType={diarkisServerType}", null, "clientKey", false),
         ["login-status-save"] = new("PUT", "/api/user/{userId}/login-status", typeof(PutUserLoginStatusRequest), null, false),
         ["friend-request"] = new("POST", "/api/user/{userId}/friend/{opponentUserId}", typeof(PostUserFriendRequest), "updatedResources"),
         ["friend-approve"] = new("PUT", "/api/user/{userId}/friend/{opponentUserId}", null, "updatedResources"),
@@ -129,6 +130,11 @@ public static class Operations
             {
                 if (!Regex.IsMatch(pair.Value, @"\A[0-9a-f]{2}_[0-9a-f]{64}\z", RegexOptions.CultureInvariant))
                     throw new InvalidOperationException("master 分片必须使用认证返回的文件名。");
+            }
+            else if (pair.Key == "diarkisServerType")
+            {
+                if (pair.Value is not ("udp" or "multi" or "cheerful" or "virtual_live" or "streaming_live" or "rank_match" or "mysekai" or "custom_multi"))
+                    throw new InvalidOperationException("无效实时服务器类型。");
             }
             else if (pair.Key == "storyType")
             {
