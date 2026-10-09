@@ -50,9 +50,7 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
         var status = 200;
         var encoded = operations.Execute(userId, () =>
         {
-            var achievedBefore = (user.Data.userMissionStatuses ?? [])
-                .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
-                .Select(s => s.missionId).ToHashSet();
+            var achievedBefore = BeginnerMissionResponse.AchievedIds(user.Data);
             var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
             var result = shop.PurchaseShopItem(shopId, shopItemId);
             status = result.Status;
@@ -60,17 +58,7 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
                 return new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = result.ErrorCode, ErrorMessage = "" };
             var refresh = user.BuildRefresh(result.ExcludeShop ? [nameof(SuiteUser.userShops)] : null);
             HonorMissionResponse.AddAchievementHints(refresh, previousHonor, missionMaster);
-            if (refresh.userBeginnerMissionV2s != null)
-            {
-                var newlyAchieved = (user.Data.userMissionStatuses ?? [])
-                    .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus == "achieved" && !achievedBefore.Contains(s.missionId))
-                    .Select(s => s.missionId).ToHashSet();
-                refresh.userBeginnerMissionV2s = refresh.userBeginnerMissionV2s.Select(m => new UserBeginnerMissionV2
-                {
-                    beginnerMissionV2Id = m.beginnerMissionV2Id, progress = m.progress,
-                    isNewAchieved = newlyAchieved.Contains(m.beginnerMissionV2Id)
-                }).ToArray();
-            }
+            BeginnerMissionResponse.AddAchievementHints(refresh, achievedBefore);
             if (refresh.userCharacterMissions != null)
                 refresh.userCharacterMissions = refresh.userCharacterMissions.Select(m => new UserCharacterMissionV2
                 {

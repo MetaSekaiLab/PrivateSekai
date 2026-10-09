@@ -36,24 +36,13 @@ public sealed class StoryController(UserOperation operations, UserSession user, 
         }
         return Encoded(operations.Execute(userId, () =>
         {
-            var achievedBefore = (user.Data.userMissionStatuses ?? [])
-                .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
-                .Select(s => s.missionId).ToHashSet();
+            var achievedBefore = BeginnerMissionResponse.AchievedIds(user.Data);
             var characterAchievedBefore = (user.Data.userCharacterMissionStatuses ?? [])
                 .Select(s => (s.missionId, s.parameterGroupId, s.seq, s.characterId)).ToHashSet();
             var obtainedResources = story.CompleteStoryEpisode(storyType, episodeId);
             var refresh = user.BuildRefresh(excludedFields: StoryRefreshDeleteTypes);
-            if (storyType is "unit_story" or "card_story" && refresh.userBeginnerMissionV2s != null)
-            {
-                var newlyAchieved = (user.Data.userMissionStatuses ?? [])
-                    .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus == "achieved" && !achievedBefore.Contains(s.missionId))
-                    .Select(s => s.missionId).ToHashSet();
-                refresh.userBeginnerMissionV2s = refresh.userBeginnerMissionV2s.Select(m => new UserBeginnerMissionV2
-                {
-                    beginnerMissionV2Id = m.beginnerMissionV2Id, progress = m.progress,
-                    isNewAchieved = newlyAchieved.Contains(m.beginnerMissionV2Id)
-                }).ToArray();
-            }
+            if (storyType is "unit_story" or "card_story")
+                BeginnerMissionResponse.AddAchievementHints(refresh, achievedBefore);
 
             if (storyType == "card_story" && refresh.userCharacterMissions != null)
             {

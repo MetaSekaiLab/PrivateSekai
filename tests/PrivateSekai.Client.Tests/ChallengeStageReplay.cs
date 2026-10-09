@@ -6,6 +6,7 @@ using game::Sekai;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateSekai.Client;
 using PrivateSekai.Modules.Live;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Protocol;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
@@ -97,6 +98,7 @@ internal static class ChallengeStageReplay
         var clear = official["request"]!.Deserialize<UserChallengeLiveClearRequest>(DumpJson.Options)!;
         operations.Execute(1, () =>
         {
+            var previousBeginner = BeginnerMissionResponse.AchievedIds(user.Data);
             var experience = service.GainExperience(start, clear);
             experienceResult = new JsonObject
             {
@@ -115,8 +117,10 @@ internal static class ChallengeStageReplay
             };
             if (!service.CompletePlay(sessionId, clear)) throw new InvalidOperationException("挑战会话未完成。");
             actual = JsonSerializer.SerializeToNode(result, DumpJson.Options)!.AsObject();
-            responseMissions = MissionProjection(user.BuildRefresh());
-            return user.BuildRefresh();
+            var refresh = user.BuildRefresh();
+            BeginnerMissionResponse.AddAchievementHints(refresh, previousBeginner);
+            responseMissions = MissionProjection(refresh);
+            return refresh;
         });
         var officialRefresh = official["response"]!["updatedResources"]!;
         var responseMissionDifferences = Comparison.Diff(MissionProjection(new SuiteUser

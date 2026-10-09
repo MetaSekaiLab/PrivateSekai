@@ -2247,7 +2247,7 @@ Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 从请
 
 该回放同时比较 `userLiveMissions`、`userBeginnerMissionV2s`、`userMissionStatuses` 的完整业务状态，早期五份首次样本一致。回放时间固定为官方结算响应的 `updatedResources.now`，周期独立查询 master；用户 ID 映射为本地测试账号，不据此验证网络字段省略规则。后续官方样本确认挑战新手任务在 `received` 状态下仍由1增至2，状态保持已领取、`isNewAchieved=false`；额外Suite及后续只读请求保持此进度。Server 按 master 类型复用持续计数逻辑，达成及领奖只影响状态，不截断计数；不将此规则套用到已有封顶证据的普通Live任务。检查覆盖达成前后、领奖后计数及编码失败回滚，不重复达成或发奖。
 
-扩大比较范围后，旧的首次D／C挑战样本发现响应提示缺口：官方在当次响应将新达成任务的 `isNewAchieved` 置为true，后续Suite为false；原有持久状态检查未覆盖这个差别。目前首次样本的新响应比较保留失败，临时达成提示映射待补。重复挑战样本没有新达成，响应和后续Suite均已匹配。
+扩大比较范围后，旧的首次D／C挑战样本暴露了响应提示缺口：官方在当次响应将新达成任务的 `isNewAchieved` 置为true，后续Suite为false；原有持久状态检查未覆盖这个差别。现由共用 `BeginnerMissionResponse` 映射：比较操作前后的新手达成状态，为所有本次新达成项生成提示，复制响应数组，不修改存档。练习、普通演出、MV、服装、商店和剧情控制器复用同一组件，原有窄响应及剧情类型限制保留。首次D、首次C和重复挑战的任务响应、后续Suite及其余业务比较项均一致；挑战仍为业务与响应组件回放，完整clear HTTP路由尚未接入。修复前失败报告保留。
 
 成功挑战的完成状态已接入业务层：核对私有会话与参与状态后，将 `liveStatus` 从 `start` 改为 `cleared`、`playCount` 从 0 改为 1，并记录 `playEndAt`，保留开局时间和曲目字段。对应角色的 `play_live` 任务进度增加 1，首次新增时按任务类型、角色 ID 排序；`userCharacterLiveUsageCounts` 不增加队长或成员次数。五份官方样本的完成状态、角色任务及使用次数回放一致，覆盖首次新增和已有进度递增；角色任务跨门槛仍待官方样本。
 

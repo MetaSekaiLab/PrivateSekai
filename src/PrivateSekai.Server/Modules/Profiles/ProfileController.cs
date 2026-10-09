@@ -23,22 +23,12 @@ public sealed class ProfileController(UserOperation operations, UserSession user
     [HttpPost("api/user/{userId}/costume-3d-shop/{shopItemId}")]
     public IActionResult CraftCostume(long userId, int shopItemId) => Encoded(operations.Execute(userId, () =>
     {
-        var previous = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "beginner_mission_v2" &&
-            s.missionStatus is "achieved" or "received").Select(s => s.missionId).ToHashSet();
+        var previous = BeginnerMissionResponse.AchievedIds(user.Data);
         var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
         var result = costumes.Craft(shopItemId);
         var refresh = user.BuildRefresh();
         HonorMissionResponse.AddAchievementHints(refresh, previousHonor, missionMaster);
-        if (refresh.userBeginnerMissionV2s != null)
-        {
-            var achieved = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "beginner_mission_v2" &&
-                s.missionStatus == "achieved" && !previous.Contains(s.missionId)).Select(s => s.missionId).ToHashSet();
-            refresh.userBeginnerMissionV2s = refresh.userBeginnerMissionV2s.Select(m => new UserBeginnerMissionV2
-            {
-                beginnerMissionV2Id = m.beginnerMissionV2Id, progress = m.progress,
-                isNewAchieved = achieved.Contains(m.beginnerMissionV2Id)
-            }).ToArray();
-        }
+        BeginnerMissionResponse.AddAchievementHints(refresh, previous);
         if (refresh.userCharacterMissions != null)
             refresh.userCharacterMissions = refresh.userCharacterMissions.Select(m => new UserCharacterMissionV2
             {
@@ -53,20 +43,10 @@ public sealed class ProfileController(UserOperation operations, UserSession user
     public IActionResult SaveCostume(long userId, int characterId, string unit, [FromBody] UserCharacterCostume3DRequest request) =>
         Encoded(operations.Execute(userId, () =>
         {
-            var previous = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "beginner_mission_v2" &&
-                s.missionStatus is "achieved" or "received").Select(s => s.missionId).ToHashSet();
+            var previous = BeginnerMissionResponse.AchievedIds(user.Data);
             costumes.Save(characterId, unit, request);
             var refresh = user.BuildRefresh();
-            if (refresh.userBeginnerMissionV2s != null)
-            {
-                var achieved = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "beginner_mission_v2" &&
-                    s.missionStatus == "achieved" && !previous.Contains(s.missionId)).Select(s => s.missionId).ToHashSet();
-                refresh.userBeginnerMissionV2s = refresh.userBeginnerMissionV2s.Select(m => new UserBeginnerMissionV2
-                {
-                    beginnerMissionV2Id = m.beginnerMissionV2Id, progress = m.progress,
-                    isNewAchieved = achieved.Contains(m.beginnerMissionV2Id)
-                }).ToArray();
-            }
+            BeginnerMissionResponse.AddAchievementHints(refresh, previous);
             return new SuiteUserCommonResponse { updatedResources = refresh };
         }));
 

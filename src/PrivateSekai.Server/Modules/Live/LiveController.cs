@@ -56,9 +56,7 @@ public sealed class LiveController(UserOperation operations, UserSession user, L
             var previous = (user.Data.userMissionStatuses ?? [])
                 .Where(s => s.missionType == "live_mission" && s.missionStatus is "achieved" or "received")
                 .Select(s => s.missionId).ToHashSet();
-            var previousBeginner = (user.Data.userMissionStatuses ?? [])
-                .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
-                .Select(s => s.missionId).ToHashSet();
+            var previousBeginner = BeginnerMissionResponse.AchievedIds(user.Data);
             var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
             var response = live.ClearUserLive(userLiveId, request);
             response.updatedResources = user.BuildRefresh();
@@ -74,17 +72,7 @@ public sealed class LiveController(UserOperation operations, UserSession user, L
                     liveMissionStatus = m.liveMissionStatus, progress = m.progress, paidProgress = m.paidProgress,
                     achievedMissionIds = m.liveMissionPeriodId == response.userLivePoint.liveMissionPeriodId ? achieved : m.achievedMissionIds
                 }).ToArray();
-            if (response.updatedResources.userBeginnerMissionV2s != null)
-            {
-                var newBeginner = (user.Data.userMissionStatuses ?? [])
-                    .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus == "achieved" && !previousBeginner.Contains(s.missionId))
-                    .Select(s => s.missionId).ToHashSet();
-                response.updatedResources.userBeginnerMissionV2s = response.updatedResources.userBeginnerMissionV2s.Select(m => new UserBeginnerMissionV2
-                {
-                    beginnerMissionV2Id = m.beginnerMissionV2Id, progress = m.progress,
-                    isNewAchieved = newBeginner.Contains(m.beginnerMissionV2Id)
-                }).ToArray();
-            }
+            BeginnerMissionResponse.AddAchievementHints(response.updatedResources, previousBeginner);
             return response;
         }));
     }

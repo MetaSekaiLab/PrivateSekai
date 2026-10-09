@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using PrivateSekai.Models;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Protocol;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
@@ -85,23 +86,10 @@ public sealed class CardController(UserOperation operations, UserSession user, C
     {
         return Encoded(operations.Execute(userId, () =>
         {
-            var achievedBefore = (user.Data.userMissionStatuses ?? [])
-                .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus is "achieved" or "received")
-                .Select(s => s.missionId).ToHashSet();
+            var achievedBefore = BeginnerMissionResponse.AchievedIds(user.Data);
             var response = cards.PracticeCardWithTickets(cardId, request.costs);
             response.updatedResources = user.BuildRefresh();
-            if (response.updatedResources.userBeginnerMissionV2s != null)
-            {
-                var newlyAchieved = (user.Data.userMissionStatuses ?? [])
-                    .Where(s => s.missionType == "beginner_mission_v2" && s.missionStatus == "achieved" && !achievedBefore.Contains(s.missionId))
-                    .Select(s => s.missionId).ToHashSet();
-                response.updatedResources.userBeginnerMissionV2s = response.updatedResources.userBeginnerMissionV2s
-                    .Select(m => new UserBeginnerMissionV2
-                    {
-                        beginnerMissionV2Id = m.beginnerMissionV2Id, progress = m.progress,
-                        isNewAchieved = newlyAchieved.Contains(m.beginnerMissionV2Id)
-                    }).ToArray();
-            }
+            BeginnerMissionResponse.AddAchievementHints(response.updatedResources, achievedBefore);
             return response;
         }));
     }
