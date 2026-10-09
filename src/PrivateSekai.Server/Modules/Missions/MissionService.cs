@@ -199,6 +199,12 @@ public sealed class MissionService(
 
     public void RecordChallengeLiveClear() => RecordBeginnerMissionProgress(master.GetChallengeLiveClearMissions());
 
+    public void RefreshFriendMissionProgress()
+    {
+        var count = (user.Data.userFriends ?? []).Count(f => f.friendStatus == "friend");
+        if (count > 0) RecordBeginnerMissionProgress(master.GetFriendMissions(), count);
+    }
+
     public void RecordCharacterLiveClear(int characterId)
     {
         RecordCharacterMissionProgress(master.GetCharacterLiveMissions(characterId));

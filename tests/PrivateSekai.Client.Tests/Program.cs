@@ -93,6 +93,7 @@ CostumeHttpChecks.WriteCraftMaster(directory);
 CharacterMissionHttpChecks.WriteMaster(directory);
 AccountReadHttpChecks.WriteTemplates(directory);
 LiveHttpChecks.WriteBoostMaster(directory);
+FriendMissionHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -614,6 +615,7 @@ try
     await GachaHttpChecks.Run(client, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);
     await HomeHttpChecks.Run(client, store, directory, Check);
+    await FriendMissionHttpChecks.Run(client, store, Check);
     await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);
     await BookmarkHttpChecks.Run(client, store, directory, Check);

@@ -32,6 +32,7 @@ internal static class Program
         ProfileChecks.Run();
         LoginStatusChecks.Run();
         FriendChecks.Run();
+        FriendMissionChecks.Run();
         PairedUserOperationChecks.Run();
         TransportChecks.Run();
         Console.WriteLine($"通过 {Check.Count} 项检查。");

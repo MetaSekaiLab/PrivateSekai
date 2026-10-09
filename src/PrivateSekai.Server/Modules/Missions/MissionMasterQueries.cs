@@ -55,6 +55,10 @@ public sealed class MissionMasterQueries(MasterData master)
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "challenge_live_clear").ToArray();
 
+    public MasterBeginnerMissionV2[] GetFriendMissions() =>
+        master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
+            .Where(m => m.beginnerMissionV2Type == "make_new_friend").ToArray();
+
     public MasterBeginnerMissionV2[] GetMusicPurchaseMissions() =>
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows
             .Where(m => m.beginnerMissionV2Type == "exchange_any_music").ToArray();
