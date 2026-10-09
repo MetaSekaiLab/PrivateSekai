@@ -155,9 +155,19 @@ Client 命令 `realtime-room <config> <target> <clientConfigs.json> <lobbyId> --
 
 559 项客户端检查、Server 构建、协议检查通过；隔离 HTTP 覆盖 POST／PATCH 不同请求模型、64 位创建时间、会话轮换及记录脱敏，另检查错误房间标识和缺失字段。隔离端点不是 Server 房间实现。官方自定义规则、失败响应、到期回收及实时入房仍待核验；创建时间单位未单独验证。
 
-## 私人房间实时入房：命令 3080（静态审计，未接入）
+## 私人房间实时创建与入房：命令 3070／3080（静态审计，未接入）
 
 `StartPrivateRoom` 在 HTTP 房间准备后等待 ReadyConnection，新建 MatchingRoom、AttachRoomModule、SetupPrivatePartyMatching，再调用 Core.Connect。不能假定旧预留对象已具有玩家资料或已完成入房。
+
+连接后的实际入口为 `MultiLiveRoomMatchingController.OnConnected`（RVA `0x5cbcd84`）。取消请求先进入 CancelCore；私人房间按 `PrivateRoomBehaviour` 分支，不能将三种行为合并：
+
+| Behaviour | 调用 | 命令 | 请求模型 |
+| --- | --- | --- | --- |
+| Create（0） | CreatePrivate | 3070 | MultiLiveUnLockJoinData |
+| Join（1） | 重写 Join | 3080 | MultiLiveDirectJoinData |
+| UnlockJoin（2） | UnLockJoin | 3120 | DirectJoinData |
+
+`CreatePrivate`（`0x5cb6a50`）要求 RoomID 长度为52；保留本机玩家并清空其他玩家，将 `RoomID`、`PrivateRoomNumber`、可空的 `TotalPowerUpperLimit`／`TotalPowerLowerLimit`、`TotalPower`、`PlayerProperty` 序列化为 MultiLiveUnLockJoinData，再可靠发送3070并进入等待入房状态。总力与玩家属性使用真实用户资料，与普通 Join 一样不能留空或用常量代替。尽管模型名称含 UnLock，创建行为发送的仍是3070，不是3120。当前预留→HTTP房号→大厅设置流程尚未接入此创建分支，也尚未验证创建完成回包。
 
 - `JoinPrivateRoom` 调用重写后的 `MatchingRoom.Join(roomId, 0)`。该方法要求 RoomID 长度为52，序列化 dump `MultiLiveDirectJoinData`，按当前房间命令版本可靠发送 **3080**。通用 `CP.Realtime.Room.Join` 的1019与解除锁定的3120均不是此入口。
 - 请求包含 `RoomID`、`TotalPower`、`PlayerProperty`。TotalPower 取 `CreateMyBasicInfo().TotalPowerIncludeBuff`；PlayerProperty 为本机玩家属性 `PackToObject(true)`，不能替换为空 map。
@@ -178,6 +188,8 @@ RoomUserBasicInfo 是整数键0～19的 MessagePack 数组，来源包括：
 - 按 member1～member5 顺序排除 leader 后生成 SubCardIds、SubCardSkillLv、SubCardImages，不能假定 leader 总在第一位。角色等级数组则保留全部五个成员及其顺序。
 - 编队 TotalPowerIncludeBuff 先送入当前活动的 TotalPowerDataModel，再取 TotalPower。UpdateTotalPower 先取 max(0, 输入)，有活动总力上限表时再取 min(该值, upperTotalPower)；不能把原编队总力或某次抓包总力固定写入。
 - 主称号槽1、副称号槽2／3，结合对应荣誉任务构造 RoomUserHonorInfo；空槽走原空称号构造。服装取当前队长卡对应的穿戴资料，好友申请状态取 UserConfig，玩家框与部件布局取当前玩家框资料。
+
+总力继续追溯到 `DeckUtility.GetTotalPowerByDeckId(deckId, true)`（`0x4d82d7c`）：通过 DeckListData 找到编队，再调用 `DeckData.GetTotalPowerIncludeBuff(0)`（`0x634b658`）。后者按 IsSumCard 筛选成员，累加每名成员的 TotalPowerIncludeBuff，最后加上 HonorUtility.GetTotalPowerBuff；参数0时排除第六名 MV 成员。成员加成的完整计算、称号加成及 DeckListData 初始化仍需继续审计，尚不能据此只累加卡牌裸属性。LiveDeckData 构造和 CreateMyBasicInfo 均调用当前活动总力模型限制总力；该链路不等于额外叠加一次活动加成。GetTotalPowerIncludeBuff 导出含局部变量分配警告，筛选与求和已交叉核对完整 lambda 和 IsSumCard，但未独立核验汇编。
 
 回包边界：`MultiLiveRoomBase.OnResponse` 对3080/status1直接返回；status5／102交给带错误码的入房处理，其他失败走通用错误。该方法另在3000／3001成功分支反序列化 MultiLiveRoomSyncData，写入房间基本数据并触发 ResponseJoinPostProcess。因此只收到3080成功或可靠ACK都不能报告“已入房”；完整同步、推送与后处理仍需继续审计。
 
