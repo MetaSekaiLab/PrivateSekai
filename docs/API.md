@@ -189,7 +189,26 @@ RoomUserBasicInfo 是整数键0～19的 MessagePack 数组，来源包括：
 - 编队 TotalPowerIncludeBuff 先送入当前活动的 TotalPowerDataModel，再取 TotalPower。UpdateTotalPower 先取 max(0, 输入)，有活动总力上限表时再取 min(该值, upperTotalPower)；不能把原编队总力或某次抓包总力固定写入。
 - 主称号槽1、副称号槽2／3，结合对应荣誉任务构造 RoomUserHonorInfo；空槽走原空称号构造。服装取当前队长卡对应的穿戴资料，好友申请状态取 UserConfig，玩家框与部件布局取当前玩家框资料。
 
-总力继续追溯到 `DeckUtility.GetTotalPowerByDeckId(deckId, true)`（`0x4d82d7c`）：通过 DeckListData 找到编队，再调用 `DeckData.GetTotalPowerIncludeBuff(0)`（`0x634b658`）。后者按 IsSumCard 筛选成员，累加每名成员的 TotalPowerIncludeBuff，最后加上 HonorUtility.GetTotalPowerBuff；参数0时排除第六名 MV 成员。成员加成的完整计算、称号加成及 DeckListData 初始化仍需继续审计，尚不能据此只累加卡牌裸属性。LiveDeckData 构造和 CreateMyBasicInfo 均调用当前活动总力模型限制总力；该链路不等于额外叠加一次活动加成。GetTotalPowerIncludeBuff 导出含局部变量分配警告，筛选与求和已交叉核对完整 lambda 和 IsSumCard，但未独立核验汇编。
+总力继续追溯到 `DeckUtility.GetTotalPowerByDeckId(deckId, true)`（`0x4d82d7c`）：通过 DeckListData 找到编队，再调用 `DeckData.GetTotalPowerIncludeBuff(0)`（`0x634b658`）。后者按 IsSumCard 筛选成员，累加每名成员的 TotalPowerIncludeBuff，最后加上 HonorUtility.GetTotalPowerBuff；参数0时排除第六名 MV 成员。LiveDeckData 构造和 CreateMyBasicInfo 均调用当前活动总力模型限制总力；该链路不等于额外叠加一次活动加成。GetTotalPowerIncludeBuff 导出含局部变量分配警告，筛选与求和已交叉核对完整 lambda 和 IsSumCard，但未独立核验汇编。
+
+### 入房总力计算来源（静态审计，尚未实现）
+
+`CardViewDataBase.SetupUserCardData`（`0x622fb90`）分别保存卡牌基础总力、区域道具、角色等级、MYSEKAI 门和家具加成，再相加写入 TotalPowerIncludeBuff。其后的 EventBonus 是另一个字段，不能将活动奖励倍率再乘进入房总力。以下为已追到的计算规则，完整成员资料初始化及区域道具适用条件仍待审计。
+
+| 部分 | 已确认规则 | 实现时需保留的区别 |
+| --- | --- | --- |
+| 卡牌基础总力 | 三项等级属性，加画布、特训、Master Rank 和已读剧情奖励 | 特训仅在状态为 done 时加固定属性；等级属性来自参数表，不做线性插值 |
+| 称号 | 遍历全部持有的 userHonors，按 honorId 和持有 level 查 honors.levels.bonus 后相加 | 与穿戴槽位无关；精确匹配当前等级，不累计此前各级，也不使用最高级替代 |
+| 角色等级 | 以角色 ID 和 characterRank 查三项 powerBonusRate；各项卡牌属性分别乘百分比并向下取整，再相加 | 不先合并三项属性；卡牌属性计算包含画布、特训、Master Rank、剧情奖励 |
+| 区域道具 | 对每项卡牌属性累加适用道具的浮点加成，完成该项累加后向下取整，再合计三项 | 不逐道具取整；适用道具列表与编队及 multiUnitEval 有关，筛选规则尚未补齐 |
+| MYSEKAI 门 | 优先卡牌 supportUnit，否则角色 unit；piapro 选持有门中最高等级，其余选择对应 unit 的门；按门 ID 和等级查倍率 | 以卡牌基础总力乘倍率，先截断至两位小数，再向下取整；不按所有门倍率求和 |
+| MYSEKAI 家具 | 按卡牌角色查用户家具加成，应用普通及活动上限，再乘卡牌基础总力并向下取整 | 用户比例与上限均依赖配置缩放；上限选取的活动时机仍待核对 |
+
+称号查询缺 master 或缺匹配等级时原实现贡献0；levels 中没有任何正 bonus 时也返回0。本地 master 可见称号105、106、128等 level1 的 bonus=10，证明不能因部分称号全为0而省略此项。这是数据与逆向交叉验证，不是官方总力对拍。
+
+家具缩放配置为 `mysekai_fixture_game_character_bonus_rate_scale`。普通上限和可显示活动上限取较小值，缺失的一方不参与限制；两者都缺失则上限0。原实现先将上限除以缩放配置，四舍五入至三位小数后截断至两位；用户 totalBonusRate 除以同一配置，再与此上限分别除以100后取较小值。配置不大于0时原实现记录错误并保留0，不能硬编码一个常用倍率。浮点运算和每一步取整需要独立边界检查。
+
+证据：HonorUtility.GetTotalPowerBuff（`0x4daf8d4`、`0x4db0914`）、UserDataManager.GetHonors（`0x63292dc`）、MasterHonor.GetBonus／ExistsBonus（`0x614e428`／`0x614e3a8`）；CardUtility.GetTotalPower（`0x4d67be4`）、GetTotalPowerBy（`0x4d69f5c`）、GetDefaultParameterBy（`0x4d685d8`）、GetMasterRankBonus（`0x4d68a70`）、GetEpisodeReadBonusAll（`0x4d6a9cc`）、GetCharacterRankBonusPowerBy（`0x4d6c400`）、GetAreaItemPowerBy（`0x4d6c0d8`）、GetGateBonus（`0x4d68110`）及完整筛选 lambda、GetFixtureBonus（`0x4d695d0`）、GetFixtureBonusLimitRate（`0x4d69328`）、家具加成模型构造（`0x6148e00`）和 FloatExtensions 取整方法。部分导出存在局部变量或类型别名噪声；尚缺参数表初始化、区域道具筛选、活动选择、完整编队构造及实际总力对照，不能据此宣称已能构造完整入房资料。
 
 回包边界：`MultiLiveRoomBase.OnResponse` 对3080/status1直接返回；status5／102交给带错误码的入房处理，其他失败走通用错误。该方法另在3000／3001成功分支反序列化 MultiLiveRoomSyncData，写入房间基本数据并触发 ResponseJoinPostProcess。因此只收到3080成功或可靠ACK都不能报告“已入房”；完整同步、推送与后处理仍需继续审计。
 
