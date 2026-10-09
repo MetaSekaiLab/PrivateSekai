@@ -130,6 +130,7 @@ internal static class FeatureChecks
         state.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         state.Data.userEventBreakTime = new() { lastDecreaseAt = 0 };
         state.Data.userMusicVocals = [new() { musicId = 99, musicVocalId = 1 }];
+        state.Data.userMusics = [new() { musicId = 7 }, new() { musicId = 8 }];
         store.Save(3, state);
         using var scope = provider.CreateScope();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
@@ -150,6 +151,12 @@ internal static class FeatureChecks
             });
             Check.That(unowned.Status == 404 && unowned.ErrorCode == "" && unowned.Response == null,
                 "未持有音源开局返回空码 404");
+            var unownedMusic = live.StartUserLive(new UserLiveRequest
+            {
+                musicId = 11, musicCategoryName = "image", musicVocalId = 1
+            });
+            Check.That(unownedMusic.Status == 404 && unownedMusic.ErrorCode == "" && unownedMusic.Response == null,
+                "已持有音源不替代曲目持有，未购曲开局返回空码 404");
             return null;
         });
         Check.That(store.Read(3)!.Private.UserLiveSessions.Count == 0 &&
@@ -464,7 +471,7 @@ internal static class FeatureChecks
             ["configs"] = """[{"configKey":"rank_up_recover_boost_count","value":"10"},{"configKey":"boost_recovery_max_count","value":"25"},{"configKey":"boost_recovery_second","value":"1800"}]""",
             ["beginnerMissionV2s"] = """[{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
             ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
-            ["musicCategories"] = """[{"musicId":7,"musicCategoryName":"original"},{"musicId":8,"musicCategoryName":"original"}]""",
+            ["musicCategories"] = """[{"musicId":7,"musicCategoryName":"original"},{"musicId":8,"musicCategoryName":"original"},{"musicId":11,"musicCategoryName":"image"}]""",
             ["limitedTimeMusics"] = """[{"id":1,"musicId":8,"startAt":10,"endAt":20},{"id":2,"musicId":9,"startAt":10,"endAt":0},{"id":3,"musicId":10,"startAt":0,"endAt":0}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
             ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",

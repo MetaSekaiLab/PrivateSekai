@@ -53,6 +53,7 @@ internal static class LiveHttpChecks
         firstState.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         firstState.Data.userMusicResults = [];
         firstState.Data.userMusicVocals = [new() { musicId = 7, musicVocalId = 1 }];
+        firstState.Data.userMusics = [new() { musicId = 7 }];
         firstState.Data.userHonorMissions = [];
         firstState.Data.userLiveMissions = [];
         firstState.Data.userMissionStatuses = [];
