@@ -42,7 +42,7 @@ internal static class LiveReplay
     }
 
     public static async Task Run(ProtocolClient client, MemoryUserStore store, string startPath, string clearPath, string output,
-        ProtocolClient? honorReadback = null)
+        ProtocolClient? honorReadback = null, ProtocolClient? resultReadback = null)
     {
         var start = Read(startPath, "live-start");
         var official = Read(clearPath, "live-clear");
@@ -79,6 +79,22 @@ internal static class LiveReplay
             if (File.Exists(localPath))
             {
                 var local = JsonNode.Parse(File.ReadAllText(localPath))!.AsObject();
+                JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official, local));
+                if (resultReadback != null)
+                {
+                    var report = ScenarioRunner.Compare(SelectResultRecord(official), SelectResultRecord(local));
+                    await resultReadback.Send(new() { Operation = "system" });
+                    var after = await resultReadback.Suite();
+                    var differences = Comparison.Diff(Select(official["after"], ["userMusicResults"]),
+                        Select(after, ["userMusicResults"]));
+                    report["readbackDifferences"] = JsonSerializer.SerializeToNode(differences, JsonFiles.Options);
+                    JsonFiles.Write(Path.Combine(output, "music-result-compare.json"), report);
+                    if (differences.Count != 0 || !report["complete"]!.GetValue<bool>() ||
+                        new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
+                            .Any(k => report[k]!.AsArray().Count != 0))
+                        throw new InvalidOperationException("演出成绩、数组顺序、结算标志或独立回读与官方不同。");
+                    Console.WriteLine("完整成绩数组、顺序、结算标志与独立回读 HTTP 对拍通过。");
+                }
                 if (honorReadback != null)
                 {
                     var report = ScenarioRunner.Compare(SelectHonorRecord(official), SelectHonorRecord(local));
@@ -93,8 +109,6 @@ internal static class LiveReplay
                         throw new InvalidOperationException("演出称号进度、状态或独立回读与官方不同。");
                     Console.WriteLine("Easy FC、通关、生命耗尽、最大连击、最高等级及任务状态、临时提示、独立回读 HTTP 对拍通过。");
                 }
-                JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official,
-                    local));
                 JsonFiles.Write(Path.Combine(output, "rank-release-compare.json"),
                     ScenarioRunner.Compare(SelectRankReleaseRecord(official), SelectRankReleaseRecord(local)));
                 JsonFiles.Write(Path.Combine(output, "boost-compare.json"),
@@ -130,6 +144,21 @@ internal static class LiveReplay
         selected["response"] = new JsonObject
         {
             ["updatedResources"] = Select(record["response"]?["updatedResources"], ["userBoost"])
+        };
+        return selected;
+    }
+
+    private static JsonObject SelectResultRecord(JsonObject record)
+    {
+        var selected = record.DeepClone().AsObject();
+        foreach (var side in new[] { "before", "after" })
+            selected[side] = Select(record[side], ["userMusicResults"]);
+        selected["response"] = new JsonObject
+        {
+            ["highScoreFlg"] = record["response"]?["highScoreFlg"]?.DeepClone(),
+            ["fullComboFlg"] = record["response"]?["fullComboFlg"]?.DeepClone(),
+            ["fullPerfectFlg"] = record["response"]?["fullPerfectFlg"]?.DeepClone(),
+            ["updatedResources"] = Select(record["response"]?["updatedResources"], ["userMusicResults"])
         };
         return selected;
     }

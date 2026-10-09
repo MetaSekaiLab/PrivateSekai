@@ -282,8 +282,10 @@ public sealed class LiveService(
         result.fullComboFlg = result.fullComboFlg || fullCombo;
         result.fullPerfectFlg = result.fullPerfectFlg || fullPerfect;
 
-        user.Data.userMusicResults = results.ToArray();
-        if (isNew || before != (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg))
+        user.Data.userMusicResults = results.OrderBy(r => r.musicId)
+            .ThenBy(r => r.musicDifficultyType, StringComparer.Ordinal).ToArray();
+        if (isNew || !results.SequenceEqual(user.Data.userMusicResults) ||
+            before != (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg))
             user.MarkChanged(nameof(SuiteUser.userMusicResults));
         return highScoreFlg;
     }
