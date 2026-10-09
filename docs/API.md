@@ -24,7 +24,9 @@
 - 时机：`MultiplayCore.Authentication` 在建立实时连接时请求，后续交给 `SetupProtocol`；该API回调只转交结果，不调用 `UpdateAll`，不生成Suite刷新。
 - 证据：`GetUserDiarkisAuth.Execute`（RVA `0x6180754`）以method0、空body调用；`APICoreParam.Method`确认0为GET。对应导出字符串为 `user/{0}/diarkis-auth?diarkisServerType={1}`；编号按该dump的1基规则解析，不能直接用0基数组下标。
 
-Client 已提供 `diarkis-auth` 操作，在场景 `args.diarkisServerType` 指定类型，不自动读写前后Suite。隔离HTTP检查验证了查询、无body、响应解密、凭证脱敏和后续会话轮换；服务器类型及参数注入另有检查。尚无官方该接口样本，真实响应头、错误语义、有效期及实时连接仍待核验；Server 未实现该接口，也不伪造连接凭证。
+Client 已提供 `diarkis-auth` 操作，在场景 `args.diarkisServerType` 指定类型，不自动读写前后Suite。隔离HTTP检查验证了查询、无body、响应解密、凭证脱敏和后续会话轮换；服务器类型及参数注入另有检查。
+
+官方 `multi` 样本已核验：HTTP200，返回 `userId`、`clientKey`、`udpHost`、`udpPort`、`sid` 和三项加密字段，未返回 `tcpHost`／`tcpPort`。响应有 `X-Session-Token`，随后独立Suite请求成功；场景记录和HTTP记录中的连接凭证均已脱敏。不能要求TCP与UDP同时存在：客户端 `IsValidTCP`／`IsValidUDP` 分别判断对应host是否非空，`SetupProtocol` 按可用分支配置连接。隔离HTTP夹具覆盖仅UDP字段的形状。其他服务器类型、错误语义、有效期及实时握手仍待核验；Server 未实现该接口，也不伪造连接凭证。
 
 ## PUT `/api/user/{userId}/profile-honor`
 

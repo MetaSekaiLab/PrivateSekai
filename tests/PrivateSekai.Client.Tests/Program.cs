@@ -298,10 +298,11 @@ app.MapGet("/api/user/1/diarkis-auth", (HttpContext context) =>
 {
     Check(context.Request.Query["diarkisServerType"] == "multi" && context.Request.ContentLength is null or 0,
         "实时认证以GET查询指定服务器类型且无请求体");
-    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new UserDiarkisAuthResponse
+    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new Dictionary<string, object>
     {
-        userId = 1, clientKey = "fixture-client", sid = "fixture-sid", tcpHost = "localhost", tcpPort = 1234,
-        udpHost = "localhost", udpPort = 5678, encryptionKey = "fixture-key", encryptionIv = "fixture-iv", encryptionMacKey = "fixture-mac"
+        ["userId"] = 1L, ["clientKey"] = "fixture-client", ["sid"] = "fixture-sid",
+        ["udpHost"] = "localhost", ["udpPort"] = 5678, ["encryptionKey"] = "fixture-key",
+        ["encryptionIv"] = "fixture-iv", ["encryptionMacKey"] = "fixture-mac"
     })));
 });
 app.MapControllers();
@@ -651,6 +652,8 @@ try
     Check(realtimeResponse["clientKey"]!.GetValue<string>() == "fixture-client" &&
         client.LastResponse!["clientKey"]!.GetValue<string>() == "<redacted>" &&
         client.LastResponse!["sid"]!.GetValue<string>() == "<redacted>", "实时认证返回可用原对象，记录副本隐藏连接凭证");
+    Check(!realtimeResponse.ContainsKey("tcpHost") && !realtimeResponse.ContainsKey("tcpPort") &&
+        realtimeResponse["udpPort"]!.GetValue<int>() == 5678, "实时认证接受官方仅返回UDP连接信息的响应");
     await client.Send(new() { Operation = "suite" });
     Check(client.LastHttpStatus == 200, "实时认证后沿用已轮换的HTTP会话");
     await InheritHttpChecks.Run(client, config, store, directory, Check);
