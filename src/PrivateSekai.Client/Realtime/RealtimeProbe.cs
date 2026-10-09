@@ -1,12 +1,17 @@
+extern alias game;
+
 using System.Buffers.Binary;
 using System.Text.Json.Nodes;
+using game::Sekai;
 
 namespace PrivateSekai.Client.Realtime;
 
 public static class RealtimeProbe
 {
-    public static async Task<bool> Run(string configurationPath, string targetName)
+    public static async Task<bool> Run(string configurationPath, string targetName, string? clientConfigsPath = null)
     {
+        var roomTtl = clientConfigsPath == null ? (int?)null : MultiLiveReservation.ReadRoomTtl(
+            JsonNode.Parse(File.ReadAllText(clientConfigsPath))!.AsArray(), LiveRuleType.normal);
         var configuration = JsonFiles.Read<ClientConfiguration>(configurationPath);
         if (!configuration.Targets.TryGetValue(targetName, out var target))
             throw new InvalidOperationException("目标不存在。");
@@ -26,6 +31,12 @@ public static class RealtimeProbe
         {
             await http.AcquireSignature();
             await http.Send(authStep);
+            if (roomTtl.HasValue)
+            {
+                report["phase"] = "suite-before-reservation";
+                await http.Suite();
+                report["suiteBeforeSucceeded"] = true;
+            }
             report["phase"] = "diarkis-auth";
             var authentication = await http.Send(realtimeStep);
             report["httpAuthSucceeded"] = true;
@@ -55,6 +66,25 @@ public static class RealtimeProbe
             report["matchedEchoResponses"] = realtime.MatchedEchoResponses;
             report["echoOffline"] = realtime.LastEcho!.IsOffline;
             report["echoAddressPresent"] = realtime.LastEcho.Address.Length > 0;
+            if (roomTtl.HasValue)
+            {
+                if (!matches || realtime.LastEcho.IsOffline)
+                    throw new InvalidOperationException("实时连接验证未通过，停止预留房间。");
+                report["phase"] = "reserve-room";
+                report["roomTtl"] = roomTtl.Value;
+                report["reservationAttempted"] = true;
+                // 新建普通预留房间使用零初始化的自定义设置及默认显示房号设置。
+                var request = MultiLiveReservation.CreateRequest(LiveRuleType.normal, roomTtl.Value, default, true, null, null);
+                await realtime.SendReliableAsync(MultiLiveReservation.Version, MultiLiveReservation.Command, request, timeout.Token);
+                do { response = await realtime.ReceiveAsync(timeout.Token); }
+                while (response.Version != MultiLiveReservation.Version || response.Command != MultiLiveReservation.Command || response.IsPush);
+                report["reservationResponseStatus"] = response.Status;
+                report["reservationPayloadLength"] = response.Payload.Length;
+                var reserved = MultiLiveReservation.ParseResponse(response);
+                report["reservedRoomIdPresent"] = !string.IsNullOrEmpty(reserved.roomId);
+                report["roomCreateTime"] = reserved.roomCreateTime;
+                report["reservationSucceeded"] = true;
+            }
             report["phase"] = "suite-readback";
             await http.Suite();
             report["suiteReadbackSucceeded"] = true;
@@ -65,6 +95,19 @@ public static class RealtimeProbe
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             report["errorType"] = ex.GetType().Name;
+            if (report["reservationAttempted"]?.GetValue<bool>() == true && report["suiteReadbackSucceeded"] == null)
+            {
+                // 写请求失败后独立回读，不重发预留，也不让回读错误覆盖原始失败。
+                try
+                {
+                    await http.Suite();
+                    report["suiteReadbackSucceeded"] = true;
+                }
+                catch (Exception readbackError) when (readbackError is not OutOfMemoryException)
+                {
+                    report["suiteReadbackErrorType"] = readbackError.GetType().Name;
+                }
+            }
             throw;
         }
         finally

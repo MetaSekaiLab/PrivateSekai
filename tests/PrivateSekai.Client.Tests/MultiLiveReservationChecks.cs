@@ -13,6 +13,43 @@ internal static class MultiLiveReservationChecks
 {
     public static void Run(Action<bool, string> check)
     {
+        var configs = JsonNode.Parse("""[{"id":181,"type":"Int","value":"73"},{"id":182,"type":"Int","value":"149"}]""")!.AsArray();
+        check(MultiLiveReservation.ReadRoomTtl(configs, LiveRuleType.normal) == 73
+            && MultiLiveReservation.ReadRoomTtl(configs, LiveRuleType.custom) == 149,
+            "TTL 按规则查不同配置，不固定当前 master 数值");
+        foreach (var invalid in new[] { "0", "-1", "abc", "2147483648" })
+        {
+            var bad = configs.DeepClone().AsArray();
+            bad[0]!["value"] = invalid;
+            Reject(() => MultiLiveReservation.ReadRoomTtl(bad, LiveRuleType.normal));
+        }
+        var wrongType = configs.DeepClone().AsArray();
+        wrongType[0]!["type"] = "String";
+        Reject(() => MultiLiveReservation.ReadRoomTtl(wrongType, LiveRuleType.normal));
+        Reject(() => MultiLiveReservation.ReadRoomTtl([], LiveRuleType.normal));
+        var duplicate = configs.DeepClone().AsArray();
+        duplicate.Add(configs[0]!.DeepClone());
+        Reject(() => MultiLiveReservation.ReadRoomTtl(duplicate, LiveRuleType.normal));
+        var response = new DiarkisResponse(2, 3060, 1, DumpSerializer.Serialize(new CreateMultiLivePrivateRoomResponse
+        {
+            roomId = "fixture-room", roomCreateTime = 123
+        }), 0);
+        var reserved = MultiLiveReservation.ParseResponse(response);
+        check(reserved.roomId == "fixture-room" && reserved.roomCreateTime == 123, "预留回包按 dump 解析字段");
+        Reject(() => MultiLiveReservation.ParseResponse(response with { Status = 0 }));
+        Reject(() => MultiLiveReservation.ParseResponse(response with { Status = 255 }));
+        Reject(() => MultiLiveReservation.ParseResponse(response with { Version = 0 }));
+        Reject(() => MultiLiveReservation.ParseResponse(response with { Command = 3000 }));
+        Reject(() => MultiLiveReservation.ParseResponse(response with { Payload = DumpSerializer.Serialize(new CreateMultiLivePrivateRoomResponse()) }));
+
+        void Reject(Action action)
+        {
+            var rejected = false;
+            try { action(); }
+            catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException) { rejected = true; }
+            check(rejected, "配置或回包不完整时拒绝继续，不补默认成功值");
+        }
+
         var vectors = new (byte[] Actual, string Expected)[]
         {
             (SyncPropertyEncoding.Byte(255), "0100000001FF"),

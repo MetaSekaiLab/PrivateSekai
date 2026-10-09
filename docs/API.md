@@ -76,7 +76,7 @@ Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、�
 
 2026-10-09 官方测试结果：HTTP 实时认证、UDP 握手、clientKey 确认全部成功；解密后的 Ping 载荷 18 字节，回显时间戳一致，响应状态为 **1**；随后独立 Suite 请求成功。共发送 16、接收 16 个数据报，业务重传为 0；认证记录的五项实时凭证均已确认脱敏。这证明当前测试账号的基础加密通信可用，不能把“状态 0”写成所有命令统一成功条件，也不代表多人房间或结算可用。
 
-本地真实回环 UDP 检查主动丢弃首个 clientKey 消息，验证同序号 RST 重传；随后模拟乱序、重复旧消息、分片乱序、普通 Ping 和取消接收。官方分片、断线迁移、私人房间和多人结算尚未验证或接入。
+本地真实回环 UDP 检查主动丢弃首个 clientKey 消息，验证同序号 RST 重传；随后模拟乱序、重复旧消息、分片乱序、普通 Ping 和取消接收。官方分片、断线迁移和多人结算尚未验证或接入；私人空房间预留见下文。
 
 ### Echo 保活与内附通知
 
@@ -94,7 +94,7 @@ Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、�
 
 ### 私人房间预留命令 3060
 
-`MultiLiveReservation.CreateRequest` 已实现请求载荷编码，尚未接入命令行建房或向官方发送。它复用 dump 的 `CreateMultiLivePrivateRoomData`、`DynamicPropertyPayload` 和 `CustomRoomSettingData`，不定义镜像模型。
+`MultiLiveReservation.CreateRequest` 已实现请求载荷编码，`realtime-reserve <config> <target> <clientConfigs.json> --official-write auth,reserve-room` 已接通普通规则私人空房间预留并获官方成功响应。它复用 dump 的 `CreateMultiLivePrivateRoomData`、`DynamicPropertyPayload` 和 `CustomRoomSettingData`，不定义镜像模型。
 
 - 时机：`SetupReserveRoom` 设置 `RoomEnterType=Reserve(2)`、零输入房号，并准备房间属性；`ReserveRoom` 随后调用 `Create`，通过可靠发送发出命令 3060。
 - 请求：`MultiLiveRuleType` 为 `LiveRuleType.ToString()`，`RoomTTL` 为客户端配置，`RoomProperty` 为动态属性对象。普通规则取 `MultiLiveRoomTTL`（整数配置 181），自定义规则取 `CustomLiveRoomTTL`（182）；不能套用公开匹配选项中的 TTL。当前编码函数由调用方显式传入 TTL。
@@ -125,7 +125,13 @@ Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、�
 
 证据：`SetupReserveRoom`（RVA `0x5cb6600`）、`Create`（`0x5cb6890`）、`CreateCommonRoomProperty`（`0x5cb0b9c`）、`CreatePartyRoomProperty`（`0x5cb66c4`）、构造器属性表、`SyncProperty.PackToObject`（`0x5df32e0`）及各 `AddSendData`、`GetObjectValue`、静态构造器；自定义 formatter（`0x6049798`）、`MultiLiveRoomBase.OnResponse`（`0x5cb2944`）、`MatchingRoom.OnEmptyRoomCreated`（`0x5cbb60c`）。属性字符串与类型均已和 dump 核对。
 
-531 项客户端检查通过，覆盖七类属性固定字节向量、数值边界、UTF-8 字节长度、外层整数键和 bin 类型，以及普通／自定义规则、不同 TTL／战力限制、nil／空／多难度数组。Server 构建与协议检查通过，保留模板未映射字段提示。当前只完成编码及静态审计；下一步仍需确认实际连接的房间命令版本、设置来源和当前配置值，再验证官方预留、申请房号及入房流程。Server 实时房间服务尚未实现。
+命令版本为 2：`MultiLiveRoomMatchingController.BootInitialize`（RVA `0x5cbc3d0`）向 Core.Initialize 传入 2，Core.SetupRoom 再将版本交给 Room.Setup。新建 MatchingRoom 的构造及 Initialize 链路未赋自定义设置和总力限制，普通预留使用零初始化设置及空限制；`LiveSettingData` 构造器（`0x63d6920`）默认显示房号。此处仅使用默认设置，不声称读取了游戏已保存的偏好。
+
+入口在联网前从指定 clientConfigs 读取 TTL，普通／自定义分别查 181／182；缺项、重复、类型错误及非正整数均拒绝继续。当前本地配置分别为 60／120 秒，代码不固定这两个值。调试入口仅发送普通规则；自定义规则仍只有编码与本地检查。
+
+2026-10-09 官方实测：认证、握手、Ping、三次 Echo 后发送版本 2／命令 3060，返回状态 1、82 字节解密载荷及非空 RoomID；预留前后 Suite 均读取成功。共收发各 29 个数据报，重传为 0。报告只保存 RoomID 是否存在及创建时间，不保存实际房间标识。没有申请房号、入房或演出，也未观察到期回收；Suite 可读不证明账号状态完全不变。写请求失败后尝试独立 Suite 回读，不自动重发预留。
+
+545 项客户端检查通过，覆盖七类属性固定字节向量、数值边界、UTF-8 字节长度、外层整数键和 bin 类型，以及普通／自定义规则、不同 TTL／战力限制、nil／空／多难度数组；新增配置异常、响应版本／命令／状态和缺少 RoomID 的检查。Server 构建与协议检查通过，保留模板未映射字段提示。下一步接通申请房号及入房流程；Server 实时房间服务尚未实现。
 
 ## PUT `/api/user/{userId}/profile-honor`
 
