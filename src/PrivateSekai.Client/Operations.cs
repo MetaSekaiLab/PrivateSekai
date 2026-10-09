@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using game::Sekai;
 using game::Sekai.ApiData;
 using game::Sekai.CustomProfile;
@@ -23,6 +24,7 @@ public static class Operations
     public static readonly IReadOnlyDictionary<string, OperationDefinition> All = new Dictionary<string, OperationDefinition>
     {
         ["system"] = new("GET", "/api/system", null, "appVersions", false),
+        ["suite-master-split"] = new("GET", "/api/suitemasterfile/{dataVersion}/{splitFile}", null, null, false),
         ["thumbnail-download"] = new("GET", "<previous-response-thumbnail>", null, "sha256", false),
         ["suite"] = new("GET", "/api/suite/user/{userId}", null, "userRegistration", false),
         ["suite-friends"] = new("GET", "/api/suite/user/{userId}/parts?name=user_friend", null, "now", false),
@@ -118,7 +120,17 @@ public static class Operations
         {
             if (pair.Key == "userId" || !path.Contains("{" + pair.Key + "}", StringComparison.Ordinal))
                 throw new InvalidOperationException("场景包含无效路径参数。");
-            if (pair.Key == "storyType")
+            if (pair.Key == "dataVersion")
+            {
+                if (!Regex.IsMatch(pair.Value, @"\A[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\z", RegexOptions.CultureInvariant))
+                    throw new InvalidOperationException("master 版本必须是四段数字。");
+            }
+            else if (pair.Key == "splitFile")
+            {
+                if (!Regex.IsMatch(pair.Value, @"\A[0-9a-f]{2}_[0-9a-f]{64}\z", RegexOptions.CultureInvariant))
+                    throw new InvalidOperationException("master 分片必须使用认证返回的文件名。");
+            }
+            else if (pair.Key == "storyType")
             {
                 if (!Enum.GetNames<StoryType>().Contains(pair.Value, StringComparer.Ordinal))
                     throw new InvalidOperationException("无效剧情类型。");

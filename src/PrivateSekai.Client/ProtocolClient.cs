@@ -243,7 +243,10 @@ public sealed class ProtocolClient : IDisposable
                 JsonNode.Parse(MessagePackSerializer.ConvertToJson(PrskCrypto.DecryptAesCbc(ciphertext, key, iv))) as JsonObject
                 ?? throw new InvalidOperationException("响应不是 MessagePack map。");
             LastResponse = Redactor.Clean(decoded)?.AsObject();
-            if (!noContent && (definition.RequiredResponseField is { } requiredField ? !decoded.ContainsKey(requiredField) : decoded.Count != 0))
+            var validResponse = step.Operation == "suite-master-split"
+                ? decoded.Count > 0 && decoded.All(table => table.Value is JsonArray)
+                : definition.RequiredResponseField is { } requiredField ? decoded.ContainsKey(requiredField) : decoded.Count == 0;
+            if (!noContent && !validResponse)
                 throw new InvalidOperationException("响应结构不符合预期，可能为业务错误；已停止。");
             string? nextToken = null;
             if (response.Headers.TryGetValues("X-Session-Token", out var values)) nextToken = values.Single();
@@ -300,7 +303,8 @@ public sealed class ProtocolClient : IDisposable
                         headers[field switch { "appVersion" => "X-App-Version", "dataVersion" => "X-Data-Version", _ => "X-Asset-Version" }] = value.GetValue<string>();
             }
             LastResponse = Redactor.Clean(decoded)?.AsObject();
-            if ((config.Kind == "official" || config.RequireRotatingToken) && hadToken && string.IsNullOrEmpty(nextToken))
+            if ((config.Kind == "official" || config.RequireRotatingToken) && hadToken && string.IsNullOrEmpty(nextToken) &&
+                step.Operation != "suite-master-split")
                 throw new InvalidOperationException("响应未提供下一枚会话 token；停止后续请求，需核验响应头。");
             poisoned = false;
             return decoded;

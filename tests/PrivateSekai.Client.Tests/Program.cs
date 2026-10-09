@@ -261,6 +261,11 @@ app.Use(async (context, next) =>
         context.Response.StatusCode = 409;
         return;
     }
+    if (context.Request.Path.StartsWithSegments("/api/suitemasterfile"))
+    {
+        await next();
+        return;
+    }
     token = Guid.NewGuid().ToString();
     if (!omitNext) context.Response.Headers["X-Session-Token"] = token;
     if (context.Request.Path == "/api/system") context.Response.Headers["X-Login-Bonus-Status"] = "true";
@@ -623,6 +628,7 @@ try
     Fails(() => ThumbnailDownload.ValidatePath("https://example.invalid/image/custom-profile-card/thumbnail/a/b"), "图片拒绝外部 URL");
     Fails(() => ThumbnailDownload.ValidatePath("image/custom-profile-card/thumbnail/../b"), "图片拒绝路径穿越");
     await AccountReadHttpChecks.Run(client, store, directory, Check);
+    await SuiteMasterHttpChecks.Run(client, config, directory, Check);
     await InheritHttpChecks.Run(client, config, store, directory, Check);
     await ChallengeDeckHttpChecks.Run(client, config, store, directory, Check);
     await MaterialExchangeHttpChecks.Run(client, config, store, directory, Check);
@@ -746,7 +752,8 @@ sealed class TestedControllers : Microsoft.AspNetCore.Mvc.ApplicationParts.IAppl
         Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)
     {
         Type[] tested = [typeof(DeckController), typeof(ChallengeLiveController), typeof(PresentController), typeof(CardController), typeof(ShopController), typeof(GachaController), typeof(LiveController), typeof(MusicVideoController), typeof(HomeController), typeof(LoginStatusController), typeof(MiscController), typeof(MissionController), typeof(ProfileController), typeof(ProfileHonorController), typeof(UserConfigController), typeof(MusicMyListController), typeof(CustomProfileController), typeof(LoginController), typeof(InheritController), typeof(StoryController), typeof(StoryBookmarkController), typeof(StoryFavoriteController)];
-        foreach (var controller in feature.Controllers.Where(c => c.AsType() != typeof(FriendController) && !tested.Contains(c.AsType())).ToArray())
+        foreach (var controller in feature.Controllers.Where(c => c.AsType() != typeof(FriendController) &&
+                     c.AsType() != typeof(PrivateSekai.Modules.Platform.SuiteMasterFileController) && !tested.Contains(c.AsType())).ToArray())
             feature.Controllers.Remove(controller);
     }
 }

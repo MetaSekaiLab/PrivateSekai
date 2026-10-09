@@ -6,6 +6,16 @@
 
 [MetaSekaiLab/PrivateSekai](https://github.com/MetaSekaiLab/PrivateSekai) by [MetaMiku](https://github.com/MetaMikuAI)
 
+## GET `/api/suitemasterfile/{dataVersion}/{splitFile}`
+
+- Path：版本及分片文件名取自认证响应的 `suiteMasterSplitPath`，不固定分片数量、哈希或表名。无 query、body。
+- Response：加密 MessagePack map，键为 master 表名，值为行数组；一个分片包含多张表，可含空表。客户端在认证后据此加载当前版本数据。
+- Client 操作：`suite-master-split`，参数为 `dataVersion` 和 `splitFile`。检查完整版本和文件名格式，拒绝路径穿越；错误对象不能作为 master 表接收。
+- 官方静态缓存响应不返回轮换会话 token；读取后保留原会话。当前分片请求及紧接的 Suite 读取成功，确认该例外仅用于 master 静态读取，其他 API 保持原有轮换要求。
+- 场景记录仍使用通用脱敏规则，适合核对数值和结构，不能直接当作完整、无损的 master 发布文件。
+
+证据：认证返回的分片路径、已有分片下载与服务端实现、当前官方分片和后续 Suite 请求。隔离 HTTP 检查覆盖真实分片控制器的加密响应、多表及空表、非法路径、错误对象，以及无轮换 token 后继续业务请求。
+
 ## PUT `/api/user/{userId}/profile-honor`
 
 - Path：当前 `userId`，无 query。Client 操作为 `profile-honor-save`。
@@ -1860,6 +1870,8 @@ Boost 契约补充：官方结算的 `boost` 包含整数 `bondsExpRate`，零�
 官方首次 Normal FC 样本返回四项本次成就及四笔金币奖励；重复 FC 返回两个空数组。此前 Server 已入账但漏返两个字段，现补入 dump 构建副本，并在结算编码时省略奖励的零值 ID／level。新增成就后的持久数组及刷新按曲目 ID、成就 ID 升序排列；本次成就数组只包含新记录。`--replay-live-achievement` 接受开局、结算、master、输出目录，断言两个响应数组、成就刷新、状态增量和独立 Suite 回读。首次及重复样本对拍通过；专项报告不覆盖随机掉落及经验。原始 dump 未定义这两个字段，不能据抓包宣称旧客户端会直接读取它们。
 
 评分掉落与经验仍未完整泛化：目前未匹配两个历史组合的评分掉落返回空，玩家经验也只有部分 D／C 档分支，不能将其称为完整普通结算。按 master B 档门槛提交的一次模拟请求被官方以 `409 invalid_live` 拒绝，独立回读确认成绩、成就、资源及经验未变；该拒绝不证明 B 档奖励为空，也尚不能确定是哪项输入触发校验。后续需核对客户端计分与队伍条件，取得成功的高档样本，并继续寻找奖励池选择与权重证据。
+
+补充证据：培养后的队伍在歌曲 1/Easy、400000 和 400001 分均成功结算，官方评分为 C、玩家经验 +200，Suite 保存为 Easy/solo 对应分数。当前官方 master 与旧表的 `playLevelScores` 完全一致，solo/playLevel=5 的 B 门槛仍为 400000；客户端 `ScoreLogic.UpdateScoreRank` 使用包含边界的比较。已排除仅由 master 版本变化或比较符差异解释，具体官方结算规则仍待查。两份样本不能归入 B 档，也不能据此宣称当前评分查询已与官方完全对齐。
 
 Client 的 `audit-live-rewards <capture.json> <resourceBoxes.json> <report.json>` 离线检查成功结算，列出评分奖励的单明细展开箱候选，并核对金币、材料、练习券的前后增量。收入包含评分、曲目成就、玩家升级和限时 `obtainedRewards`；响应外新增或少发资源也会报差异，遇到未覆盖资源类型返回未验证。报告不含账号信息，不能代替独立官方回读或完整奖励算法对拍。逆向 `ScreenLayerFreeLiveResult` 将响应 `scoreRankRewards` 直接交给 `LiveReward.Data` 展示；该调用未提供服务端抽取规则，仍需奖励选择表或足以区分规则的后续样本。
 
