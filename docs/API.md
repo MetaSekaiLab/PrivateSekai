@@ -133,6 +133,16 @@ Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、�
 
 545 项客户端检查通过，覆盖七类属性固定字节向量、数值边界、UTF-8 字节长度、外层整数键和 bin 类型，以及普通／自定义规则、不同 TTL／战力限制、nil／空／多难度数组；新增配置异常、响应版本／命令／状态和缺少 RoomID 的检查。Server 构建与协议检查通过，保留模板未映射字段提示。下一步接通申请房号及入房流程；Server 实时房间服务尚未实现。
 
+## PATCH `/api/user/{userId}/diarkis-room/{roomId}`
+
+- Path：当前 userId 与实时预留返回的 roomId；无 query。Client 操作 `private-room-number`，不自动生成 Suite 快照。
+- Body：dump `PrivateRoomNumberPatchRequest`，含可空 `multiLiveLobbyId`、字符串 `parameter` 和 `liveRuleType`。普通多人调用方填写所选大厅 ID 和规则枚举字符串，构造器及调用方均不填写 parameter；不将其猜为房间密码或设置 JSON。
+- Response：`PrivateRoomNumberPayload`，字段为 `privateRoomType`、`roomNo`、`roomId`、64 位 `createdAt`、可空 `multiLiveLobbyId`、`liveRuleType`、`parameter`。Client 当前检查 roomNo 存在，不要求 updatedResources；创建时间单位及错误响应仍缺官方样本。
+- 时机：实时预留成功后，`MultiRoomMatchingOrganizer.CreatePrivateRoom` 使用 ReservedRoomId 申请房号；成功分支继续调用 `StartPrivateRoom`。该 PATCH 的 OnCallBack 只转发结果，不调用 UpdateAll，房号申请不等于已入房。
+- 证据：`PatchPrivateRoomNumberAPI.Execute`（RVA `0x61946e8`）及 OnCallBack（`0x61948a0`）；StringLiteral_30350（`0xBB43B20`）为 `user/{0}/diarkis-room/{1}`，method3 经 APICoreParam.Method 确认为 PATCH；调用方 `CreatePrivateRoom`（`0x5cbf080`）、其完整成功回调及 dump 请求／响应模型。
+
+已接入独立 Client HTTP 操作，隔离端点用于验证加密请求、路径、请求字段、64 位响应及后续会话轮换，不是 Server 业务实现。尚未对官方执行此 PATCH，也未接入 realtime-reserve 的连续申请流程；实际验证需新建预留并在同一连接内继续，不复用历史房间标识。房号如何写入 Organizer.GeneratedRoomNumber 的完整链路仍需继续核对。
+
 ## PUT `/api/user/{userId}/profile-honor`
 
 - Path：当前 `userId`，无 query。Client 操作为 `profile-honor-save`。

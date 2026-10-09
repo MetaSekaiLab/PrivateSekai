@@ -311,6 +311,20 @@ app.MapGet("/api/user/1/diarkis-auth", (HttpContext context) =>
         ["encryptionIv"] = "fixture-iv", ["encryptionMacKey"] = "fixture-mac"
     })));
 });
+app.MapPatch("/api/user/1/diarkis-room/fixture-room", async (HttpContext context) =>
+{
+    using var body = new MemoryStream();
+    await context.Request.Body.CopyToAsync(body);
+    var request = DumpSerializer.Deserialize<PrivateRoomNumberPatchRequest>(body.ToArray());
+    Check(!context.Request.Query.Any() && request.multiLiveLobbyId == 7
+        && request.liveRuleType == "normal" && request.parameter == null,
+        "申请房号以PATCH发送dump请求，保留大厅和规则且无查询参数");
+    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new PrivateRoomNumberPayload
+    {
+        privateRoomType = "multi", roomNo = 12345, roomId = "fixture-room",
+        createdAt = 1791524750000L, multiLiveLobbyId = 7, liveRuleType = "normal"
+    })));
+}).WithMetadata(new PrskDecryptRequestAttribute());
 app.MapControllers();
 await app.StartAsync();
 try
@@ -662,6 +676,20 @@ try
         realtimeResponse["udpPort"]!.GetValue<int>() == 5678, "实时认证接受官方仅返回UDP连接信息的响应");
     await client.Send(new() { Operation = "suite" });
     Check(client.LastHttpStatus == 200, "实时认证后沿用已轮换的HTTP会话");
+    var roomNumberResponse = await client.Send(new()
+    {
+        Operation = "private-room-number", Args = new() { ["roomId"] = "fixture-room" },
+        Body = new() { ["multiLiveLobbyId"] = 7, ["liveRuleType"] = "normal" }
+    });
+    Check(roomNumberResponse["roomNo"]!.GetValue<int>() == 12345
+        && roomNumberResponse["createdAt"]!.GetValue<long>() == 1791524750000L,
+        "房号响应保留房号及64位创建时间，不要求Suite刷新字段");
+    Check(!Operations.All["private-room-number"].Snapshot, "申请房号不自动合并Suite");
+    Fails(() => Operations.Path(Operations.All["private-room-number"], new(), 1), "申请房号必须提供预留标识");
+    Fails(() => Operations.Path(Operations.All["private-room-number"], new() { Args = new() { ["roomId"] = "../other" } }, 1),
+        "房间标识拒绝路径穿越");
+    await client.Send(new() { Operation = "suite" });
+    Check(client.LastHttpStatus == 200, "申请房号后继续使用轮换会话");
     await InheritHttpChecks.Run(client, config, store, directory, Check);
     await ChallengeDeckHttpChecks.Run(client, config, store, directory, Check);
     await MaterialExchangeHttpChecks.Run(client, config, store, directory, Check);

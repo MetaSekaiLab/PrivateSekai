@@ -29,6 +29,7 @@ public static class Operations
         ["suite"] = new("GET", "/api/suite/user/{userId}", null, "userRegistration", false),
         ["suite-friends"] = new("GET", "/api/suite/user/{userId}/parts?name=user_friend", null, "now", false),
         ["diarkis-auth"] = new("GET", "/api/user/{userId}/diarkis-auth?diarkisServerType={diarkisServerType}", null, "clientKey", false),
+        ["private-room-number"] = new("PATCH", "/api/user/{userId}/diarkis-room/{roomId}", typeof(PrivateRoomNumberPatchRequest), "roomNo", false),
         ["login-status-save"] = new("PUT", "/api/user/{userId}/login-status", typeof(PutUserLoginStatusRequest), null, false),
         ["friend-request"] = new("POST", "/api/user/{userId}/friend/{opponentUserId}", typeof(PostUserFriendRequest), "updatedResources"),
         ["friend-approve"] = new("PUT", "/api/user/{userId}/friend/{opponentUserId}", null, "updatedResources"),
@@ -156,7 +157,7 @@ public static class Operations
                 if (!long.TryParse(pair.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var opponentId) || opponentId <= 0)
                     throw new InvalidOperationException("对方用户 ID 必须是正的 64 位整数。");
             }
-            else if (pair.Key is "userLiveId" or "userChallengeLiveId" or "inheritId")
+            else if (pair.Key is "userLiveId" or "userChallengeLiveId" or "inheritId" or "roomId")
             {
                 if (string.IsNullOrEmpty(pair.Value) || pair.Value.Length > 256 ||
                     pair.Value.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_')))
