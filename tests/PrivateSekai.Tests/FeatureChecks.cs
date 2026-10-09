@@ -129,6 +129,7 @@ internal static class FeatureChecks
         state.Data.userDecks = [new() { deckId = 1, member1 = 1, leader = 1 }];
         state.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         state.Data.userEventBreakTime = new() { lastDecreaseAt = 0 };
+        state.Data.userMusicVocals = [new() { musicId = 99, musicVocalId = 1 }];
         store.Save(3, state);
         using var scope = provider.CreateScope();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
@@ -143,16 +144,23 @@ internal static class FeatureChecks
             var invalid = live.StartUserLive(new UserLiveRequest { musicId = 7, musicCategoryName = "mv" });
             Check.That(invalid.Status == 404 && invalid.ErrorCode == "" && invalid.Response == null,
                 "不属于曲目的分类返回空码 404");
+            var unowned = live.StartUserLive(new UserLiveRequest
+            {
+                musicId = 7, musicCategoryName = "original", musicVocalId = 2
+            });
+            Check.That(unowned.Status == 404 && unowned.ErrorCode == "" && unowned.Response == null,
+                "未持有音源开局返回空码 404");
             return null;
         });
         Check.That(store.Read(3)!.Private.UserLiveSessions.Count == 0 &&
             unchanged.SequenceEqual(DumpSerializer.Serialize(store.Read(3)!.Data)), "开局拒绝不创建会话、不修改用户状态");
         var started = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
-            musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, boostCount = 1
+            musicId = 7, musicVocalId = 1, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, boostCount = 1
         }).Response);
         var liveId = DumpSerializer.Deserialize<UserLive>(started).userLiveId;
-        Check.That(store.Read(3)!.Private.UserLiveSessions.ContainsKey(liveId), "开始 Live 保存私有会话");
+        Check.That(store.Read(3)!.Private.UserLiveSessions[liveId].MusicVocalId == 1,
+            "开始 Live 保存已持有音源，即使其属于另一首曲目");
         var clearRequest = new UserLiveClearRequest
         {
             score = 150, perfectCount = 10, maxCombo = 10, life = 1000,
@@ -226,7 +234,7 @@ internal static class FeatureChecks
             "重复结算不重复解锁或改写解锁时间");
         var failedStart = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
-            musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, boostCount = 1
+            musicId = 7, musicVocalId = 1, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, boostCount = 1
         }).Response);
         var failedId = DumpSerializer.Deserialize<UserLive>(failedStart).userLiveId;
         var failedBytes = operation.Execute(3, () =>
@@ -256,11 +264,11 @@ internal static class FeatureChecks
             "失败结算保留已有最佳成绩，未变化成绩不重复刷新");
         Check.Throws<ArgumentException>(() => operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
-            musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, isAuto = true, boostCount = 0
+            musicId = 7, musicVocalId = 1, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, isAuto = true, boostCount = 0
         })), "普通 Auto 不接受零体力消耗");
         var autoStart = operation.Execute(3, () => live.StartUserLive(new UserLiveRequest
         {
-            musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, isAuto = true, boostCount = 1
+            musicId = 7, musicVocalId = 1, musicDifficultyId = 71, musicCategoryName = "original", deckId = 1, isAuto = true, boostCount = 1
         }).Response);
         var autoId = DumpSerializer.Deserialize<UserLive>(autoStart).userLiveId;
         Check.That((store.Read(3)!.Data.userAutoLive?.count ?? 0) == 0 && store.Read(3)!.Data.userBoost.current == 11,

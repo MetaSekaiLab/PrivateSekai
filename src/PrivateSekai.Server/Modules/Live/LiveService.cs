@@ -59,6 +59,8 @@ public sealed class LiveService(
             return (400, "limited_time_music_out_of_term", null);
         if (!master.HasMusicCategory(request.musicId, request.musicCategoryName))
             return (404, "", null);
+        if (!(user.Data.userMusicVocals ?? []).Any(v => v.musicVocalId == request.musicVocalId))
+            return (404, "", null);
         if (request.isAuto && request.boostCount <= 0)
             throw new ArgumentException("Auto Live requires boost consumption.");
         var userLiveId = Guid.NewGuid().ToString();

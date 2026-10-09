@@ -38,7 +38,7 @@ internal static class LiveHttpChecks
         var scenario = new Scenario { Steps =
         [
             new() { Operation = "system" },
-            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicVocalId":1,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
             new() { Operation = "live-clear", UseLiveSession = true, DelayBeforeMs = 1,
                 Body = JsonNode.Parse("""{"score":150,"perfectCount":10,"maxCombo":10,"life":1000,"ingameCutinCharacterArchiveVoiceGroupIds":[4]}""")!.AsObject(),
                 Expect = new() { ["/fullPerfectFlg"] = JsonValue.Create(true), ["/score"] = JsonValue.Create(150) } },
@@ -52,6 +52,7 @@ internal static class LiveHttpChecks
         liveDeck.subLeader = liveDeck.member2 = liveDeck.member3 = liveDeck.member4 = liveDeck.member5 = 0;
         firstState.Data.userBoost = new() { current = 3, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         firstState.Data.userMusicResults = [];
+        firstState.Data.userMusicVocals = [new() { musicId = 7, musicVocalId = 1 }];
         firstState.Data.userHonorMissions = [];
         firstState.Data.userLiveMissions = [];
         firstState.Data.userMissionStatuses = [];
@@ -115,10 +116,10 @@ internal static class LiveHttpChecks
         await client.Send(new() { Operation = "system" });
         var judgments = new Scenario { Steps =
         [
-            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicVocalId":1,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
             new() { Operation = "live-clear", UseLiveSession = true,
                 Body = JsonNode.Parse("""{"score":150,"perfectCount":8,"goodCount":2,"maxCombo":8,"life":1000}""")!.AsObject() },
-            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
+            new() { Operation = "live-start", Body = JsonNode.Parse("""{"musicId":7,"musicVocalId":1,"musicDifficultyId":71,"musicCategoryName":"original","deckId":1,"boostCount":1,"isAuto":false}""")!.AsObject() },
             new() { Operation = "live-clear", UseLiveSession = true,
                 Body = JsonNode.Parse("""{"score":150,"perfectCount":8,"greatCount":2,"maxCombo":10,"life":1000}""")!.AsObject() }
         ] };
