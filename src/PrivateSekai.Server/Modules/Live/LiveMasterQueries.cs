@@ -14,8 +14,18 @@ public sealed class LiveMasterQueries(MasterData master)
     public bool IsLimitedMusicOutOfTerm(int musicId, long now)
     {
         var term = master.GetTable<MasterLimitedTimeMusic>("limitedTimeMusics").Rows.SingleOrDefault(m => m.musicId == musicId);
-        return term != null && (term.startAt > now || (term.endAt == 0 ? term.startAt == 0 : now >= term.endAt));
+        return term != null && !IsWithinPeriod(now, term.startAt, term.endAt);
     }
+
+    public bool IsAprilFoolVocal(int vocalId) =>
+        master.GetTable<MasterMusicVocal>("musicVocals", v => v.id).FindById(vocalId)?.musicVocalType == "april_fool_2022";
+
+    public bool IsAprilFoolSeason(long now) =>
+        master.GetTable<MasterSpecialSeason>("specialSeasons").Rows.OrderByDescending(s => s.priority)
+            .FirstOrDefault(s => IsWithinPeriod(now, s.startAt, s.endAt))?.specialSeasonType == "april_fool_2022";
+
+    private static bool IsWithinPeriod(long now, long start, long end) =>
+        start <= now && (end == 0 ? start != 0 : now < end);
 
     public bool HasMusicCategory(int musicId, string category) =>
         master.GetTable<MasterMusicCategory>("musicCategories").Rows

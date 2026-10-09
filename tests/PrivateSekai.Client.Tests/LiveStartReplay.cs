@@ -26,7 +26,7 @@ internal static class LiveStartReplay
         var official = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
         var officialReadback = JsonNode.Parse(File.ReadAllText(officialReadbackPath))!;
         if (official["operation"]?.GetValue<string>() != "live-start" || official["failurePhase"]?.GetValue<string>() != "request" ||
-            official["lastHttpStatus"]?.GetValue<int>() is not (400 or 404) ||
+            official["lastHttpStatus"]?.GetValue<int>() is not (400 or 404 or 409) ||
             officialReadback["operation"]?.GetValue<string>() != "suite" || officialReadback["status"]?.GetValue<string>() != "completed")
             throw new InvalidOperationException("需要被拒绝的开局记录及随后的独立 Suite 回读。");
         Seed(store, official);

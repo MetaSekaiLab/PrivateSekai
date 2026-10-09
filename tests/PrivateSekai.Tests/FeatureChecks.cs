@@ -45,6 +45,11 @@ internal static class FeatureChecks
                 "限时曲按客户端时间函数采用包含开始、不含结束的区间");
             Check.That(!liveMaster.IsLimitedMusicOutOfTerm(7, 20) && !liveMaster.IsLimitedMusicOutOfTerm(9, 20) &&
                 liveMaster.IsLimitedMusicOutOfTerm(10, 20), "非限时曲不受限，零结束时间沿用客户端规则");
+            Check.That(!liveMaster.IsAprilFoolSeason(9) && liveMaster.IsAprilFoolSeason(10) &&
+                liveMaster.IsAprilFoolSeason(19) && !liveMaster.IsAprilFoolSeason(20),
+                "季节活动包含开始时间，不含结束时间");
+            Check.That(!liveMaster.IsAprilFoolSeason(12) && liveMaster.IsAprilFoolSeason(14),
+                "当前活动按 priority 降序选择有效期间，不只判断是否存在开放的同类活动");
             var store = new MemoryUserStore();
             using var provider = new ServiceCollection().AddPrivateSekai()
                 .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
@@ -54,6 +59,7 @@ internal static class FeatureChecks
             CardAndMission(provider, store);
             SpecialTraining(provider, store);
             LiveSettlement(provider, store);
+            SeasonalLive(provider, store);
             GachaDraw(provider, store);
             Console.WriteLine("业务：正式 DI 注册、商店、卡牌与任务联动、Live 结算、确定性抽卡检查通过。");
         }
@@ -61,6 +67,35 @@ internal static class FeatureChecks
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    private sealed class SeasonClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeMilliseconds(15);
+    }
+
+    private static void SeasonalLive(ServiceProvider provider, IUserStore store)
+    {
+        var state = TestUsers.Create(8);
+        state.Data.userMusics = [new() { musicId = 7 }];
+        state.Data.userMusicVocals = [new() { musicId = 7, musicVocalId = 1 }];
+        store.Save(8, state);
+        using var scope = provider.CreateScope();
+        var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+        var operation = new UserOperation(store, scope.ServiceProvider.GetRequiredService<UserLocks>(), user, new SeasonClock());
+        var live = scope.ServiceProvider.GetRequiredService<LiveService>();
+        operation.Execute(8, () =>
+        {
+            var result = live.StartUserLive(new UserLiveRequest
+            {
+                musicId = 7, musicDifficultyId = 71, musicCategoryName = "original", musicVocalId = 3
+            });
+            Check.That(result.Status == 200 && result.Response != null, "活动期内按逆向分支允许未持有的季节音源");
+            return result.Response;
+        });
+        Check.That(store.Read(8)!.Private.UserLiveSessions.Count == 1 && store.Read(8)!.Data.userMusicVocals.Count == 1 &&
+            !store.Read(8)!.Data.userMusicVocals.Any(v => v.musicVocalId == 3),
+            "季节音源开局创建会话，不授予永久持有记录");
     }
 
     private static void ShopPurchase(ServiceProvider provider, IUserStore store)
@@ -157,6 +192,12 @@ internal static class FeatureChecks
             });
             Check.That(unownedMusic.Status == 404 && unownedMusic.ErrorCode == "" && unownedMusic.Response == null,
                 "已持有音源不替代曲目持有，未购曲开局返回空码 404");
+            var seasonal = live.StartUserLive(new UserLiveRequest
+            {
+                musicId = 7, musicCategoryName = "original", musicVocalId = 3
+            });
+            Check.That(seasonal.Status == 409 && seasonal.ErrorCode == "out_of_period_2022_april_fool" && seasonal.Response == null,
+                "季节音源期间外返回专用错误，而非普通未持有错误");
             return null;
         });
         Check.That(store.Read(3)!.Private.UserLiveSessions.Count == 0 &&
@@ -473,6 +514,8 @@ internal static class FeatureChecks
             ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
             ["musicCategories"] = """[{"musicId":7,"musicCategoryName":"original"},{"musicId":8,"musicCategoryName":"original"},{"musicId":11,"musicCategoryName":"image"}]""",
             ["limitedTimeMusics"] = """[{"id":1,"musicId":8,"startAt":10,"endAt":20},{"id":2,"musicId":9,"startAt":10,"endAt":0},{"id":3,"musicId":10,"startAt":0,"endAt":0}]""",
+            ["musicVocals"] = """[{"id":1,"musicId":99,"musicVocalType":"original_song"},{"id":3,"musicId":7,"musicVocalType":"april_fool_2022","specialSeasonId":1}]""",
+            ["specialSeasons"] = """[{"id":1,"specialSeasonType":"april_fool_2022","startAt":10,"endAt":20,"priority":1},{"id":2,"specialSeasonType":"fixture_other","startAt":12,"endAt":14,"priority":2}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
             ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",

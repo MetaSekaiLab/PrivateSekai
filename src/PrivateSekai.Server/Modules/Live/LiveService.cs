@@ -61,7 +61,10 @@ public sealed class LiveService(
             return (404, "", null);
         if (!(user.Data.userMusics ?? []).Any(m => m.musicId == request.musicId))
             return (404, "", null);
-        if (!(user.Data.userMusicVocals ?? []).Any(v => v.musicVocalId == request.musicVocalId))
+        var seasonalVocal = master.IsAprilFoolVocal(request.musicVocalId);
+        if (seasonalVocal && !master.IsAprilFoolSeason(user.Now))
+            return (409, "out_of_period_2022_april_fool", null);
+        if (!seasonalVocal && !(user.Data.userMusicVocals ?? []).Any(v => v.musicVocalId == request.musicVocalId))
             return (404, "", null);
         if (request.isAuto && request.boostCount <= 0)
             throw new ArgumentException("Auto Live requires boost consumption.");
