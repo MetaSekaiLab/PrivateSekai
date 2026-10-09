@@ -44,11 +44,12 @@ public static class LiveRewardAudit
         var before = Balances(record["before"]!);
         var after = Balances(record["after"]!);
         var grants = rewards.GroupBy(Key).ToDictionary(g => g.Key, g => g.Sum(r => Number(r, "quantity")));
-        var unsupported = grants.Keys.Where(k => k.Type is not ("coin" or "material" or "practice_ticket"))
+        var unsupported = grants.Keys.Where(k => k.Type is not ("coin" or "material" or "practice_ticket" or "jewel"))
             .Select(k => k.Type).Distinct().Order(StringComparer.Ordinal).ToArray();
         var differences = new JsonArray();
         foreach (var key in before.Keys.Union(after.Keys).Union(grants.Keys)
-                     .Where(k => k.Type is "coin" or "material" or "practice_ticket").OrderBy(k => k.Type).ThenBy(k => k.Id))
+                     .Where(k => k.Type is "coin" or "material" or "practice_ticket" or "jewel" or "paid_jewel")
+                     .OrderBy(k => k.Type).ThenBy(k => k.Id))
         {
             var actual = after.GetValueOrDefault(key) - before.GetValueOrDefault(key);
             var expected = grants.GetValueOrDefault(key);
@@ -77,7 +78,11 @@ public static class LiveRewardAudit
     {
         var result = new Dictionary<(string Type, int Id), long>
         {
-            [("coin", 0)] = suite["userGamedata"]!["coin"]!.GetValue<long>()
+            [("coin", 0)] = suite["userGamedata"]!["coin"]!.GetValue<long>(),
+            [("jewel", 0)] = suite["userChargedCurrency"]?["free"]?.GetValue<long>()
+                ?? throw new InvalidOperationException("结算快照缺少免费水晶余额。"),
+            [("paid_jewel", 0)] = suite["userChargedCurrency"]?["paid"]?.GetValue<long>()
+                ?? throw new InvalidOperationException("结算快照缺少付费水晶余额。")
         };
         foreach (var (field, type, id) in new[]
                  { ("userMaterials", "material", "materialId"), ("userPracticeTickets", "practice_ticket", "practiceTicketId") })

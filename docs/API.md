@@ -1873,7 +1873,9 @@ Boost 契约补充：官方结算的 `boost` 包含整数 `bondsExpRate`，零�
 
 补充证据：培养后的队伍在歌曲 1/Easy、400000 和 400001 分均成功结算，官方评分为 C、玩家经验 +200，Suite 保存为 Easy/solo 对应分数。当前官方 master 与旧表的 `playLevelScores` 完全一致，solo/playLevel=5 的 B 门槛仍为 400000；客户端 `ScoreLogic.UpdateScoreRank` 使用包含边界的比较。已排除仅由 master 版本变化或比较符差异解释，具体官方结算规则仍待查。两份样本不能归入 B 档，也不能据此宣称当前评分查询已与官方完全对齐。
 
-Client 的 `audit-live-rewards <capture.json> <resourceBoxes.json> <report.json>` 离线检查成功结算，列出评分奖励的单明细展开箱候选，并核对金币、材料、练习券的前后增量。收入包含评分、曲目成就、玩家升级和限时 `obtainedRewards`；响应外新增或少发资源也会报差异，遇到未覆盖资源类型返回未验证。报告不含账号信息，不能代替独立官方回读或完整奖励算法对拍。逆向 `ScreenLayerFreeLiveResult` 将响应 `scoreRankRewards` 直接交给 `LiveReward.Data` 展示；该调用未提供服务端抽取规则，仍需奖励选择表或足以区分规则的后续样本。
+Client 的 `audit-live-rewards <capture.json> <resourceBoxes.json> <report.json>` 离线检查成功结算，列出评分奖励的单明细展开箱候选，并核对金币、材料、练习券和免费水晶的前后增量。收入包含评分、曲目成就、玩家升级和限时 `obtainedRewards`，成就与升级水晶不额外乘评分掉落倍率；同时检查付费余额，不能以免费／付费总额相同掩盖误发。响应外新增或少发资源也会报差异，缺少水晶余额即停止，遇到未覆盖资源类型返回未验证。报告不含账号信息，不能代替独立官方回读或完整奖励算法对拍。逆向 `ScreenLayerFreeLiveResult` 将响应 `scoreRankRewards` 直接交给 `LiveReward.Data` 展示；该调用未提供服务端抽取规则，仍需奖励选择表或足以区分规则的后续样本。
+
+同一已培养队伍的后续模拟样本：450000 分返回 B，零体力玩家经验 +240、成就2发放20免费水晶，额外 Suite 确认到账；410000 分仍返回 C、经验 +200。因此该组输入的 B 门槛落在 `(410000,450000]`，尚未定位精确值，也不能外推其他曲目、难度或 Auto。400001 分样本的本地成就重放因错误判为 B 而多发20水晶及成就，已作为明确差异保留；不以新样本单独追加分数特判。
 
 ### 客户端请求时机
 

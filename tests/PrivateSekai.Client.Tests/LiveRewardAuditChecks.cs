@@ -7,8 +7,8 @@ internal static class LiveRewardAuditChecks
     {
         var record = JsonNode.Parse("""
         {"operation":"live-clear","status":"completed",
-         "before":{"userGamedata":{"coin":100},"userMaterials":[],"userPracticeTickets":[]},
-         "after":{"userGamedata":{"coin":175},"userMaterials":[{"materialId":1,"quantity":10}],"userPracticeTickets":[]},
+         "before":{"userGamedata":{"coin":100},"userChargedCurrency":{"free":50,"paid":10},"userMaterials":[],"userPracticeTickets":[]},
+         "after":{"userGamedata":{"coin":175},"userChargedCurrency":{"free":50,"paid":10},"userMaterials":[{"materialId":1,"quantity":10}],"userPracticeTickets":[]},
          "response":{"boost":{"rewardRate":5},"scoreRankRewards":[{"resourceType":"coin","quantity":75},{"resourceType":"material","resourceId":1,"quantity":10}],
          "musicAchievementRewards":[],"playerRankRewards":[],"limitedTermScoreRankRewards":[]}}
         """)!.AsObject();
@@ -32,9 +32,28 @@ internal static class LiveRewardAuditChecks
         {"scoreRankRewardType":"fixture","obtainedRewards":[{"resourceType":"practice_ticket","resourceId":1,"quantity":1}]}
         """));
         check(LiveRewardAudit.Analyze(record, boxes)["balancesVerified"]!.GetValue<bool>(), "限时奖励通过 obtainedRewards 纳入增量核对");
+        record["response"]!["musicAchievementRewards"]!.AsArray().Add(JsonNode.Parse("""{"resourceType":"jewel","quantity":20}"""));
+        record["response"]!["playerRankRewards"]!.AsArray().Add(JsonNode.Parse("""{"resourceType":"jewel","quantity":50}"""));
+        record["after"]!["userChargedCurrency"]!["free"] = 120L;
+        check(LiveRewardAudit.Analyze(record, boxes)["balancesVerified"]!.GetValue<bool>(),
+            "成就和升级水晶按实际数量合并核对，不额外乘评分掉落倍率");
+        record["after"]!["userChargedCurrency"]!["free"] = 110L;
+        record["after"]!["userChargedCurrency"]!["paid"] = 20L;
+        check(LiveRewardAudit.Analyze(record, boxes)["balanceDifferences"]!.AsArray().Count == 2,
+            "免费水晶误发到付费余额时分别报告差异，不能以总额相同通过");
+        record["after"]!["userChargedCurrency"]!["free"] = 120L;
+        record["after"]!["userChargedCurrency"]!["paid"] = 11L;
+        check(!LiveRewardAudit.Analyze(record, boxes)["balancesVerified"]!.GetValue<bool>(),
+            "响应外的付费余额变化也不能通过奖励审计");
+        record["after"]!["userChargedCurrency"]!["paid"] = 10L;
         record["response"]!["playerRankRewards"]!.AsArray().Add(JsonNode.Parse("""{"resourceType":"stamp","resourceId":1,"quantity":1}"""));
         var unsupported = LiveRewardAudit.Analyze(record, boxes);
         check(!unsupported["balancesVerified"]!.GetValue<bool>() && unsupported["unsupportedResourceTypes"]!.AsArray().Count == 1,
             "未覆盖的资源类型明确保留未验证状态");
+        record["before"]!.AsObject().Remove("userChargedCurrency");
+        var missingBalance = false;
+        try { LiveRewardAudit.Analyze(record, boxes); }
+        catch (InvalidOperationException) { missingBalance = true; }
+        check(missingBalance, "缺少水晶余额不能当作零余额通过审计");
     }
 }
