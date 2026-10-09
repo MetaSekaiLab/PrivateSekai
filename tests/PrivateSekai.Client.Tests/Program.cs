@@ -165,6 +165,11 @@ if (args is ["--replay-live-start-rejection", var startCapture, _, var startMast
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, startMaster));
     builder.Services.AddSingleton(LiveStartReplay.Clock(startCapture));
 }
+if (args is ["--replay-live-start", var acceptedStartCapture, var acceptedStartMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, acceptedStartMaster));
+    builder.Services.AddSingleton(LiveStartReplay.Clock(acceptedStartCapture));
+}
 if (args is ["--replay-friend", var friendManifest, var friendMaster, _])
 {
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, friendMaster));
@@ -420,6 +425,12 @@ try
     {
         using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await LiveStartReplay.Run(client, readback, store, rejectedStart, startReadback, startOutput);
+        return;
+    }
+    if (args is ["--replay-live-start", var acceptedStart, _, var acceptedStartOutput])
+    {
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await LiveStartReplay.RunAccepted(client, readback, store, acceptedStart, acceptedStartOutput);
         return;
     }
     if (args is ["--replay-story", var storyPath, _, var storyOutput])
