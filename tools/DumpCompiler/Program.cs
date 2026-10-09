@@ -138,6 +138,23 @@ bondsExpRateKey.ConstructorArguments.Add(new CustomAttributeArgument(module.Type
 bondsExpRate.CustomAttributes.Add(bondsExpRateKey);
 boostData.Fields.Add(bondsExpRate);
 
+// 官方普通演出结算返回本次新成就及奖励；仅补充构建副本。
+var liveClearData = module.GetType("Sekai.UserLiveClearResponse");
+foreach (var (name, elementType) in new[]
+{
+    ("userMusicAchievements", "Sekai.UserMusicAchievement"),
+    ("musicAchievementRewards", "Sekai.UserResource")
+})
+{
+    if (liveClearData.Fields.Any(f => f.Name == name))
+        throw new InvalidDataException("Live 结算 dump 已变化，请重新核验成就字段。");
+    var field = new FieldDefinition(name, FieldAttributes.Public, new ArrayType(module.GetType(elementType)));
+    var key = new CustomAttribute(vocalKey.Constructor);
+    key.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, name));
+    field.CustomAttributes.Add(key);
+    liveClearData.Fields.Add(field);
+}
+
 Directory.CreateDirectory(output);
 var dll = Path.Combine(output, "Assembly-CSharp.dll");
 assembly.Write(dll + ".tmp");
@@ -150,7 +167,8 @@ File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(
         "Sekai.UserChallengeLivePlayStatus: musicVoiceId key -> musicVocalId; add isAuto:Boolean",
         "Sekai.UserPresentData: add grantedAt:Int64",
         "Sekai.UserHonor, Sekai.UserProfile: add userId:Int64",
-        "Sekai.MasterBoost: add bondsExpRate:Int32"
+        "Sekai.MasterBoost: add bondsExpRate:Int32",
+        "Sekai.UserLiveClearResponse: add userMusicAchievements:UserMusicAchievement[], musicAchievementRewards:UserResource[]"
     },
     models = models.Select(t => t.FullName.Replace('/', '+')).Order(StringComparer.Ordinal)
 }, new JsonSerializerOptions { WriteIndented = true }));

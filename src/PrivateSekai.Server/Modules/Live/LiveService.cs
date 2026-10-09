@@ -193,6 +193,8 @@ public sealed class LiveService(
             unitExpResults = [],
             userDeck = GetUserDeck(session?.DeckId),
             scoreRankRewards = scoreRankRewards,
+            userMusicAchievements = grantedMusicAchievements,
+            musicAchievementRewards = musicAchievementRewards,
             playerRankRewards = playerRankRewards,
             limitedTermScoreRankRewards = [],
             boost = boost,
@@ -322,7 +324,7 @@ public sealed class LiveService(
 
         if (granted.Count > 0)
         {
-            user.Data.userMusicAchievements = achievements.ToArray();
+            user.Data.userMusicAchievements = achievements.OrderBy(a => a.musicId).ThenBy(a => a.musicAchievementId).ToArray();
             user.MarkChanged(nameof(SuiteUser.userMusicAchievements));
         }
 

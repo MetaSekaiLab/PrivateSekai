@@ -65,12 +65,90 @@ internal static class FeatureChecks
             NormalFullCombo(provider, store);
             SeasonalLive(provider, store);
             GachaDraw(provider, store);
+            MusicAchievementTiers(Path.Combine(directory, "achievement-tiers"));
             Console.WriteLine("业务：正式 DI 注册、商店、卡牌与任务联动、Live 结算、确定性抽卡检查通过。");
         }
         finally
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    private static void MusicAchievementTiers(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        WriteMaster(directory);
+        File.WriteAllText(Path.Combine(directory, "musicAchievements.json"), """
+            [{"id":4,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_s","resourceBoxId":81},
+             {"id":2,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_b","resourceBoxId":80},
+             {"id":1,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_c","resourceBoxId":80},
+             {"id":3,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_a","resourceBoxId":80},
+             {"id":5,"musicAchievementType":"combo","musicDifficultyType":"easy","musicAchievementTypeValue":"0.75","resourceBoxId":80},
+             {"id":6,"musicAchievementType":"combo","musicDifficultyType":"normal","musicAchievementTypeValue":"1","resourceBoxId":80}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "resourceBoxes.json"), """
+            [{"id":80,"resourceBoxPurpose":"music_achievement","details":[{"resourceType":"coin","resourceQuantity":5}]},
+             {"id":81,"resourceBoxPurpose":"music_achievement","details":[{"resourceType":"material","resourceId":42,"resourceQuantity":2}]}]
+            """);
+        var master = new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
+        var queries = new LiveMasterQueries(master);
+        foreach (var (score, rank, count) in new[]
+        {
+            (99, "rank_d", 0), (100, "rank_c", 1), (299, "rank_c", 1),
+            (300, "rank_b", 2), (399, "rank_b", 2), (400, "rank_a", 3),
+            (499, "rank_a", 3), (500, "rank_s", 4), (900, "rank_s", 4)
+        })
+        {
+            Check.That(queries.BuildScoreRank(71, score) == rank &&
+                queries.ResolveMusicAchievementIds(71, 0, rank).SequenceEqual(Enumerable.Range(1, count)),
+                "评分门槛及前一分按 master 解析，包含全部已跨过的成就，不依赖表行顺序");
+        }
+        Check.That(queries.ResolveMusicAchievementIds(71, 7, "rank_d").Length == 0 &&
+            queries.ResolveMusicAchievementIds(71, 8, "rank_d").SequenceEqual([5]) &&
+            queries.ResolveMusicAchievementIds(72, 10, "rank_d").SequenceEqual([6]),
+            "连击比例按音符数向上取整，按难度隔离成就");
+        var store = new MemoryUserStore();
+        var state = TestUsers.Create(1);
+        state.Data.userMusics = [new() { musicId = 7 }];
+        state.Data.userMusicVocals = [new() { musicId = 7, musicVocalId = 1 }];
+        state.Data.userMusicAchievements = [new() { musicId = 7, musicAchievementId = 1 }];
+        state.Data.userCards = [new() { userId = 1, cardId = 1, level = 1 }];
+        state.Data.userDecks = [new() { userId = 1, deckId = 1, member1 = 1, leader = 1 }];
+        store.Save(1, state);
+        using var provider = new ServiceCollection().AddPrivateSekai()
+            .AddSingleton(master).AddSingleton<IUserStore>(store).BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+        var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
+        var live = scope.ServiceProvider.GetRequiredService<LiveService>();
+        UserLiveClearResponse Clear()
+        {
+            var start = DumpSerializer.Deserialize<UserLive>(operation.Execute(1, () => live.StartUserLive(new UserLiveRequest
+            {
+                musicId = 7, musicDifficultyId = 71, musicVocalId = 1, musicCategoryName = "original", deckId = 1, boostCount = 1
+            }).Response));
+            return DumpSerializer.Deserialize<UserLiveClearResponse>(operation.Execute(1, () =>
+            {
+                var response = live.ClearUserLive(start.userLiveId, new UserLiveClearRequest
+                {
+                    score = 500, perfectCount = 10, maxCombo = 10, life = 1000
+                });
+                response.updatedResources = user.BuildRefresh();
+                return response;
+            }));
+        }
+        var first = Clear();
+        Check.That(first.userMusicAchievements.Select(a => a.musicAchievementId).SequenceEqual([2, 3, 4, 5]) &&
+            first.musicAchievementRewards.Length == 4 && first.musicAchievementRewards.Count(r => r.resourceType == "coin" && r.quantity == 5) == 3 &&
+            first.musicAchievementRewards.Single(r => r.resourceType == "material").resourceId == 42 &&
+            store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 42).quantity == 2 &&
+            store.Read(1)!.Data.userGamedata.coin == 115,
+            "S 档一次发放 B/A/S 及连击奖励，跳过已领 C 档且成就奖励不乘 boost");
+        var repeat = Clear();
+        Check.That(repeat.userMusicAchievements.Length == 0 && repeat.musicAchievementRewards.Length == 0 &&
+            store.Read(1)!.Data.userGamedata.coin == 115 && store.Read(1)!.Data.userMusicAchievements.Length == 5 &&
+            store.Read(1)!.Data.userMaterials.Single(m => m.materialId == 42).quantity == 2,
+            "重复达到高档位不重复入账，返回空的本次成就数组");
     }
 
     private sealed class SeasonClock : TimeProvider
@@ -248,6 +326,9 @@ internal static class FeatureChecks
             "Live 结算保存成绩与判定结果");
         Check.That(result.updatedResources.userMaterials.Single().quantity == 2 && result.updatedResources.userGamedata.coin == 105,
             "Live 发放倍率奖励与首次成就奖励");
+        Check.That(result.userMusicAchievements.Single().musicAchievementId == 1 &&
+            result.musicAchievementRewards.Single().resourceType == "coin" && result.musicAchievementRewards.Single().quantity == 5,
+            "结算返回本次新成就及未乘 boost 的成就奖励");
         Check.That(result.updatedResources.userBoost.current == 12 && result.updatedResources.userLiveMissions.Single().progress == 3,
             "Live 体力消耗与任务进度合并刷新");
         Check.That(result.userExpResult.afterTotalExp == 200 && result.userExpResult.afterLevel == 2 &&
@@ -299,6 +380,8 @@ internal static class FeatureChecks
             return response;
         });
         var failed = DumpSerializer.Deserialize<UserLiveClearResponse>(failedBytes);
+        Check.That(failed.userMusicAchievements.Length == 0 && failed.musicAchievementRewards.Length == 0,
+            "已领取的成就返回空数组，不重复展示或发放奖励");
         Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "clear_live_combo").progress == 10,
             "失败演出不覆盖先前成功演出的连击称号进度");
         Check.That(store.Read(3)!.Data.userHonorMissions.Single(m => m.honorMissionType == "clear_live").progress == 1 &&

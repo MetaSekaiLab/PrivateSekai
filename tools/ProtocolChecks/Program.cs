@@ -66,6 +66,15 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
         Check(!expectedSignature.Any(s => s.StartsWith("bondsExpRate:", StringComparison.Ordinal)), "Boost 原始契约前置");
         expectedSignature = expectedSignature.Append("bondsExpRate:System.Int32:bondsExpRate").Order(StringComparer.Ordinal).ToArray();
     }
+    if (type == typeof(Sekai.UserLiveClearResponse))
+    {
+        Check(!expectedSignature.Any(s => s.StartsWith("userMusicAchievements:", StringComparison.Ordinal) ||
+            s.StartsWith("musicAchievementRewards:", StringComparison.Ordinal)), "Live 成就原始契约前置");
+        expectedSignature = expectedSignature
+            .Append("userMusicAchievements:Sekai.UserMusicAchievement[]:userMusicAchievements")
+            .Append("musicAchievementRewards:Sekai.UserResource[]:musicAchievementRewards")
+            .Order(StringComparer.Ordinal).ToArray();
+    }
     Check(expectedSignature.SequenceEqual(Signature(compiledTypes[source.FullName])), $"元数据及已核验修正 {type.FullName}");
     foreach (var union in DumpContract.For(type).Unions)
     {
@@ -112,6 +121,14 @@ Check(JsonSerializer.Deserialize<Sekai.UserPresentData>("{\"presentId\":\"legacy
 var boostWithBonds = JsonSerializer.Deserialize<Sekai.MasterBoost>("{\"costBoost\":1,\"bondsExpRate\":5}", DumpJson.Options)!;
 var restoredBoost = DumpSerializer.Deserialize<Sekai.MasterBoost>(DumpSerializer.Serialize(boostWithBonds));
 Check(restoredBoost.bondsExpRate == 5, "Boost 羁绊经验倍率从 JSON 导入并保留 MessagePack 字段");
+
+var liveAchievements = JsonSerializer.Deserialize<Sekai.UserLiveClearResponse>(
+    """{"userMusicAchievements":[{"musicId":7,"musicAchievementId":2}],"musicAchievementRewards":[{"resourceType":"coin","quantity":2000}]}""",
+    DumpJson.Options)!;
+var restoredLive = DumpSerializer.Deserialize<Sekai.UserLiveClearResponse>(DumpSerializer.Serialize(liveAchievements));
+Check(restoredLive.userMusicAchievements.Single().musicAchievementId == 2 &&
+    restoredLive.musicAchievementRewards.Single().quantity == 2000,
+    "普通演出新成就及奖励从 JSON 导入并保留 MessagePack 数组");
 
 var card = new Sekai.UserCard { cardId = 123, userId = 9007199254740993L, level = 7 };
 var suite = new Sekai.SuiteUser { userCards = [card], refreshableTypes = [] };

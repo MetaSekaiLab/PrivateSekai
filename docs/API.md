@@ -1825,6 +1825,7 @@ Client 的 `--replay-live-start` 已验证正常、跨曲难度、不存在难�
 - `unitExpResults`: 组合经验变化。
 - `userDeck`: 更新后的队伍状态。
 - `scoreRankRewards`、`playerRankRewards`、`limitedTermScoreRankRewards`: 成绩等级、玩家等级和限时成绩等级奖励。
+- `userMusicAchievements`、`musicAchievementRewards`: 本次新达成的曲目成就及其奖励；没有新成就时均为空数组。
 - `boost`: 本次使用的 boost 配置。
 - `beforeEventPoint`、`afterEventPoint`: 活动点变化。
 - `beforeEventItemQuantity`、`afterEventItemQuantity`: 活动道具数量变化。
@@ -1849,6 +1850,12 @@ Boost 契约补充：官方结算的 `boost` 包含整数 `bondsExpRate`，零�
 仍待确认：`userLivePoint.livePointBonusRemaining` 当前本地误用 `costBoost`；官方零体力样本为 3。逆向 `LiveReward.SetData` 将该字段传给 `LiveResultLiveMission.Initialize`，再由 `SetBonusRemaining` 填写剩余次数文本，但尚未确定服务端生成规则、每日重置与付费状态关系。需补充不同剩余次数及跨日样本，不能直接将本地逻辑替换为固定 3。
 
 普通奖励重复采样：同曲 Normal、同音源、零体力、零分及生命耗尽的开局和结算请求完全相同，两次均获得 15 金币、2 个材料，但材料 ID 分别为 1、4。结算后快照和额外 Suite 回读确认材料到账；不能用单次观测固定资源箱序列。按 `resourceBoxes` 的 purpose、资源类型、ID、数量及倍率匹配，两个材料分别对应候选箱 18、21，金币对应 61；这只能证明资源内容匹配，尚不能证明选择算法、概率或适用的难度／评分范围。当前 Server 的两个历史组合仍是未完成实现，不扩展该硬编码。
+
+曲目成就按完整 master 规则处理：`playLevelScores` 提供谱面等级对应的评分门槛，`musicAchievements` 定义各评分及难度的连击比例，`resourceBoxes` 的 `music_achievement` 展开奖励。一次结算发放所有新跨过的门槛，按曲目和成就 ID 去重；成就奖励不乘评分掉落的 boost 倍率。高档位可能同时包含水晶和材料，不能从低档金币样本推断资源类型。小型夹具覆盖 C／B／A／S 门槛和前一分、直接到 S 跨多档、已领低档、连击向上取整、难度隔离、不同资源入账及重复领取。这些是规则检查，不是高档位官方成功样本。
+
+官方首次 Normal FC 样本返回四项本次成就及四笔金币奖励；重复 FC 返回两个空数组。此前 Server 已入账但漏返两个字段，现补入 dump 构建副本，并在结算编码时省略奖励的零值 ID／level。新增成就后的持久数组及刷新按曲目 ID、成就 ID 升序排列；本次成就数组只包含新记录。`--replay-live-achievement` 接受开局、结算、master、输出目录，断言两个响应数组、成就刷新、状态增量和独立 Suite 回读。首次及重复样本对拍通过；专项报告不覆盖随机掉落及经验。原始 dump 未定义这两个字段，不能据抓包宣称旧客户端会直接读取它们。
+
+评分掉落与经验仍未完整泛化：目前未匹配两个历史组合的评分掉落返回空，玩家经验也只有部分 D／C 档分支，不能将其称为完整普通结算。按 master B 档门槛提交的一次模拟请求被官方以 `409 invalid_live` 拒绝，独立回读确认成绩、成就、资源及经验未变；该拒绝不证明 B 档奖励为空，也尚不能确定是哪项输入触发校验。后续需核对客户端计分与队伍条件，取得成功的高档样本，并继续寻找奖励池选择与权重证据。
 
 Client 的 `audit-live-rewards <capture.json> <resourceBoxes.json> <report.json>` 离线检查成功结算，列出评分奖励的单明细展开箱候选，并核对金币、材料、练习券的前后增量。收入包含评分、曲目成就、玩家升级和限时 `obtainedRewards`；响应外新增或少发资源也会报差异，遇到未覆盖资源类型返回未验证。报告不含账号信息，不能代替独立官方回读或完整奖励算法对拍。逆向 `ScreenLayerFreeLiveResult` 将响应 `scoreRankRewards` 直接交给 `LiveReward.Data` 展示；该调用未提供服务端抽取规则，仍需奖励选择表或足以区分规则的后续样本。
 

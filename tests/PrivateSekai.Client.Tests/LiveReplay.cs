@@ -42,7 +42,8 @@ internal static class LiveReplay
     }
 
     public static async Task Run(ProtocolClient client, MemoryUserStore store, string startPath, string clearPath, string output,
-        ProtocolClient? honorReadback = null, ProtocolClient? resultReadback = null, bool checkBoost = false)
+        ProtocolClient? honorReadback = null, ProtocolClient? resultReadback = null, bool checkBoost = false,
+        ProtocolClient? achievementReadback = null)
     {
         var start = Read(startPath, "live-start");
         var official = Read(clearPath, "live-clear");
@@ -80,6 +81,21 @@ internal static class LiveReplay
             {
                 var local = JsonNode.Parse(File.ReadAllText(localPath))!.AsObject();
                 JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official, local));
+                if (achievementReadback != null)
+                {
+                    var report = ScenarioRunner.Compare(SelectAchievementRecord(official), SelectAchievementRecord(local));
+                    await achievementReadback.Send(new() { Operation = "system" });
+                    var after = await achievementReadback.Suite();
+                    var differences = Comparison.Diff(Select(official["after"], ["userMusicAchievements"]),
+                        Select(after, ["userMusicAchievements"]));
+                    report["readbackDifferences"] = JsonSerializer.SerializeToNode(differences, JsonFiles.Options);
+                    JsonFiles.Write(Path.Combine(output, "music-achievement-compare.json"), report);
+                    if (differences.Count != 0 || !report["complete"]!.GetValue<bool>() ||
+                        new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
+                            .Any(k => report[k]!.AsArray().Count != 0))
+                        throw new InvalidOperationException("演出新成就、成就奖励或独立回读与官方不同。");
+                    Console.WriteLine("本次成就、奖励数组、成就刷新及独立回读 HTTP 对拍通过；不包含随机掉落核验。");
+                }
                 if (checkBoost)
                 {
                     var differences = Comparison.Diff(official["response"]?["boost"], local["response"]?["boost"]);
@@ -145,6 +161,20 @@ internal static class LiveReplay
                 JsonFiles.Write(Path.Combine(output, "experience-compare.json"), ScenarioRunner.Compare(official, local));
             }
         }
+    }
+
+    private static JsonObject SelectAchievementRecord(JsonObject record)
+    {
+        var selected = record.DeepClone().AsObject();
+        foreach (var side in new[] { "before", "after" })
+            selected[side] = Select(record[side], ["userMusicAchievements"]);
+        selected["response"] = new JsonObject
+        {
+            ["userMusicAchievements"] = record["response"]?["userMusicAchievements"]?.DeepClone(),
+            ["musicAchievementRewards"] = record["response"]?["musicAchievementRewards"]?.DeepClone(),
+            ["updatedResources"] = Select(record["response"]?["updatedResources"], ["userMusicAchievements"])
+        };
+        return selected;
     }
 
     private static JsonObject SelectBoostRecord(JsonObject record)

@@ -27,6 +27,23 @@ public sealed class LiveClearResponseFormatter : IMessagePackFormatter<LiveClear
         foreach (var member in members)
         {
             writer.Write((string)member.Key);
+            if ((string)member.Key == "musicAchievementRewards")
+            {
+                writer.WriteArrayHeader(value.musicAchievementRewards.Length);
+                foreach (var resource in value.musicAchievementRewards)
+                {
+                    var fields = DumpContract.For(typeof(UserResource)).Members.Where(m => m.Get(resource) != null &&
+                        !((string)m.Key == "resourceId" && resource.resourceId == 0) &&
+                        !((string)m.Key == "resourceLevel" && resource.resourceLevel == 0)).ToArray();
+                    writer.WriteMapHeader(fields.Length);
+                    foreach (var field in fields)
+                    {
+                        writer.Write((string)field.Key);
+                        MessagePackSerializer.Serialize(field.Type, ref writer, field.Get(resource), options);
+                    }
+                }
+                continue;
+            }
             MessagePackSerializer.Serialize(member.Type, ref writer, member.Get(value), options);
         }
     }
