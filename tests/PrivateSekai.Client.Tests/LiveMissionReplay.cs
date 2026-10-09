@@ -3,8 +3,10 @@ extern alias game;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using game::Sekai;
+using MessagePack;
 using PrivateSekai.Client;
 using PrivateSekai.Protocol;
+using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
 
 internal static class LiveMissionReplay
@@ -71,13 +73,30 @@ internal static class LiveMissionReplay
         foreach (var member in DumpContract.For(typeof(SuiteUser)).Members.Where(m => Fields.Contains((string)m.Key)))
             if (before[(string)member.Key] is { } value)
                 member.Set(state.Data, JsonSerializer.Deserialize(value.ToJsonString(), member.Type, DumpJson.Options));
+        state.Data.userFriends = official["before"]?["userFriends"]?.AsArray()
+            .Select((friend, index) => new UserFriend
+            {
+                opponentUserId = index + 2, friendStatus = friend!["friendStatus"]!.GetValue<string>()
+            }).ToArray() ?? [];
         store.Save(1, state);
         await client.Send(new() { Operation = "system" });
-        await ScenarioRunner.Run(client, new() { Steps = [new()
+        Directory.CreateDirectory(output);
+        client.CaptureTo(Path.Combine(output, "http"));
+        // 导入的是官方写前Suite结果，不能再读取一次Suite重复触发任务计数。
+        var snapshot = new UserOperation(store, new UserLocks(), new UserSession(), TimeProvider.System)
+            .Query(1, () => store.Read(1)!.Data);
+        var local = new JsonObject
         {
-            Operation = operation, Body = official["request"]!.DeepClone().AsObject()
-        }] }, output);
-        var local = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "001.json")))!.AsObject();
+            ["operation"] = operation,
+            ["request"] = official["request"]!.DeepClone(),
+            ["before"] = client.Redactor.Clean(JsonNode.Parse(MessagePackSerializer.ConvertToJson(snapshot)))
+        };
+        var response = await client.Send(new() { Operation = operation, Body = official["request"]!.DeepClone().AsObject() });
+        local["httpStatus"] = client.LastHttpStatus;
+        local["response"] = client.Redactor.Clean(response);
+        local["after"] = client.Redactor.Clean(await client.Suite());
+        local["status"] = "completed";
+        JsonFiles.Write(Path.Combine(output, "001.json"), local);
         JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official, local));
         foreach (var record in new[] { official, local })
         {

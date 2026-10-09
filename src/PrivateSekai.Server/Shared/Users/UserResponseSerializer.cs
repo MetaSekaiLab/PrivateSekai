@@ -44,7 +44,8 @@ internal static class UserResponseSerializer
                 new FieldFilterFormatter<UserHonorMission>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserHomeRefreshResponse>((s, key) => key == "shouldReflectWebPayment" && !s.shouldReflectWebPayment),
                 new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" &&
-                    s.missionType is "beginner_mission_v2" or "live_mission" or "honor_mission"),
+                    (s.missionType is "beginner_mission_v2" or "live_mission" or "honor_mission" ||
+                     s.missionType == "event_mission" && s.userId == 0)),
                 new FieldFilterFormatter<UserLiveMission>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserShopItem>((s, key) => key == "level" && s.level == 0),
                 new FieldFilterFormatter<UserCostume3DStatus>((s, key) => key == "obtainedAt" && s.obtainedAt == 0 && s.status is "forbidden" or "sale"),

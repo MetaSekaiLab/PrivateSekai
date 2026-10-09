@@ -54,8 +54,10 @@ public sealed class MissionController(UserOperation operations, UserSession user
         {
             return Encoded(operations.Execute(userId, () =>
             {
+                var previous = BeginnerMissionResponse.AchievedIds(user.Data);
                 var response = missions.ReceiveBeginnerMissionV2Rewards(request.missionIds);
                 response.UpdatedResources = user.BuildRefresh();
+                BeginnerMissionResponse.AddAchievementHints(response.UpdatedResources, previous);
                 return response;
             }));
         }

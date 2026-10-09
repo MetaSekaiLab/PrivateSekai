@@ -275,7 +275,7 @@ public sealed class MissionService(
                 progress = new UserBeginnerMissionV2 { beginnerMissionV2Id = definition.id };
                 missions.Add(progress);
             }
-            progress.progress += amount;
+            progress.progress = checked(progress.progress + amount);
             user.Data.userBeginnerMissionV2s = missions.OrderBy(m => m.beginnerMissionV2Id).ToArray();
             user.MarkChanged(nameof(SuiteUser.userBeginnerMissionV2s));
             if (progress.progress < definition.requirement ||
@@ -391,24 +391,7 @@ public sealed class MissionService(
         }
 
         if (normalReceived > 0)
-        {
-            foreach (var definition in master.GetBeginnerCompletionMissions())
-            {
-                var records = (user.Data.userBeginnerMissionV2s ?? []).ToList();
-                var progress = records.SingleOrDefault(m => m.beginnerMissionV2Id == definition.id);
-                var updated = checked((progress?.progress ?? 0) + normalReceived);
-                if (updated >= definition.requirement)
-                    throw new NotSupportedException("Beginner completion mission achievement is not verified.");
-                if (progress == null)
-                {
-                    progress = new UserBeginnerMissionV2 { beginnerMissionV2Id = definition.id };
-                    records.Add(progress);
-                }
-                progress.progress = updated;
-                progress.isNewAchieved = false;
-                user.Data.userBeginnerMissionV2s = records.OrderBy(m => m.beginnerMissionV2Id).ToArray();
-            }
-        }
+            RecordBeginnerMissionProgress(master.GetBeginnerCompletionMissions(), normalReceived);
         user.MarkChanged(nameof(SuiteUser.userBeginnerMissionV2s));
         user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
 

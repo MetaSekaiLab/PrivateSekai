@@ -40,7 +40,9 @@ internal static class UserOperationChecks
         state.Data.userCharacterMissions = [new() { userId = 1, characterId = 1, characterMissionType = "read_card_episode_first", progress = 1,
             achievedMissions = [new() { userId = 1, missionId = 1006 }] }];
         state.Data.userMissionStatuses = [new() { userId = 1, missionType = "beginner_mission_v2", missionId = 7 },
-            new() { userId = 1, missionType = "live_mission", missionId = 1 }];
+            new() { userId = 1, missionType = "live_mission", missionId = 1 },
+            new() { missionType = "event_mission", missionId = 2 },
+            new() { userId = 1, missionType = "event_mission", missionId = 3 }];
         store.Save(1, state);
         using var provider = TestUsers.Provider(store);
         using var scope = provider.CreateScope();
@@ -56,6 +58,8 @@ internal static class UserOperationChecks
         var statuses = suite.GetProperty("userMissionStatuses");
         Check.That(!statuses[0].TryGetProperty("userId", out _) && !statuses[1].TryGetProperty("userId", out _),
             "省略已核验的新手任务与 Live 任务状态用户 ID");
+        Check.That(!statuses[2].TryGetProperty("userId", out _) && statuses[3].GetProperty("userId").GetInt64() == 1,
+            "活动任务省略未提供的零值用户 ID，保留显式非零值");
         Check.That(store.Read(1)!.Data.userCharacterMissions[0].userId == 1 &&
             DumpSerializer.Deserialize<SuiteUser>(DumpSerializer.Serialize(state.Data)).userMissionStatuses[0].userId == 1,
             "响应字段省略不修改存储或原始 dump 往返契约");
