@@ -6,7 +6,6 @@ using game::Sekai;
 using PrivateSekai.Transport;
 using PrivateSekai.Modules.Home;
 using PrivateSekai.Modules.Live;
-using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 
 namespace PrivateSekai.Modules.Accounts;
@@ -17,8 +16,7 @@ public sealed class LoginController(
     AccountTemplates templates,
     HomeService home,
     BoostService boosts,
-    FriendQueries friends,
-    MissionService missions) : PrskController
+    FriendQueries friends) : PrskController
 {
     [HttpPost("api/user")]
     public IActionResult HandleRegisterUser([FromBody] UserAuthRequest _) =>
@@ -41,7 +39,6 @@ public sealed class LoginController(
             home.SetLoginStatus("online");
             boosts.Normalize();
             home.EnsureShopAreaActionSets();
-            missions.RefreshFriendMissionProgress();
             return friends.Project(user.BuildSuite());
         }));
 

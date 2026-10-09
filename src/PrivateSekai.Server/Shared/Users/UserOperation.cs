@@ -4,7 +4,8 @@ using System.Threading;
 
 namespace PrivateSekai.Shared.Users;
 
-public sealed class UserOperation(IUserStore store, UserLocks locks, UserSession session, TimeProvider clock)
+public sealed class UserOperation(IUserStore store, UserLocks locks, UserSession session, TimeProvider clock,
+    IEnumerable<IUserRefreshHandler>? refreshHandlers = null)
 {
     public long[] GetUserIds() => store.GetUserIds();
     public UserState? Read(long userId) => store.Read(userId);
@@ -27,7 +28,7 @@ public sealed class UserOperation(IUserStore store, UserLocks locks, UserSession
         {
             var state = store.Read(userId) ?? throw new KeyNotFoundException("User not found.");
             var other = store.Read(otherUserId) ?? throw new KeyNotFoundException("Other user not found.");
-            session.Begin(state, clock.GetUtcNow().ToUnixTimeMilliseconds());
+            session.Begin(state, clock.GetUtcNow().ToUnixTimeMilliseconds(), refreshHandlers);
             try
             {
                 var response = UserResponseSerializer.Serialize(action(other));
@@ -73,7 +74,7 @@ public sealed class UserOperation(IUserStore store, UserLocks locks, UserSession
         var now = clock.GetUtcNow().ToUnixTimeMilliseconds();
         var state = create?.Invoke(now) ?? store.Read(userId)
             ?? throw new KeyNotFoundException("User not found.");
-        session.Begin(state, now);
+        session.Begin(state, now, refreshHandlers);
         try
         {
             var response = UserResponseSerializer.Serialize(action());

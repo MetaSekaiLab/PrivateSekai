@@ -25,21 +25,26 @@ internal static class FriendMissionHttpChecks
         check(first["userBeginnerMissionV2s"]!.AsArray().Single()!["progress"]!.GetValue<int>() == 1 &&
             store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 1,
             "完整Suite响应和持久状态按已确认好友数累加新手任务");
+        var refresh = await client.Send(new() { Operation = "home-refresh",
+            Body = JsonNode.Parse("""{"refreshableTypes":[]}""")!.AsObject() });
+        check(refresh["updatedResources"]!["userBeginnerMissionV2s"]!.AsArray().Single()!["progress"]!.GetValue<int>() == 2 &&
+            store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 2,
+            "业务updatedResources在本次响应及持久状态中累计好友任务");
         await client.Send(new() { Operation = "suite-friends" });
-        check(store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 1,
+        check(store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 2,
             "好友parts读取不累计好友新手任务");
         state = store.Read(1)!;
         state.Data.userFriends[1].friendStatus = "friend";
         store.Save(1, state);
         var second = await client.Suite();
-        check(second["userBeginnerMissionV2s"]!.AsArray().Single()!["progress"]!.GetValue<int>() == 3 &&
+        check(second["userBeginnerMissionV2s"]!.AsArray().Single()!["progress"]!.GetValue<int>() == 4 &&
             store.Read(1)!.Data.userMissionStatuses.Single().missionId == 96,
             "好友数变化后Suite按新数量累加并达成master门槛");
         state = store.Read(1)!;
         state.Data.userFriends = [];
         store.Save(1, state);
         await client.Suite();
-        check(store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 3,
+        check(store.Read(1)!.Data.userBeginnerMissionV2s.Single().progress == 4,
             "好友清空后Suite保留累计记录且不继续增加");
         store.Save(1, original);
     }

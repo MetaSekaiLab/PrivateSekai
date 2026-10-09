@@ -26,6 +26,8 @@ public sealed class UserSession
 
     private UserState? _state;
     private readonly HashSet<string> _changed = new(StringComparer.Ordinal);
+    private IEnumerable<IUserRefreshHandler> _refreshHandlers = [];
+    private bool _refreshPrepared;
 
     internal bool IsActive => _state != null;
     internal UserState State => _state ?? throw new InvalidOperationException("No active user operation.");
@@ -34,11 +36,13 @@ public sealed class UserSession
     public long UserId => Data.userRegistration?.userId ?? 0;
     public long Now { get; private set; }
 
-    internal void Begin(UserState state, long now)
+    internal void Begin(UserState state, long now, IEnumerable<IUserRefreshHandler>? refreshHandlers = null)
     {
         if (IsActive)
             throw new InvalidOperationException("Nested user operations are not supported.");
         _state = state;
+        _refreshHandlers = refreshHandlers ?? [];
+        _refreshPrepared = false;
         Now = now;
         _changed.Clear();
         _changed.UnionWith(Data.refreshableTypes ?? []);
@@ -48,6 +52,8 @@ public sealed class UserSession
     internal void End()
     {
         _state = null;
+        _refreshHandlers = [];
+        _refreshPrepared = false;
         _changed.Clear();
         Now = 0;
     }
@@ -66,9 +72,10 @@ public sealed class UserSession
             MarkChanged(name);
     }
 
-    // 仅在最外层映射响应时读取；读取不会消耗其他模块的变化。
+    // 最外层映射响应时执行一次刷新，不清除其他模块的变化。
     public SuiteUser BuildRefresh(IEnumerable<string>? excludedFields = null)
     {
+        PrepareRefresh();
         NormalizeEventBreakTime();
         var fields = new HashSet<string>(BaseFields, StringComparer.Ordinal);
         fields.UnionWith(_changed);
@@ -97,9 +104,18 @@ public sealed class UserSession
 
     public SuiteUser BuildSuite()
     {
+        PrepareRefresh();
         NormalizeEventBreakTime();
         Data.now = Now;
         return Data;
+    }
+
+    private void PrepareRefresh()
+    {
+        _ = State;
+        if (_refreshPrepared) return;
+        _refreshPrepared = true;
+        foreach (var handler in _refreshHandlers) handler.PrepareRefresh();
     }
 
     public void NormalizeEventBreakTime()

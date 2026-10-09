@@ -7,7 +7,6 @@ using game::Sekai;
 using MessagePack;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateSekai.Config;
-using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Master;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
@@ -32,7 +31,6 @@ internal static class FriendMissionChecks
         using var scope = provider.CreateScope();
         var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
         var user = scope.ServiceProvider.GetRequiredService<UserSession>();
-        var missions = scope.ServiceProvider.GetRequiredService<MissionService>();
         var state = TestUsers.Create(1);
         state.Data.userBeginnerMissionV2s = [];
         state.Data.userMissionStatuses = [];
@@ -41,8 +39,10 @@ internal static class FriendMissionChecks
         store.Save(1, state);
         void Refresh() => operations.Execute(1, () =>
         {
-            missions.RefreshFriendMissionProgress();
-            return user.BuildRefresh();
+            var response = user.BuildRefresh();
+            user.BuildSuite();
+            user.BuildRefresh();
+            return response;
         });
         Refresh();
         Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.Length == 0,
@@ -54,7 +54,7 @@ internal static class FriendMissionChecks
         Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.All(m => m.progress == 1) &&
             store.Read(1)!.Data.userBeginnerMissionV2s.Select(m => m.beginnerMissionV2Id).SequenceEqual([91, 93]) &&
             store.Read(1)!.Data.userMissionStatuses.Single().missionId == 91,
-            "单好友按master类型推进全部对应任务，按各自门槛达成");
+            "单好友按master类型推进全部任务，同一操作多次构造刷新只累加一次");
         state = store.Read(1)!;
         state.Data.userFriends[1].friendStatus = "friend";
         state.Data.userMissionStatuses.Single().missionStatus = "received";
@@ -69,9 +69,22 @@ internal static class FriendMissionChecks
             store.Read(1)!.Data.userMissionStatuses.Length == 2, "重复刷新继续计数，不重复建立达成状态");
         Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
         {
-            missions.RefreshFriendMissionProgress();
+            user.BuildRefresh();
             return new BrokenResponse();
         }), "好友任务刷新编码失败");
         Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.All(m => m.progress == 5), "编码失败回滚好友任务累积");
+        operations.Execute(1, () => null);
+        Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.All(m => m.progress == 5), "不构造资源刷新的操作不推进任务");
+        operations.Query(1, () => user.BuildRefresh());
+        Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.All(m => m.progress == 5), "只读查询不提交刷新副作用");
+        store.Save(2, TestUsers.Create(2));
+        operations.ExecutePair(1, 2, peer =>
+        {
+            user.Data.userFriends[1].friendStatus = "sent_request";
+            return user.BuildRefresh();
+        });
+        Check.That(store.Read(1)!.Data.userBeginnerMissionV2s.All(m => m.progress == 6) &&
+            store.Read(2)!.Data.userBeginnerMissionV2s?.Any() != true,
+            "双账号操作按业务后的好友数刷新调用方，不刷新对方任务");
     }
 }

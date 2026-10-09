@@ -16,7 +16,7 @@ public sealed class MissionService(
     MissionMasterQueries master,
     ResourceMasterQueries resourceMaster,
     ResourceService resourceService,
-    CharacterService characters)
+    CharacterService characters) : IUserRefreshHandler
 {
     private const string BeginnerMissionV2Type = "beginner_mission_v2";
 
@@ -199,7 +199,7 @@ public sealed class MissionService(
 
     public void RecordChallengeLiveClear() => RecordBeginnerMissionProgress(master.GetChallengeLiveClearMissions());
 
-    public void RefreshFriendMissionProgress()
+    void IUserRefreshHandler.PrepareRefresh()
     {
         var count = (user.Data.userFriends ?? []).Count(f => f.friendStatus == "friend");
         if (count > 0) RecordBeginnerMissionProgress(master.GetFriendMissions(), count);

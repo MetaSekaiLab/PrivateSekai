@@ -74,6 +74,7 @@ public static class ServerServices
         services.AddScoped<MusicMyListService>();
         services.AddScoped<ChallengeLiveService>();
         services.AddScoped<MissionService>();
+        services.AddScoped<IUserRefreshHandler>(services => services.GetRequiredService<MissionService>());
         services.AddScoped<PresentService>();
         services.AddScoped<ProfileService>();
         services.AddScoped<ProfileHonorService>();
