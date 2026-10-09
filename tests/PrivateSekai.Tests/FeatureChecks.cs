@@ -59,6 +59,7 @@ internal static class FeatureChecks
             CardAndMission(provider, store);
             SpecialTraining(provider, store);
             LiveSettlement(provider, store);
+            LiveResultPlayTypes(provider, store);
             SeasonalLive(provider, store);
             GachaDraw(provider, store);
             Console.WriteLine("业务：正式 DI 注册、商店、卡牌与任务联动、Live 结算、确定性抽卡检查通过。");
@@ -358,6 +359,64 @@ internal static class FeatureChecks
             "失败演出不计数，成功 Auto 累计成员次数和角色任务且不重复累计");
         Check.That(store.Read(3)!.Data.userAutoLive.count == 1 && store.Read(3)!.Data.userGamedata.totalExp == 600 &&
             store.Read(3)!.Data.userBoost.current == 10, "重复 Auto 结算不重复计数、发经验或扣体力");
+    }
+
+    private static void LiveResultPlayTypes(ServiceProvider provider, IUserStore store)
+    {
+        foreach (var hasSolo in new[] { false, true })
+        {
+            var state = TestUsers.Create(9);
+            state.Data.userCards = [new() { cardId = 1, level = 1 }];
+            state.Data.userDecks = [new() { deckId = 1, member1 = 1, leader = 1 }];
+            state.Data.userMusics = [new() { musicId = 7 }];
+            state.Data.userMusicVocals = [new() { musicId = 7, musicVocalId = 1 }];
+            var multi = new UserMusicResult
+            {
+                musicId = 7, musicDifficultyType = "easy", playType = "multi", playResult = "full_perfect",
+                highScore = 900, fullComboFlg = true, fullPerfectFlg = true, mvpCount = 2, superStarCount = 3
+            };
+            var multiBefore = DumpSerializer.Serialize(multi);
+            state.Data.userMusicResults = hasSolo
+                ? [multi, new() { musicId = 7, musicDifficultyType = "easy", playType = "solo", playResult = "clear", highScore = 50 }]
+                : [multi];
+            store.Save(9, state);
+            using var scope = provider.CreateScope();
+            var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+            var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
+            var live = scope.ServiceProvider.GetRequiredService<LiveService>();
+            var start = operation.Execute(9, () => live.StartUserLive(new UserLiveRequest
+            {
+                musicId = 7, musicDifficultyId = 71, musicVocalId = 1,
+                musicCategoryName = "original", deckId = 1, boostCount = 0
+            }).Response);
+            var liveId = DumpSerializer.Deserialize<UserLive>(start).userLiveId;
+            var before = DumpSerializer.Serialize(store.Read(9)!.Data);
+            var request = new UserLiveClearRequest { score = 100, perfectCount = 8, missCount = 2, maxCombo = 8, life = 1000 };
+            Check.Throws<MessagePackSerializationException>(() => operation.Execute(9, () =>
+            {
+                live.ClearUserLive(liveId, request);
+                return new BrokenResponse();
+            }), "混合成绩结算编码失败仍回滚");
+            Check.That(before.SequenceEqual(DumpSerializer.Serialize(store.Read(9)!.Data)) &&
+                store.Read(9)!.Private.UserLiveSessions.ContainsKey(liveId), "失败不改写任一种成绩，保留 Live 会话");
+            var bytes = operation.Execute(9, () =>
+            {
+                var response = live.ClearUserLive(liveId, request);
+                response.updatedResources = user.BuildRefresh();
+                return response;
+            });
+            var result = DumpSerializer.Deserialize<UserLiveClearResponse>(bytes);
+            var saved = store.Read(9)!.Data.userMusicResults;
+            Check.That(saved.Length == 2 && saved.Count(r => r.playType == "solo") == 1 &&
+                saved.Count(r => r.playType == "multi") == 1, "普通结算只创建或更新 solo，不覆盖前置 multi 记录");
+            var solo = saved.Single(r => r.playType == "solo");
+            Check.That(result.highScoreFlg && solo.highScore == 100 && solo.playResult == "clear" &&
+                !solo.fullComboFlg && !solo.fullPerfectFlg && solo.mvpCount == 0 && solo.superStarCount == 0,
+                "普通高分与判定独立于更高的联机成绩，不继承 MVP 或 Super Star");
+            Check.That(multiBefore.SequenceEqual(DumpSerializer.Serialize(saved.Single(r => r.playType == "multi"))) &&
+                multiBefore.SequenceEqual(DumpSerializer.Serialize(result.updatedResources.userMusicResults.Single(r => r.playType == "multi"))),
+                "持久状态与响应中的联机成绩各字段保持原样");
+        }
     }
 
     private static void SpecialTraining(ServiceProvider provider, IUserStore store)

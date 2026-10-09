@@ -1842,6 +1842,8 @@ Client 的 `--replay-live-start` 已验证正常、跨曲难度、不存在难�
 
 `--replay-live-result` 接受开局记录、结算记录、master 目录、输出目录，断言完整 `userMusicResults` 数组及顺序、`highScoreFlg`／`fullComboFlg`／`fullPerfectFlg`、状态增量和独立 Suite 回读。四组样本覆盖新增曲目、同曲新增难度、零分首次成绩及低分不刷新旧成绩；首次零分记录仍返回 `highScoreFlg=true`。修复前断言能检出顺序差异，修复后通过。这里只确认成绩部分，奖励、经验等完整响应差异仍另行保留。
 
+成绩模式隔离：dump 的 `UserMusicResult` 定义 `solo`／`multi`；逆向 `MusicUtility.GetUserMusicResult` 把曲目、难度、模式传给 `UserDataManager.GetUserMusicResult`，后者在同曲同难度列表内逐项匹配 `playType`。Server 普通结算因此只查找或新增 `solo`，保留 `multi` 的高分、判定、MVP 和 Super Star 等字段。此前仅按曲目、难度取首条再改为 `solo`，会覆盖已有联机记录。小型夹具已覆盖只有联机成绩、联机记录排在单人成绩之前两种情况，以及编码失败整体回滚；两个已有官方单人成绩样本回归通过。现有抓包未找到 `multi` 成绩，仍需同曲同难度同时持有两种模式成绩的官方结算与回读，才能确认混合状态的官方行为和排列；本地混合检查不作为官方对拍证据。
+
 ### 客户端请求时机
 
 目前确认有这些时机：

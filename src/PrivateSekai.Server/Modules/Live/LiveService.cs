@@ -255,6 +255,7 @@ public sealed class LiveService(
         var difficultyType = master.ResolveMusicDifficultyType(session.MusicDifficultyId);
         var result = results.FirstOrDefault(r =>
             r.musicId == session.MusicId &&
+            string.Equals(r.playType, "solo", StringComparison.Ordinal) &&
             string.Equals(r.musicDifficultyType, difficultyType, StringComparison.Ordinal));
 
         var previousHighScore = result?.highScore ?? 0;
