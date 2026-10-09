@@ -28,12 +28,16 @@ internal static class DiarkisUdpChecks
         using var client = new DiarkisUdpClient(authentication, false);
         await client.ConnectAsync(cancellation);
         await client.FlushAsync(cancellation);
+        var notification = await client.ReceiveAsync(cancellation);
         var first = await client.ReceiveAsync(cancellation);
         var second = await client.ReceiveAsync(cancellation);
         var third = await client.ReceiveAsync(cancellation);
         await client.SendUnreliableAsync(0, 3, new byte[8], cancellation);
         var ping = await client.ReceiveAsync(cancellation);
+        await client.WaitForEchoAsync(2, cancellation);
         await peer;
+        check(notification.IsPush && notification.Command == 99 && notification.Payload.SequenceEqual(new byte[] { 77 }),
+            "Echo 内附通知进入业务队列，不随保活响应被丢弃");
         check(first.Command == 20 && first.Payload.SequenceEqual(new byte[] { 1 })
             && second.Command == 21 && second.Payload.SequenceEqual(new byte[] { 2 }),
             "真实回环 UDP 按可靠序号交付乱序响应");
@@ -43,6 +47,8 @@ internal static class DiarkisUdpChecks
             "重复旧序号只确认不重复交付，分片乱序后恢复并解密完整响应");
         check(ping.Version == 0 && ping.Command == 3 && ping.Status == 1 && ping.Payload.Length == 9,
             "普通 UDP 请求和响应可与可靠消息共用连接");
+        check(client.EchoResponses == 2 && client.MatchedEchoResponses == 2 && client.LastEcho?.IsOffline == false,
+            "首次与周期 Echo 经真实 UDP 返回并匹配时间戳，内部响应不挤占业务队列");
         using var canceled = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
         var stopped = false;
         try { await client.ReceiveAsync(canceled.Token); }
@@ -60,6 +66,19 @@ internal static class DiarkisUdpChecks
             var original = await server.ReceiveAsync(cancellation);
             Expect(original.Buffer[3] == 3 && DecodeRequest(original.Buffer).SequenceEqual(Encoding.UTF8.GetBytes("synthetic-client-key")),
                 "clientKey 使用 UTF8 并整体加密");
+            var firstEcho = await server.ReceiveAsync(cancellation);
+            var firstEchoPayload = DecodeRequest(firstEcho.Buffer);
+            Expect(BinaryPrimitives.ReadUInt16BigEndian(firstEcho.Buffer.AsSpan(12)) == 1, "首次 Echo 命令");
+            var offset = 8;
+            while (offset < firstEchoPayload.Length)
+            {
+                var length = BinaryPrimitives.ReadInt32BigEndian(firstEchoPayload.AsSpan(offset));
+                var address = Encoding.UTF8.GetString(firstEchoPayload, offset + 4, length);
+                Expect(address.EndsWith($":{endpoint.Port}"), "首次 Echo 地址带实际本地端口");
+                offset += 4 + length;
+            }
+            await Reply(DiarkisPacket.CreateUdp(4, 1, []));
+            await Reply(DiarkisPacket.CreateUdp(1, 0, Response(0, 1, EchoPayload(firstEchoPayload, true))));
             var retry = await server.ReceiveAsync(cancellation);
             Expect(retry.Buffer[3] == 5 && retry.Buffer[..3].SequenceEqual(original.Buffer[..3])
                 && retry.Buffer[4..].SequenceEqual(original.Buffer[4..]), "重传只改变 DAT 标志");
@@ -80,6 +99,12 @@ internal static class DiarkisUdpChecks
             var pingResponse = Response(0, 3, new byte[9]);
             pingResponse[10] = 1;
             await Reply(DiarkisPacket.CreateUdp(1, 0, pingResponse));
+            var laterEcho = await server.ReceiveAsync(cancellation);
+            var laterEchoPayload = DecodeRequest(laterEcho.Buffer);
+            Expect(laterEchoPayload.Length == 8 && BinaryPrimitives.ReadUInt16BigEndian(laterEcho.Buffer.AsSpan(12)) == 1,
+                "周期 Echo 只发送时间戳，不重复地址列表");
+            await Reply(DiarkisPacket.CreateUdp(4, 2, []));
+            await Reply(DiarkisPacket.CreateUdp(1, 0, Response(0, 1, EchoPayload(laterEchoPayload))));
 
             async Task Reply(byte[] data) => await server.SendAsync(data, endpoint, cancellation);
             async Task Ack(uint sequence, byte flag)
@@ -87,6 +112,19 @@ internal static class DiarkisUdpChecks
                 var result = await server.ReceiveAsync(cancellation);
                 Expect(result.Buffer.SequenceEqual(DiarkisPacket.CreateUdp(flag, sequence, sid)), "数据 ACK/EACK 携带 SID");
             }
+        }
+
+        static byte[] EchoPayload(byte[] request, bool withNotification = false)
+        {
+            var address = Encoding.UTF8.GetBytes("127.0.0.1:1");
+            var notification = withNotification ? Convert.FromHexString("00060200634D") : Array.Empty<byte>();
+            var payload = new byte[11 + address.Length + notification.Length];
+            payload[0] = 1;
+            request.AsSpan(0, 8).CopyTo(payload.AsSpan(1));
+            address.CopyTo(payload, 9);
+            notification.CopyTo(payload, 9 + address.Length);
+            BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(payload.Length - 2), (ushort)(9 + address.Length));
+            return payload;
         }
 
         byte[] DecodeRequest(byte[] datagram)

@@ -49,10 +49,16 @@ public static class RealtimeProbe
             report["pingPayloadLength"] = response.Payload.Length;
             var matches = response.Payload.Length >= 9 && response.Payload.AsSpan(1, 8).SequenceEqual(timestamp);
             report["pingTimestampMatches"] = matches;
+            report["phase"] = "echo-keepalive";
+            await realtime.WaitForEchoAsync(3, timeout.Token);
+            report["echoResponses"] = realtime.EchoResponses;
+            report["matchedEchoResponses"] = realtime.MatchedEchoResponses;
+            report["echoOffline"] = realtime.LastEcho!.IsOffline;
+            report["echoAddressPresent"] = realtime.LastEcho.Address.Length > 0;
             report["phase"] = "suite-readback";
             await http.Suite();
             report["suiteReadbackSucceeded"] = true;
-            report["complete"] = realtime.ClientKeyAcknowledged && matches;
+            report["complete"] = realtime.ClientKeyAcknowledged && matches && !realtime.LastEcho.IsOffline;
             report["phase"] = "finished";
             return report["complete"]!.GetValue<bool>();
         }

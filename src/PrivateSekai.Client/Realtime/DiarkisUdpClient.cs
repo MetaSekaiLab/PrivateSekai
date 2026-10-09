@@ -29,11 +29,16 @@ public sealed class DiarkisUdpClient : IDisposable
     private bool started;
     private bool connected;
     private bool clientKeySent;
+    private long lastEchoSent;
+    private readonly HashSet<double> echoTimestamps = [];
 
     public int SentDatagrams { get; private set; }
     public int ReceivedDatagrams { get; private set; }
     public int Retransmissions { get; private set; }
     public bool ClientKeyAcknowledged => clientKeySent && !pending.ContainsKey(0);
+    public int EchoResponses { get; private set; }
+    public int MatchedEchoResponses { get; private set; }
+    public DiarkisEcho? LastEcho { get; private set; }
 
     public DiarkisUdpClient(JsonObject authentication, bool legacySplit)
     {
@@ -66,6 +71,10 @@ public sealed class DiarkisUdpClient : IDisposable
         }
         await SendReliableAsync(0, 4, Encoding.UTF8.GetBytes(clientKey), cancellationToken);
         clientKeySent = true;
+        var localPort = ((IPEndPoint)socket.Client.LocalEndPoint!).Port;
+        var localAddresses = await Dns.GetHostAddressesAsync(Dns.GetHostName(), cancellationToken);
+        await SendEcho(localAddresses.Where(ip => ip.AddressFamily == AddressFamily.InterNetwork)
+            .Select(ip => $"{ip}:{localPort}"), cancellationToken);
     }
 
     public async Task SendReliableAsync(byte version, ushort command, byte[] payload, CancellationToken cancellationToken)
@@ -106,9 +115,26 @@ public sealed class DiarkisUdpClient : IDisposable
         while (pending.Count > 0) await Pump(cancellationToken);
     }
 
+    public async Task WaitForEchoAsync(int minimumCount, CancellationToken cancellationToken)
+    {
+        RequireConnected();
+        if (minimumCount < 1) throw new ArgumentOutOfRangeException(nameof(minimumCount));
+        while (MatchedEchoResponses < minimumCount) await Pump(cancellationToken);
+    }
+
+    private async Task SendEcho(IEnumerable<string> addresses, CancellationToken cancellationToken)
+    {
+        var timestamp = (DateTime.UtcNow - DateTime.UnixEpoch).TotalMilliseconds;
+        await SendReliableAsync(0, 1, DiarkisEcho.CreateRequest(timestamp, addresses), cancellationToken);
+        echoTimestamps.Add(timestamp);
+        lastEchoSent = clock.ElapsedMilliseconds;
+    }
+
     private async Task Pump(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (clock.ElapsedMilliseconds - lastEchoSent >= 5000)
+            await SendEcho([], cancellationToken);
         foreach (var retry in pending.Values)
         {
             if (clock.ElapsedMilliseconds - retry.SentAt < 1000) continue;
@@ -181,7 +207,15 @@ public sealed class DiarkisUdpClient : IDisposable
         if (packet.Length == 0) return;
         var response = DiarkisPacket.ParseResponse(packet);
         var payload = DiarkisEncryption.Decrypt(response.Payload, key, iv, macKey);
-        responses.Enqueue(response with { Payload = payload });
+        if (response.Version == 0 && response.Command == 1 && !response.IsPush)
+        {
+            var echo = DiarkisEcho.Parse(payload);
+            EchoResponses++;
+            if (echoTimestamps.Remove(echo.Timestamp)) MatchedEchoResponses++;
+            LastEcho = echo;
+            foreach (var notification in echo.Notifications) responses.Enqueue(notification);
+        }
+        else responses.Enqueue(response with { Payload = payload });
         if (response.ConsumedSize < packet.Length)
             work.Enqueue(packet[response.ConsumedSize..]);
     }
