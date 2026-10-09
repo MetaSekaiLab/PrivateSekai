@@ -43,10 +43,15 @@ internal static class LiveReplay
 
     public static async Task Run(ProtocolClient client, MemoryUserStore store, string startPath, string clearPath, string output,
         ProtocolClient? honorReadback = null, ProtocolClient? resultReadback = null, bool checkBoost = false,
-        ProtocolClient? achievementReadback = null)
+        ProtocolClient? achievementReadback = null, ProtocolClient? experienceReadback = null)
     {
         var start = Read(startPath, "live-start");
         var official = Read(clearPath, "live-clear");
+        if (experienceReadback != null && (official["response"]?["userExpResult"] is not JsonObject ||
+            official["response"]?["deckCardExpResults"] is not JsonArray ||
+            official["before"]?["userGamedata"] is not JsonObject || official["after"]?["userGamedata"] is not JsonObject ||
+            official["before"]?["userCards"] is not JsonArray || official["after"]?["userCards"] is not JsonArray))
+            throw new InvalidOperationException("经验对拍需要完整的玩家、卡牌前后状态和经验响应。");
         var liveId = start["response"]!["userLiveId"]!.GetValue<string>();
         if (official["args"]!["userLiveId"]!.GetValue<string>() != liveId)
             throw new InvalidOperationException("开局和结算记录不是同一演出。");
@@ -158,7 +163,23 @@ internal static class LiveReplay
                         ["updatedResources"] = SelectExperience(response?["updatedResources"])
                     };
                 }
-                JsonFiles.Write(Path.Combine(output, "experience-compare.json"), ScenarioRunner.Compare(official, local));
+                var experienceReport = ScenarioRunner.Compare(official, local);
+                if (experienceReadback != null)
+                {
+                    await experienceReadback.Send(new() { Operation = "system" });
+                    var after = await experienceReadback.Suite();
+                    var differences = Comparison.Diff(official["after"], SelectExperience(after));
+                    experienceReport["readbackDifferences"] = JsonSerializer.SerializeToNode(differences, JsonFiles.Options);
+                }
+                JsonFiles.Write(Path.Combine(output, "experience-compare.json"), experienceReport);
+                if (experienceReadback != null)
+                {
+                    if (!experienceReport["complete"]!.GetValue<bool>() ||
+                        new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences", "readbackDifferences" }
+                            .Any(k => experienceReport[k]!.AsArray().Count != 0))
+                        throw new InvalidOperationException("玩家、卡牌经验或等级的响应、状态及独立回读与官方不同。");
+                    Console.WriteLine("玩家和卡牌经验、等级及独立回读 HTTP 对拍通过；不包含随机掉落和升级奖励核验。");
+                }
             }
         }
     }
