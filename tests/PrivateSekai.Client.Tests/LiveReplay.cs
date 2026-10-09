@@ -43,10 +43,12 @@ internal static class LiveReplay
 
     public static async Task Run(ProtocolClient client, MemoryUserStore store, string startPath, string clearPath, string output,
         ProtocolClient? honorReadback = null, ProtocolClient? resultReadback = null, bool checkBoost = false,
-        ProtocolClient? achievementReadback = null, ProtocolClient? experienceReadback = null)
+        ProtocolClient? achievementReadback = null, ProtocolClient? experienceReadback = null, bool checkLivePoint = false)
     {
         var start = Read(startPath, "live-start");
         var official = Read(clearPath, "live-clear");
+        if (checkLivePoint && official["response"]?["userLivePoint"] is not JsonObject)
+            throw new InvalidOperationException("Live 点数对拍需要完整的 userLivePoint 响应。");
         if (experienceReadback != null && (official["response"]?["userExpResult"] is not JsonObject ||
             official["response"]?["deckCardExpResults"] is not JsonArray ||
             official["before"]?["userGamedata"] is not JsonObject || official["after"]?["userGamedata"] is not JsonObject ||
@@ -86,6 +88,21 @@ internal static class LiveReplay
             {
                 var local = JsonNode.Parse(File.ReadAllText(localPath))!.AsObject();
                 JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official, local));
+                if (checkLivePoint)
+                {
+                    var differences = Comparison.Diff(official["response"]?["userLivePoint"], local["response"]?["userLivePoint"]);
+                    var completed = local["status"]?.GetValue<string>() == "completed";
+                    var sameStatus = JsonNode.DeepEquals(official["httpStatus"], local["httpStatus"]);
+                    JsonFiles.Write(Path.Combine(output, "live-point-compare.json"), new JsonObject
+                    {
+                        ["complete"] = completed,
+                        ["httpStatusMatches"] = sameStatus,
+                        ["responseDifferences"] = JsonSerializer.SerializeToNode(differences, JsonFiles.Options)
+                    });
+                    if (!completed || !sameStatus || differences.Count != 0)
+                        throw new InvalidOperationException("结算 Live 点数、每日加成、剩余次数或任务周期与官方不同。");
+                    Console.WriteLine("userLivePoint 完整对象 HTTP 对拍通过；不包含任务持久状态和跨日核验。");
+                }
                 if (achievementReadback != null)
                 {
                     var report = ScenarioRunner.Compare(SelectAchievementRecord(official), SelectAchievementRecord(local));

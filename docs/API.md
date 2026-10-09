@@ -1935,6 +1935,8 @@ C档样本符合基础经验200乘 `boost.expRate`；两份B档样本增量240�
 
 76份响应的 `addDailyBonusProgress` 均为0，`livePointBonusRemaining` 均为3，覆盖0、1、3、5、10体力消耗。这反证当前Server将 `costBoost` 填入剩余次数的实现，但不能证明该字段应永远固定为3。客户端 `LiveReward.SetData` 将这两个字段直接传给 `LiveResultLiveMission.Initialize`，后者分别保存并展示；未在该路径从体力重新计算剩余次数。每日发放条件、次数扣减、跨日及付费状态仍需补证。
 
+Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通过实际本地 HTTP 结算比较完整 `userLivePoint`，校验成功状态与 HTTP 状态；缺少该对象或存在差异即失败。零体力官方样本确认仅剩余次数字段不同：官方3、本地0。该检查覆盖响应中的普通进度、每日加成、剩余次数及周期，不替代任务持久状态、独立回读和跨日验证。
+
 歌曲1／Easy、零体力的C档样本中金币均为150、初级练习券均为2，材料组合不同；两份B档样本金币180、初级练习券2，材料组合也不同。其中一份B档响应将同一材料ID的数量2和4分成两条返回，奖励响应不能擅自按资源ID合并。当前固定掉落箱序列不覆盖这些结果；master奖励明细、倍率和评分门槛本身不足以确定池选择及抽取权重。
 
 ## POST `/api/user/{userId}/live-character-archive-voice/live-result`
