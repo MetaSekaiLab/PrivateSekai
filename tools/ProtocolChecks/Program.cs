@@ -61,6 +61,11 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
         Check(!expectedSignature.Any(s => s.StartsWith("grantedAt:", StringComparison.Ordinal)), "礼物原始契约前置");
         expectedSignature = expectedSignature.Append("grantedAt:System.Int64:grantedAt").Order(StringComparer.Ordinal).ToArray();
     }
+    if (type == typeof(Sekai.MasterBoost))
+    {
+        Check(!expectedSignature.Any(s => s.StartsWith("bondsExpRate:", StringComparison.Ordinal)), "Boost 原始契约前置");
+        expectedSignature = expectedSignature.Append("bondsExpRate:System.Int32:bondsExpRate").Order(StringComparer.Ordinal).ToArray();
+    }
     Check(expectedSignature.SequenceEqual(Signature(compiledTypes[source.FullName])), $"元数据及已核验修正 {type.FullName}");
     foreach (var union in DumpContract.For(type).Unions)
     {
@@ -103,6 +108,10 @@ var restoredPresent = DumpSerializer.Deserialize<Sekai.UserPresentData>(DumpSeri
 Check(restoredPresent.grantedAt == 1790999824218L, "礼物发放时间从 JSON 导入后保留 64 位毫秒值");
 Check(JsonSerializer.Deserialize<Sekai.UserPresentData>("{\"presentId\":\"legacy\"}", DumpJson.Options)!.grantedAt == 0,
     "旧礼物缺少发放时间时不推测时间");
+
+var boostWithBonds = JsonSerializer.Deserialize<Sekai.MasterBoost>("{\"costBoost\":1,\"bondsExpRate\":5}", DumpJson.Options)!;
+var restoredBoost = DumpSerializer.Deserialize<Sekai.MasterBoost>(DumpSerializer.Serialize(boostWithBonds));
+Check(restoredBoost.bondsExpRate == 5, "Boost 羁绊经验倍率从 JSON 导入并保留 MessagePack 字段");
 
 var card = new Sekai.UserCard { cardId = 123, userId = 9007199254740993L, level = 7 };
 var suite = new Sekai.SuiteUser { userCards = [card], refreshableTypes = [] };

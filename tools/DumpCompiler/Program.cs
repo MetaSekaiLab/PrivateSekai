@@ -128,6 +128,16 @@ foreach (var name in new[] { "Sekai.UserHonor", "Sekai.UserProfile" })
     type.Fields.Add(field);
 }
 
+// 官方 boost 响应与 master 包含羁绊经验倍率；仅补充构建副本。
+var boostData = module.GetType("Sekai.MasterBoost");
+if (boostData.Fields.Any(f => f.Name == "bondsExpRate"))
+    throw new InvalidDataException("Boost dump 已变化，请重新核验羁绊经验倍率字段。");
+var bondsExpRate = new FieldDefinition("bondsExpRate", FieldAttributes.Public, module.TypeSystem.Int32);
+var bondsExpRateKey = new CustomAttribute(vocalKey.Constructor);
+bondsExpRateKey.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, "bondsExpRate"));
+bondsExpRate.CustomAttributes.Add(bondsExpRateKey);
+boostData.Fields.Add(bondsExpRate);
+
 Directory.CreateDirectory(output);
 var dll = Path.Combine(output, "Assembly-CSharp.dll");
 assembly.Write(dll + ".tmp");
@@ -139,7 +149,8 @@ File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(
     {
         "Sekai.UserChallengeLivePlayStatus: musicVoiceId key -> musicVocalId; add isAuto:Boolean",
         "Sekai.UserPresentData: add grantedAt:Int64",
-        "Sekai.UserHonor, Sekai.UserProfile: add userId:Int64"
+        "Sekai.UserHonor, Sekai.UserProfile: add userId:Int64",
+        "Sekai.MasterBoost: add bondsExpRate:Int32"
     },
     models = models.Select(t => t.FullName.Replace('/', '+')).Order(StringComparer.Ordinal)
 }, new JsonSerializerOptions { WriteIndented = true }));

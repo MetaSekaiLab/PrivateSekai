@@ -110,7 +110,7 @@ if (args is ["--replay-skill-practice", _, _, var skillMaster, _])
     CardPracticeReplay.ImportMaster(skillMaster, directory);
 if (args is ["--replay-material-exchange" or "--replay-event-exchange", _, var exchangeMaster, _])
     MaterialExchangeReplay.ImportMaster(exchangeMaster, directory);
-if (args is ["--replay-live" or "--replay-live-honor" or "--replay-live-result", _, _, var liveMaster, _])
+if (args is ["--replay-live" or "--replay-live-honor" or "--replay-live-result" or "--replay-live-boost", _, _, var liveMaster, _])
     LiveReplay.ImportMaster(liveMaster, directory);
 if (args is ["--replay-boost-item", _, var boostMaster, _])
     BoostReplay.ImportMaster(boostMaster, directory);
@@ -187,7 +187,7 @@ if (args is ["--replay-story", var storyCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(StoryReplay.Clock(storyCapture));
 if (args is ["--replay-area-shop" or "--replay-stamp-shop" or "--replay-vocal-shop", var areaCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(AreaShopReplay.Clock(areaCapture));
-if (args is ["--replay-live" or "--replay-live-honor" or "--replay-live-result", _, var liveCapture, _, _])
+if (args is ["--replay-live" or "--replay-live-honor" or "--replay-live-result" or "--replay-live-boost", _, var liveCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(LiveReplay.Clock(liveCapture));
 if (args is ["--replay-boost-item", var boostClockCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(MaterialExchangeReplay.Clock(boostClockCapture));
@@ -415,11 +415,11 @@ try
         await AreaShopReplay.Run(client, store, areaPath, areaOutput, args[0] == "--replay-music-shop", args[0] == "--replay-stamp-shop", args[0] == "--replay-vocal-shop");
         return;
     }
-    if (args is ["--replay-live" or "--replay-live-honor" or "--replay-live-result", var liveStartPath, var liveClearPath, _, var liveOutput])
+    if (args is ["--replay-live" or "--replay-live-honor" or "--replay-live-result" or "--replay-live-boost", var liveStartPath, var liveClearPath, _, var liveOutput])
     {
         using var liveReadback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await LiveReplay.Run(client, store, liveStartPath, liveClearPath, liveOutput, args[0] == "--replay-live-honor" ? liveReadback : null,
-            args[0] == "--replay-live-result" ? liveReadback : null);
+            args[0] == "--replay-live-result" ? liveReadback : null, args[0] == "--replay-live-boost");
         return;
     }
     if (args is ["--replay-live-start-rejection", var rejectedStart, var startReadback, _, var startOutput])

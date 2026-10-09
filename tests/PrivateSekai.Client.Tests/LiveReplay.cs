@@ -42,7 +42,7 @@ internal static class LiveReplay
     }
 
     public static async Task Run(ProtocolClient client, MemoryUserStore store, string startPath, string clearPath, string output,
-        ProtocolClient? honorReadback = null, ProtocolClient? resultReadback = null)
+        ProtocolClient? honorReadback = null, ProtocolClient? resultReadback = null, bool checkBoost = false)
     {
         var start = Read(startPath, "live-start");
         var official = Read(clearPath, "live-clear");
@@ -80,6 +80,17 @@ internal static class LiveReplay
             {
                 var local = JsonNode.Parse(File.ReadAllText(localPath))!.AsObject();
                 JsonFiles.Write(Path.Combine(output, "full-compare.json"), ScenarioRunner.Compare(official, local));
+                if (checkBoost)
+                {
+                    var differences = Comparison.Diff(official["response"]?["boost"], local["response"]?["boost"]);
+                    JsonFiles.Write(Path.Combine(output, "boost-contract-compare.json"), new JsonObject
+                    {
+                        ["responseDifferences"] = JsonSerializer.SerializeToNode(differences, JsonFiles.Options)
+                    });
+                    if (local["status"]?.GetValue<string>() != "completed" || official["response"]?["boost"] == null || differences.Count != 0)
+                        throw new InvalidOperationException("结算 boost 完整对象与官方不同。");
+                    Console.WriteLine("结算 boost 完整对象 HTTP 对拍通过。");
+                }
                 if (resultReadback != null)
                 {
                     var report = ScenarioRunner.Compare(SelectResultRecord(official), SelectResultRecord(local));

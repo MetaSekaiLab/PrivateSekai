@@ -210,7 +210,8 @@ public sealed class LiveMasterQueries(MasterData master)
                 expRate = boost.expRate,
                 rewardRate = boost.rewardRate,
                 livePointRate = boost.livePointRate,
-                eventPointRate = boost.eventPointRate
+                eventPointRate = boost.eventPointRate,
+                bondsExpRate = boost.bondsExpRate
             };
         }
 

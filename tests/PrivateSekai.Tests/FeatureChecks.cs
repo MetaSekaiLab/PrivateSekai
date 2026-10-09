@@ -40,6 +40,8 @@ internal static class FeatureChecks
             WriteMaster(directory);
             var master = new MasterData(new MasterCacheConfig { PinTables = [] }, directory);
             var liveMaster = new LiveMasterQueries(master);
+            Check.That(liveMaster.BuildMasterBoost(1).bondsExpRate == 4,
+                "Boost 羁绊经验倍率读取独立 master 字段，不以经验或奖励倍率替代");
             Check.That(liveMaster.IsLimitedMusicOutOfTerm(8, 9) && !liveMaster.IsLimitedMusicOutOfTerm(8, 10) &&
                 !liveMaster.IsLimitedMusicOutOfTerm(8, 19) && liveMaster.IsLimitedMusicOutOfTerm(8, 20),
                 "限时曲按客户端时间函数采用包含开始、不含结束的区间");
@@ -576,7 +578,7 @@ internal static class FeatureChecks
             ["musicVocals"] = """[{"id":1,"musicId":99,"musicVocalType":"original_song"},{"id":3,"musicId":7,"musicVocalType":"april_fool_2022","specialSeasonId":1}]""",
             ["specialSeasons"] = """[{"id":1,"specialSeasonType":"april_fool_2022","startAt":10,"endAt":20,"priority":1},{"id":2,"specialSeasonType":"fixture_other","startAt":12,"endAt":14,"priority":2}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":6,"s":500,"a":400,"b":300,"c":100}]""",
-            ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3}]""",
+            ["boosts"] = """[{"id":1,"costBoost":1,"expRate":1,"rewardRate":2,"livePointRate":3,"bondsExpRate":4}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = "[]",
             ["honorMissions"] = """[{"id":10001,"honorMissionType":"easy_full_combo","requirement":1},{"id":101,"honorMissionType":"clear_live","requirement":2},{"id":20001,"honorMissionType":"play_level_clear","requirement":5},{"id":20002,"honorMissionType":"play_level_clear","requirement":6}]""",

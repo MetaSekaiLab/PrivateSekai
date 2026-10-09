@@ -1844,6 +1844,10 @@ Client 的 `--replay-live-start` 已验证正常、跨曲难度、不存在难�
 
 成绩模式隔离：dump 的 `UserMusicResult` 定义 `solo`／`multi`；逆向 `MusicUtility.GetUserMusicResult` 把曲目、难度、模式传给 `UserDataManager.GetUserMusicResult`，后者在同曲同难度列表内逐项匹配 `playType`。Server 普通结算因此只查找或新增 `solo`，保留 `multi` 的高分、判定、MVP 和 Super Star 等字段。此前仅按曲目、难度取首条再改为 `solo`，会覆盖已有联机记录。小型夹具已覆盖只有联机成绩、联机记录排在单人成绩之前两种情况，以及编码失败整体回滚；两个已有官方单人成绩样本回归通过。现有抓包未找到 `multi` 成绩，仍需同曲同难度同时持有两种模式成绩的官方结算与回读，才能确认混合状态的官方行为和排列；本地混合检查不作为官方对拍证据。
 
+Boost 契约补充：官方结算的 `boost` 包含整数 `bondsExpRate`，零体力手动样本为 1、消耗一体力的 Auto 样本为 5，与 `boosts` 对应行一致。原始 `MasterBoost` dump 及其 formatter 只有七个字段，未知 Key 走跳过分支；未发现客户端读取该新增字段的证据。构建副本现显式补充该 Key，Server 从 master 复制原值，不用其他倍率代替；原始 DLL 不变。`--replay-live-boost` 使用开局、结算、master、输出目录参数，断言完整 `boost` 对象，两组样本通过。协议检查确认新增字段的 JSON／MessagePack 往返及其余原始契约不变；这不代表羁绊经验发放已实现。
+
+仍待确认：`userLivePoint.livePointBonusRemaining` 当前本地误用 `costBoost`；官方零体力样本为 3。逆向 `LiveReward.SetData` 将该字段传给 `LiveResultLiveMission.Initialize`，再由 `SetBonusRemaining` 填写剩余次数文本，但尚未确定服务端生成规则、每日重置与付费状态关系。需补充不同剩余次数及跨日样本，不能直接将本地逻辑替换为固定 3。
+
 ### 客户端请求时机
 
 目前确认有这些时机：
