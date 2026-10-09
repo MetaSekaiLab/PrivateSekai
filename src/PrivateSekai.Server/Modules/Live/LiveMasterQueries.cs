@@ -277,28 +277,22 @@ public sealed class LiveMasterQueries(MasterData master)
 
     public string BuildScoreRank(int musicDifficultyId, int score)
     {
-        var playLevel = ResolveMusicPlayLevel(musicDifficultyId);
-        if (playLevel > 0)
-        {
-            foreach (var scoreThreshold in master.GetTable<MasterPlayLevelScore>("playLevelScores").Rows)
-            {
-                if (!string.Equals(scoreThreshold.liveType, "solo", StringComparison.Ordinal) ||
-                    scoreThreshold.playLevel != playLevel)
-                    continue;
-
-                if (score >= scoreThreshold.s)
-                    return "rank_s";
-                if (score >= scoreThreshold.a)
-                    return "rank_a";
-                if (score >= scoreThreshold.b)
-                    return "rank_b";
-                if (score >= scoreThreshold.c)
-                    return "rank_c";
-                return "rank_d";
-            }
-        }
-
-        return BuildScoreRank(score);
+        var selected = GetMasterMusicDifficulty(musicDifficultyId)
+            ?? throw new ArgumentException("Unknown music difficulty.");
+        var reference = master.GetTable<MasterMusicDifficulty>("musicDifficulties", d => d.id).Rows
+            .Where(d => d.musicId == selected.musicId)
+            .Select(d => (Row: d, Kind: Enum.TryParse<MusicDifficulty>(d.musicDifficulty, out var kind) ? kind : MusicDifficulty.none))
+            .Where(d => d.Kind > MusicDifficulty.hard)
+            .OrderBy(d => d.Kind)
+            .FirstOrDefault().Row
+            ?? throw new InvalidOperationException("Missing score reference difficulty.");
+        var thresholds = master.GetTable<MasterPlayLevelScore>("playLevelScores").Rows
+            .SingleOrDefault(s => s.liveType == "solo" && s.playLevel == reference.playLevel)
+            ?? throw new InvalidOperationException("Missing solo score thresholds.");
+        if (score >= thresholds.s) return "rank_s";
+        if (score >= thresholds.a) return "rank_a";
+        if (score >= thresholds.b) return "rank_b";
+        return score >= thresholds.c ? "rank_c" : "rank_d";
     }
 
     public static string BuildScoreRank(int score) =>

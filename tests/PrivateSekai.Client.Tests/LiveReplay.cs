@@ -94,7 +94,7 @@ internal static class LiveReplay
                         new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences" }
                             .Any(k => report[k]!.AsArray().Count != 0))
                         throw new InvalidOperationException("演出新成就、成就奖励或独立回读与官方不同。");
-                    Console.WriteLine("本次成就、奖励数组、成就刷新及独立回读 HTTP 对拍通过；不包含随机掉落核验。");
+                    Console.WriteLine("分数、评分、本次成就、奖励数组、成就刷新及独立回读 HTTP 对拍通过；不包含随机掉落和经验核验。");
                 }
                 if (checkBoost)
                 {
@@ -170,6 +170,8 @@ internal static class LiveReplay
             selected[side] = Select(record[side], ["userMusicAchievements"]);
         selected["response"] = new JsonObject
         {
+            ["score"] = record["response"]?["score"]?.DeepClone(),
+            ["scoreRank"] = record["response"]?["scoreRank"]?.DeepClone(),
             ["userMusicAchievements"] = record["response"]?["userMusicAchievements"]?.DeepClone(),
             ["musicAchievementRewards"] = record["response"]?["musicAchievementRewards"]?.DeepClone(),
             ["updatedResources"] = Select(record["response"]?["updatedResources"], ["userMusicAchievements"])

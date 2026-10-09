@@ -78,6 +78,24 @@ internal static class FeatureChecks
     {
         Directory.CreateDirectory(directory);
         WriteMaster(directory);
+        File.WriteAllText(Path.Combine(directory, "musicDifficulties.json"), """
+            [{"id":76,"musicId":7,"musicDifficulty":"append","playLevel":1,"totalNoteCount":10},
+             {"id":75,"musicId":7,"musicDifficulty":"master","playLevel":35,"totalNoteCount":10},
+             {"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10},
+             {"id":73,"musicId":7,"musicDifficulty":"hard","playLevel":30,"totalNoteCount":10},
+             {"id":74,"musicId":7,"musicDifficulty":"expert","playLevel":20,"totalNoteCount":10},
+             {"id":72,"musicId":7,"musicDifficulty":"normal","playLevel":6,"totalNoteCount":10},
+             {"id":86,"musicId":8,"musicDifficulty":"append","playLevel":1},
+             {"id":85,"musicId":8,"musicDifficulty":"master","playLevel":20},
+             {"id":96,"musicId":9,"musicDifficulty":"append","playLevel":20},
+             {"id":101,"musicId":10,"musicDifficulty":"easy","playLevel":20},
+             {"id":114,"musicId":11,"musicDifficulty":"expert","playLevel":99}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "playLevelScores.json"), """
+            [{"liveType":"solo","playLevel":6,"c":1,"b":2,"a":3,"s":4},
+             {"liveType":"solo","playLevel":20,"c":100,"b":300,"a":400,"s":500},
+             {"liveType":"challenge_live","playLevel":20,"c":1,"b":2,"a":3,"s":4}]
+            """);
         File.WriteAllText(Path.Combine(directory, "musicAchievements.json"), """
             [{"id":4,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_s","resourceBoxId":81},
              {"id":2,"musicAchievementType":"score_rank","musicAchievementTypeValue":"rank_b","resourceBoxId":80},
@@ -99,10 +117,16 @@ internal static class FeatureChecks
             (499, "rank_a", 3), (500, "rank_s", 4), (900, "rank_s", 4)
         })
         {
-            Check.That(queries.BuildScoreRank(71, score) == rank &&
+            Check.That(new[] { 71, 72, 75, 76 }.All(id => queries.BuildScoreRank(id, score) == rank) &&
                 queries.ResolveMusicAchievementIds(71, 0, rank).SequenceEqual(Enumerable.Range(1, count)),
-                "评分门槛及前一分按 master 解析，包含全部已跨过的成就，不依赖表行顺序");
+                "普通评分按同曲首个高于Hard的难度查表，所有游玩难度共享门槛，包含全部跨档成就");
         }
+        Check.That(queries.ResolveMusicPlayLevel(71) == 6 && queries.BuildScoreRank(85, 300) == "rank_b" &&
+            queries.BuildScoreRank(96, 300) == "rank_b",
+            "评分参考难度缺少Expert时依枚举选Master或Append，不改变游玩谱面等级");
+        Check.Throws<InvalidOperationException>(() => queries.BuildScoreRank(101, 300), "缺少高于Hard的谱面时不猜评分表");
+        Check.Throws<InvalidOperationException>(() => queries.BuildScoreRank(114, 300), "缺少评分表时不回退固定阈值");
+        Check.Throws<ArgumentException>(() => queries.BuildScoreRank(999, 300), "未知谱面不能借用其他歌曲评分");
         Check.That(queries.ResolveMusicAchievementIds(71, 7, "rank_d").Length == 0 &&
             queries.ResolveMusicAchievementIds(71, 8, "rank_d").SequenceEqual([5]) &&
             queries.ResolveMusicAchievementIds(72, 10, "rank_d").SequenceEqual([6]),
@@ -691,7 +715,7 @@ internal static class FeatureChecks
             ["releaseConditions"] = """[{"id":92002,"releaseConditionType":"user_rank","releaseConditionTypeLevel":2},{"id":92003,"releaseConditionType":"user_rank","releaseConditionTypeLevel":3},{"id":93002,"releaseConditionType":"card_level","releaseConditionTypeId":1,"releaseConditionTypeLevel":2}]""",
             ["configs"] = """[{"configKey":"rank_up_recover_boost_count","value":"10"},{"configKey":"boost_recovery_max_count","value":"25"},{"configKey":"boost_recovery_second","value":"1800"}]""",
             ["beginnerMissionV2s"] = """[{"id":6,"beginnerMissionV2Type":"any_card_level_up","requirement":1,"rewards":[{"resourceBoxId":20}]}]""",
-            ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10},{"id":72,"musicId":7,"musicDifficulty":"normal","playLevel":6,"totalNoteCount":10}]""",
+            ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10},{"id":72,"musicId":7,"musicDifficulty":"normal","playLevel":6,"totalNoteCount":10},{"id":74,"musicId":7,"musicDifficulty":"expert","playLevel":6,"totalNoteCount":10}]""",
             ["musicCategories"] = """[{"musicId":7,"musicCategoryName":"original"},{"musicId":8,"musicCategoryName":"original"},{"musicId":11,"musicCategoryName":"image"}]""",
             ["limitedTimeMusics"] = """[{"id":1,"musicId":8,"startAt":10,"endAt":20},{"id":2,"musicId":9,"startAt":10,"endAt":0},{"id":3,"musicId":10,"startAt":0,"endAt":0}]""",
             ["musicVocals"] = """[{"id":1,"musicId":99,"musicVocalType":"original_song"},{"id":3,"musicId":7,"musicVocalType":"april_fool_2022","specialSeasonId":1}]""",

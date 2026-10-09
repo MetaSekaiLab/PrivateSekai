@@ -19,7 +19,7 @@ internal static class LiveHttpChecks
         // 仅用于测试结算链路的虚构小型 master。
         var tables = new Dictionary<string, string>
         {
-            ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10}]""",
+            ["musicDifficulties"] = """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":6,"totalNoteCount":10},{"id":74,"musicId":7,"musicDifficulty":"expert","playLevel":6,"totalNoteCount":10}]""",
             ["musicCategories"] = """[{"musicId":7,"musicCategoryName":"original"}]""",
             ["limitedTimeMusics"] = "[]",
             ["specialSeasons"] = "[]",
