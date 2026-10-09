@@ -1,0 +1,64 @@
+extern alias game;
+
+using System.Buffers;
+using game::CP.Realtime;
+using game::Sekai;
+using game::Sekai.MultiLive;
+using MessagePack;
+using PrivateSekai.Protocol;
+
+namespace PrivateSekai.Client.Realtime;
+
+public static class MultiLiveReservation
+{
+    public const ushort Command = 3060;
+
+    // TTL 由调用方按 liveRuleType 从对应客户端配置取得。
+    public static byte[] CreateRequest(LiveRuleType liveRuleType, int roomTtl,
+        CustomRoomSettingData settings, bool showsRoomId, int? lowerPower, int? upperPower)
+    {
+        var request = new CreateMultiLivePrivateRoomData
+        {
+            multiLiveRuleType = liveRuleType.ToString(),
+            roomTTL = roomTtl,
+            roomProperty = new DynamicPropertyPayload
+            {
+                isRSend = 1,
+                values = new Dictionary<int, byte[]>
+                {
+                    [1] = SyncPropertyEncoding.Int32(0), // MESSAGE
+                    [2] = SyncPropertyEncoding.Int32(1), // STEP
+                    [3] = SyncPropertyEncoding.Int32(2), // ATYPE: Reserve
+                    [5] = SyncPropertyEncoding.Int32(0), // MASTER_LOBBY_ID: 预留时为零
+                    [6] = SyncPropertyEncoding.Int32(0), // RECRUIT_TOTAL_POWER
+                    [8] = SyncPropertyEncoding.Byte(0), // MATCH_SCALEUP_FINISH
+                    [10] = SyncPropertyEncoding.Int32(0), // ROOM_NUMBER
+                    [12] = SyncPropertyEncoding.String(""), // LIVE_ID
+                    [13] = SyncPropertyEncoding.String(""), // RANDOM_SEED
+                    [14] = SyncPropertyEncoding.Int32((int)liveRuleType), // LIVE_RULE_TYPE
+                    [15] = SyncPropertyEncoding.Int32(upperPower.GetValueOrDefault()),
+                    [16] = SyncPropertyEncoding.Int32(lowerPower.GetValueOrDefault()),
+                    [17] = SyncPropertyEncoding.Object(SerializeSettings(settings)),
+                    [18] = SyncPropertyEncoding.Boolean(showsRoomId)
+                }
+            }
+        };
+        return DumpSerializer.Serialize(request);
+    }
+
+    private static byte[] SerializeSettings(CustomRoomSettingData settings)
+    {
+        // 原 formatter 固定写出全部字段，包括为 nil 的难度数组。
+        var members = DumpContract.For(typeof(CustomRoomSettingData)).Members;
+        var buffer = new ArrayBufferWriter<byte>();
+        var writer = new MessagePackWriter(buffer);
+        writer.WriteMapHeader(members.Count);
+        foreach (var member in members)
+        {
+            writer.Write((string)member.Key);
+            MessagePackSerializer.Serialize(member.Type, ref writer, member.Get(settings), DumpSerializer.Options);
+        }
+        writer.Flush();
+        return buffer.WrittenSpan.ToArray();
+    }
+}

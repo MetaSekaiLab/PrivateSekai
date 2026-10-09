@@ -92,6 +92,41 @@ Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、�
 
 450 项客户端检查通过。回环 UDP 覆盖首次地址列表、后续省略地址、周期回显及内附通知交付；固定样本覆盖旧式响应、离线标记、多命令通知、空通知载荷和非法边界。官方通知、离线标记、地址变化及长期丢包仍需补样本。
 
+### 私人房间预留命令 3060
+
+`MultiLiveReservation.CreateRequest` 已实现请求载荷编码，尚未接入命令行建房或向官方发送。它复用 dump 的 `CreateMultiLivePrivateRoomData`、`DynamicPropertyPayload` 和 `CustomRoomSettingData`，不定义镜像模型。
+
+- 时机：`SetupReserveRoom` 设置 `RoomEnterType=Reserve(2)`、零输入房号，并准备房间属性；`ReserveRoom` 随后调用 `Create`，通过可靠发送发出命令 3060。
+- 请求：`MultiLiveRuleType` 为 `LiveRuleType.ToString()`，`RoomTTL` 为客户端配置，`RoomProperty` 为动态属性对象。普通规则取 `MultiLiveRoomTTL`（整数配置 181），自定义规则取 `CustomLiveRoomTTL`（182）；不能套用公开匹配选项中的 TTL。当前编码函数由调用方显式传入 TTL。
+- 动态属性：外层 MessagePack map 为 `R=1`、`Values`；`Values` 是整数 ID 到二进制的 map。每项二进制为 1 字节类型、4 字节大端内容长度及内容。类型 1～7 分别是 byte、Int32、Int64、UTF-8 字符串、Float32、bool、MessagePack 对象；整数和浮点内容使用大端，bool 为单字节 0／1。
+
+预留请求初始化以下属性，其余已登记但未写入的属性不随请求发送：
+
+| ID | 属性 | 类型 | 预留时的值 |
+| --- | --- | --- | --- |
+| 1 | MESSAGE | Int32 | 0 |
+| 2 | STEP | Int32 | 1 |
+| 3 | ATYPE | Int32 | 2（Reserve） |
+| 5 | MASTER_LOBBY_ID | Int32 | 0；共用初始化仅在 Public 时写入大厅 ID |
+| 6 | RECRUIT_TOTAL_POWER | Int32 | 0 |
+| 8 | MATCH_SCALEUP_FINISH | byte | 0 |
+| 10 | ROOM_NUMBER | Int32 | 0 |
+| 12 | LIVE_ID | string | 空字符串 |
+| 13 | RANDOM_SEED | string | 空字符串 |
+| 14 | LIVE_RULE_TYPE | Int32 | 当前规则枚举值 |
+| 15 | TOTAL_POWER_UPPER_LIMIT | Int32 | 当前上限，无值为 0 |
+| 16 | TOTAL_POWER_LOWER_LIMIT | Int32 | 当前下限，无值为 0 |
+| 17 | CUSTOM_ROOM_SETTING_DATA | Object | 当前自定义设置 |
+| 18 | SHOWS_ROOM_ID | bool | 当前本地显示设置 |
+
+自定义设置的原 formatter 固定写出 `ScoreCalculateType`、`MusicSelectionType`、`MusicDifficultyTypes`、`IsDisplayPlayerInfo`、`ScoreSelectType` 五个字段。难度数组为 null 时仍写 `nil`，与空数组不同；枚举按数值序列化。此处按 dump 成员契约写出全部字段，保留既有 HTTP 序列化器省略 null 的行为。
+
+响应：`OnResponse` 对命令 3060 以状态 **1** 判定成功，反序列化 `CreateMultiLivePrivateRoomResponse`（`RoomID`、`RoomCreateTime`），取 `RoomID` 交给空房间创建回调。该分支将本地房间基本数据重置为空、加入状态设为 0，未将返回的创建时间设为已加入房间状态；`OnReserveComplete` 再驱动申请房号。预留成功不等于已入房。非成功状态进入加入错误处理，错误载荷的具体取值仍缺样本。
+
+证据：`SetupReserveRoom`（RVA `0x5cb6600`）、`Create`（`0x5cb6890`）、`CreateCommonRoomProperty`（`0x5cb0b9c`）、`CreatePartyRoomProperty`（`0x5cb66c4`）、构造器属性表、`SyncProperty.PackToObject`（`0x5df32e0`）及各 `AddSendData`、`GetObjectValue`、静态构造器；自定义 formatter（`0x6049798`）、`MultiLiveRoomBase.OnResponse`（`0x5cb2944`）、`MatchingRoom.OnEmptyRoomCreated`（`0x5cbb60c`）。属性字符串与类型均已和 dump 核对。
+
+531 项客户端检查通过，覆盖七类属性固定字节向量、数值边界、UTF-8 字节长度、外层整数键和 bin 类型，以及普通／自定义规则、不同 TTL／战力限制、nil／空／多难度数组。Server 构建与协议检查通过，保留模板未映射字段提示。当前只完成编码及静态审计；下一步仍需确认实际连接的房间命令版本、设置来源和当前配置值，再验证官方预留、申请房号及入房流程。Server 实时房间服务尚未实现。
+
 ## PUT `/api/user/{userId}/profile-honor`
 
 - Path：当前 `userId`，无 query。Client 操作为 `profile-honor-save`。
@@ -2017,7 +2052,7 @@ Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通�
 
 `UserMultiLiveClearResponse` 同样返回 `UserLivePoint`，是后续取证入口。其请求 `UserMultiLiveClearRequest` 包含五个玩家成绩槽、总分、Super Fever、断线玩家及私人房间设置，不能将单人结算请求直接换路由发送。当前Server与协议Client未接入完整多人房间和结算流程；下一步需取得测试账号私人房间的开局、成功结算、随后单人结算及跨日回读，验证共享次数。`colorfulPassV2s.livePointRate` 提供通行证倍率，但本次查阅未证明每日加成以购买通行证为前提。
 
-私人房间前置链路：`MultiRoomMatchingOrganizer.PublishReserveRoomRequest` 调用 `MultiLiveRoomMatchingController.ReserveRoom`，先准备实时连接，再由 `MatchingRoom.Create` 序列化 `CreateMultiLivePrivateRoomData` 并发送命令3060。其字段为 `MultiLiveRuleType`、`RoomTTL`、`RoomProperty`；预留成功后，创建流程才以返回的房间标识调用 `PatchPrivateRoomNumberAPI`。实时认证由 `GetUserDiarkisAuth` 发起，响应 `UserDiarkisAuthResponse` 包含TCP／UDP连接信息、会话和密钥。协议Client的记录脱敏现已覆盖 `clientKey`、`sid`、`encryptionKey`、`encryptionIv`、`encryptionMacKey`，保留端口及业务字段且不修改原始认证对象；这不表示实时连接或建房已实现。命令封装、同步属性键、HTTP路由字符串映射和实际响应仍需继续核验。
+私人房间前置链路：`MultiRoomMatchingOrganizer.PublishReserveRoomRequest` 调用 `MultiLiveRoomMatchingController.ReserveRoom`，先准备实时连接，再预留空房间；成功后才以返回的房间标识调用 `PatchPrivateRoomNumberAPI`。基础 UDP 已经官方验证，预留请求编码及状态变化见上文“私人房间预留命令 3060”；实际建房、申请房号、加入房间和多人结算仍未打通。
 
 歌曲1／Easy、零体力的C档样本中金币均为150、初级练习券均为2，材料组合不同；两份B档样本金币180、初级练习券2，材料组合也不同。其中一份B档响应将同一材料ID的数量2和4分成两条返回，奖励响应不能擅自按资源ID合并。当前固定掉落箱序列不覆盖这些结果；master奖励明细、倍率和评分门槛本身不足以确定池选择及抽取权重。
 
