@@ -29,6 +29,7 @@ internal static class Program
         StampUseChecks.Run();
         GachaChecks.Run();
         GachaTenChecks.Run();
+        GachaBonusChecks.Run();
         CardExchangeChecks.Run();
         GachaExchangeChecks.Run();
         CollectionHonorChecks.Run();

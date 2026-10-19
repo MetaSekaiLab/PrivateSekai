@@ -24,8 +24,8 @@ internal static class UserCaseReplay
         "userStamps", "userStampFavorites", "userStampFavoriteTabs", "userMaterials", "userChargedCurrency", "userGamedata",
         "userBeginnerMissionV2s", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
     public static readonly string[] GachaFields = ["userCards", "userGachas", "userGachaCeilItems", "userGachaTickets", "userGachaBonusPoints",
-        "userChargedCurrency", "userCostume3dStatuses", "userCharacterMissionV2s", "userCharacterMissionV2Statuses",
-        "userHonorMissions", "userMissionStatuses", "userBeginnerMissionV2s", "userMaterials", "userGamedata", "userPanelMissions"];
+        "userChargedCurrency", "userCostume3dStatuses", "userCostume3dShopItems", "userCharacterMissionV2s", "userCharacterMissionV2Statuses",
+        "userHonorMissions", "userMissionStatuses", "userBeginnerMissionV2s", "userMaterials", "userGamedata", "userPanelMissions", "userReleaseConditions", "newReleaseConditions"];
     public static readonly string[] GachaExchangeFields = [.. GachaFields, "userGachaCeilExchanges", "userGachaCeilExchangeSubstituteCosts"];
     public static readonly string[] CardExchangeFields = [.. GachaFields, "userDecks", "userCharacters"];
 

@@ -1759,6 +1759,24 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 样本中三星可以位于中间且末张仍为二星。现有保底在整批没有目标稀有度时补选末张；本地检查覆盖该分支、已有三星时保留顺序、连续十连、十张票券刚好用完、余额不足、全部联动回滚和数据库重启。固定结果对拍不验证官方概率分布、保底补选的真实分布、特殊池附赠或游戏动画。
 
+### 普通池 Bonus 积分与保底
+
+经典 `gachaBonusId` 卡池按实际付款累计积分：免费水晶和抽卡券每抽 0.5，纯付费水晶每抽 1，单抽混用两类水晶按 0.5。混合十连根据实际付费扣除量计算完全由付费水晶支付的抽数，其余按免费倍率；倍率读取 `clientConfigs` 的 113、114 项。通行证每日免费行为不增加积分，也不发天井道具。规则来自当前卡池说明、`GachaUtility.GetPredictedGachaBonusPoint` 及[官方 FAQ](https://pjsekai.sega.jp/faq/index.html)。
+
+`userGachaBonusPoints` 按卡池保存所属用户、`gachaBonusPoint` 和 `totalGachaBonusPoint`。跨过 50 点时确定一张四星；跨过 100 点时从该池普通 pickup 成员中等权选取一张四星，当前积分归零并结转超额部分，累计积分继续增加。积分不跨池使用。50 点抽取是否使用 `gachaDetails.fixedBonusWeight` 由 `gachaBonuses.switchFixedBonusWeight` 决定；关闭时使用普通四星权重，缺少有效配置时整体失败。
+
+保底占用本次抽取名额并放在奖品首位，`gachaLotteryType="fixed_gacha_bonus"`；单抽仍一张，十连仍十张。其余名额正常抽取，十连三星保障在普通名额内独立判断。保底卡走同一套新卡、重复卡、剧情、服装及任务结算；卡牌保底不放入 `obtainGachaBonusItems`。费用、行为计次和天井均按请求抽数计算。卡池说明明确两种保障分别抽选；客户端 `GachaTapWaitState` 的动画槽位固定为十个，[玩家本人发布的第 100 抽原始结果截图](https://ameblo.jp/wasuregasa2002/entry-12682126448.html)显示 50 点保底在首位、总数十张。
+
+两份官方免费单抽分别确认积分 0→0.5、0.5→1，另有余额不足拒绝；完整响应、相关状态增量和独立认证回读均无差异。本地业务及加密 HTTP 检查覆盖免费／付费／混合付款、票券、50／100 门槛、超额结转、重复卡、错误配置、编码失败回滚、跨账号隔离和数据库重启。保底名额依据原始截图和客户端，权重分支依据客户端二进制；尚无本项目测试账号触发 50／100 点的官方 HTTP 记录，不宣称验证随机概率分布或游戏动画。
+
+### 抽卡首次服装与解锁联动
+
+首次获得卡牌时，按 `cardCostume3ds` 发放初始服装，只有 `status="available"` 才视为已经拥有。普通发型保留后续 Master Rank 解锁，当前 master 中 `isInitialObtainHair=true` 的映射允许初始获得；该字段仅补入 dump 的构建副本。普通后续发型同时可在 `masterLessonRewards` 的奖励箱中核对，不能将所有卡牌服装映射直接视为初始奖励。
+
+初始套装的身体服装推进角色及称号的 `collect_costume_3d`，头饰不重复计套数，获得服装不推进制作新手任务。按该卡 `master_rank=0` 条件保存解锁记录，将对应制作商品及头身状态从 `forbidden` 改为 `sale`，保留已获得服装和其他 Master Rank 条件。本次 `newReleaseConditions` 只附在响应，不持久化提示。
+
+两份历史官方记录覆盖带服装单抽、十连中的首次与重复卡；服装奖励、制作入口、解锁记录、角色与称号任务的完整响应及相关状态增量均对拍通过。本地独立会话回读核对原记录后快照，未把历史后快照称为新发起的官方认证回读。
+
 ## PUT `/api/user/{userId}/exchange/gacha-ceil-item`
 
 > 审计版本: jp-6.5.5

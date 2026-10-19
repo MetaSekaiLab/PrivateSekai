@@ -27,10 +27,13 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
             return Encoded(operations.Execute(userId, () =>
             {
                 var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
+                var released = (user.Data.userReleaseConditions ?? []).Select(c => c.releaseConditionId).ToHashSet();
                 var before = (user.Data.userCharacterMissionStatuses ?? [])
                     .Select(s => (s.characterId, s.missionId, s.parameterGroupId, s.seq)).ToHashSet();
                 var response = gacha.ExecuteGacha(gachaId, gachaBehaviorId, isPriorityUsePaidJewel);
                 response.updatedResources = user.BuildRefresh(prepareRefresh: false);
+                var newConditions = (user.Data.userReleaseConditions ?? []).Where(c => !released.Contains(c.releaseConditionId)).ToArray();
+                if (newConditions.Length > 0) response.updatedResources.newReleaseConditions = newConditions;
                 HonorMissionResponse.AddAchievementHints(response.updatedResources, previousHonor, missionMaster);
                 if (response.updatedResources.userCharacterMissions != null)
                 {

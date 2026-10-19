@@ -138,6 +138,16 @@ bondsExpRateKey.ConstructorArguments.Add(new CustomAttributeArgument(module.Type
 bondsExpRate.CustomAttributes.Add(bondsExpRateKey);
 boostData.Fields.Add(bondsExpRate);
 
+// 当前卡牌服装 master 包含初始发型标志；仅补充构建副本。
+var cardCostume = module.GetType("Sekai.MasterCardCostume3D");
+if (cardCostume.Fields.Any(f => f.Name == "isInitialObtainHair"))
+    throw new InvalidDataException("卡牌服装 dump 已变化，请重新核验初始发型字段。");
+var initialHair = new FieldDefinition("isInitialObtainHair", FieldAttributes.Public, module.TypeSystem.Boolean);
+var initialHairKey = new CustomAttribute(vocalKey.Constructor);
+initialHairKey.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, "isInitialObtainHair"));
+initialHair.CustomAttributes.Add(initialHairKey);
+cardCostume.Fields.Add(initialHair);
+
 // 官方虚拟商店区分缺失购买次数与显式零值；构建副本保留字段存在性。
 var virtualShopItem = module.GetType("Sekai.UserVirtualShopItem");
 var buyCount = virtualShopItem.Fields.Single(f => f.Name == "buyCount");
@@ -189,6 +199,7 @@ File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(
         "Sekai.UserPresentData: add grantedAt:Int64",
         "Sekai.UserHonor, Sekai.UserProfile, Sekai.UserFixCostume: add userId:Int64",
         "Sekai.MasterBoost: add bondsExpRate:Int32",
+        "Sekai.MasterCardCostume3D: add isInitialObtainHair:Boolean",
         "Sekai.UserVirtualShopItem: buyCount:Int32 -> Nullable<Int32> to preserve optional wire field",
         "Sekai.MasterGachaCeilExchange: add startAt:Int64, endAt:Int64",
         "Sekai.UserLiveClearResponse: add userMusicAchievements:UserMusicAchievement[], musicAchievementRewards:UserResource[]"

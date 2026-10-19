@@ -14,6 +14,7 @@ using PrivateSekai.Modules.Gacha;
 using PrivateSekai.Modules.Inventory;
 using PrivateSekai.Modules.Live;
 using PrivateSekai.Modules.Missions;
+using PrivateSekai.Modules.Profiles;
 using PrivateSekai.Modules.Shop;
 using PrivateSekai.Protocol;
 using PrivateSekai.Shared.Master;
@@ -643,7 +644,7 @@ internal static class FeatureChecks
             services.GetRequiredService<GachaMasterQueries>(),
             services.GetRequiredService<CardMasterQueries>(),
             services.GetRequiredService<ResourceMasterQueries>(), incompleteResources,
-            services.GetRequiredService<MissionService>());
+            services.GetRequiredService<MissionService>(), services.GetRequiredService<CostumeService>());
         var failure = Check.Throws<NotSupportedException>(
             () => operation.Execute(4, () => incompleteGacha.ExecuteGacha(1, 1, false)), "抽卡中途资源处理失败");
         Check.That(failure.Message.Contains("gacha_ceil_item", StringComparison.Ordinal), "抽卡失败发生在末尾天井道具发放阶段");
@@ -706,6 +707,8 @@ internal static class FeatureChecks
             ["characterMissionV2s"] = """[{"id":12,"characterId":1,"characterMissionType":"collect_member","parameterGroupId":14},{"id":13,"characterId":1,"characterMissionType":"play_live","parameterGroupId":15}]""",
             ["characterMissionV2ParameterGroups"] = """[{"id":14,"seq":1,"requirement":1},{"id":15,"seq":1,"requirement":10}]""",
             ["cardCostume3ds"] = """[{"cardId":10,"costume3dId":20}]""",
+            ["costume3ds"] = """[{"id":20,"characterId":1,"partType":"body"}]""",
+            ["costume3dShopItems"] = "[]",
             ["gachas"] = """
                 [{"id":1,"startAt":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":10,"weight":1}],
                   "gachaCardRarityRates":[{"cardRarityType":"rarity_3","lotteryType":"normal","rate":100}],

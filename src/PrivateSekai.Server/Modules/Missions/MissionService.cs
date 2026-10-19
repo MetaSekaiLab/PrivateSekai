@@ -266,8 +266,13 @@ public sealed class MissionService(
 
     public UserCharacterMissionV2Status[] RecordCostumeCraft(int characterId)
     {
-        UpdateHonorProgress("collect_costume_3d");
         RecordBeginnerMissionProgress(master.GetCostumeCraftMissions());
+        return RecordCostumeAcquisition(characterId);
+    }
+
+    public UserCharacterMissionV2Status[] RecordCostumeAcquisition(int characterId)
+    {
+        UpdateHonorProgress("collect_costume_3d");
         return RecordCharacterMissionProgress(master.GetCostumeCollectionMissions(characterId));
     }
 

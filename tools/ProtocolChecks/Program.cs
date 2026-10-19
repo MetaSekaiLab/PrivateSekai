@@ -66,6 +66,11 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
         Check(!expectedSignature.Any(s => s.StartsWith("bondsExpRate:", StringComparison.Ordinal)), "Boost 原始契约前置");
         expectedSignature = expectedSignature.Append("bondsExpRate:System.Int32:bondsExpRate").Order(StringComparer.Ordinal).ToArray();
     }
+    if (type == typeof(Sekai.MasterCardCostume3D))
+    {
+        Check(!expectedSignature.Any(s => s.StartsWith("isInitialObtainHair:", StringComparison.Ordinal)), "卡牌初始发型原始契约前置");
+        expectedSignature = expectedSignature.Append("isInitialObtainHair:System.Boolean:isInitialObtainHair").Order(StringComparer.Ordinal).ToArray();
+    }
     if (type == typeof(Sekai.UserVirtualShopItem))
     {
         Check(expectedSignature.Contains("buyCount:System.Int32:buyCount"), "虚拟商店原始契约前置");

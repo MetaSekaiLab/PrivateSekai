@@ -1,6 +1,7 @@
 extern alias game;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
 using PrivateSekai.Modules.Missions;
@@ -11,6 +12,56 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class CostumeService(UserSession user, CostumeMasterQueries master, MissionService missions, ResourceService resources)
 {
+    public UserResource[] ObtainForCard(int cardId)
+    {
+        var definitions = master.GetInitialCardCostumes(cardId);
+        if (definitions.Length == 0) return [];
+        var released = (user.Data.userReleaseConditions ?? []).ToList();
+        foreach (var condition in master.GetInitialCardConditions(cardId))
+        {
+            if (released.Any(c => c.releaseConditionId == condition.id)) continue;
+            released.Add(new UserReleaseCondition { userId = user.UserId, releaseConditionId = condition.id, createdAt = user.Now });
+            user.MarkChanged(nameof(SuiteUser.userReleaseConditions));
+        }
+        user.Data.userReleaseConditions = released.OrderBy(c => c.releaseConditionId).ToArray();
+        var obtained = new List<UserResource>();
+        foreach (var definition in definitions)
+        {
+            if (user.Data.userCostume3dStatuses?.Any(c => c.costume3dId == definition.id && c.status == "available") == true) continue;
+            var resource = new UserResource { resourceId = definition.id, resourceType = "costume_3d", quantity = 1 };
+            resources.Grant(resource);
+            obtained.Add(resource);
+            if (definition.partType == "body") missions.RecordCostumeAcquisition(definition.characterId);
+        }
+        var offers = (user.Data.userCostume3dShopItems ?? []).ToList();
+        var statuses = (user.Data.userCostume3dStatuses ?? []).ToList();
+        foreach (var definition in master.GetInitialCardShopItems(cardId))
+        {
+            var offer = offers.SingleOrDefault(c => c.costume3dShopItemId == definition.id);
+            if (offer == null)
+            {
+                offer = new UserCostume3DShopItem { costume3dShopItemId = definition.id, status = "forbidden" };
+                offers.Add(offer);
+            }
+            if (offer.status == "forbidden") offer.status = "sale";
+            foreach (var id in new[] { definition.headCostume3dId, definition.bodyCostume3dId }.Where(id => id > 0))
+            {
+                var status = statuses.SingleOrDefault(c => c.costume3dId == id);
+                if (status == null)
+                {
+                    status = new UserCostume3DStatus { costume3dId = id, status = "forbidden" };
+                    statuses.Add(status);
+                }
+                if (status.status == "forbidden") status.status = "sale";
+            }
+        }
+        user.Data.userCostume3dShopItems = offers.OrderBy(c => c.costume3dShopItemId).ToArray();
+        user.Data.userCostume3dStatuses = statuses.OrderBy(c => c.costume3dId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userCostume3dShopItems));
+        user.MarkChanged(nameof(SuiteUser.userCostume3dStatuses));
+        return obtained.ToArray();
+    }
+
     public int Fix(int characterId, string? unit)
     {
         if (unit == null) return 400;

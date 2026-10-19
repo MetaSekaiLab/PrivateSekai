@@ -1,5 +1,7 @@
 extern alias game;
 
+using System;
+using System.Globalization;
 using System.Linq;
 using game::Sekai;
 using PrivateSekai.Shared.Master;
@@ -13,6 +15,20 @@ public sealed class GachaMasterQueries(MasterData master)
 
     public MasterGachaBehavior? GetMasterGachaBehavior(MasterGacha? gacha, int gachaBehaviorId) =>
         gacha?.gachaBehaviors?.FirstOrDefault(b => b.id == gachaBehaviorId);
+
+    public MasterGachaBonus GetGachaBonus(int id) =>
+        master.GetTable<MasterGachaBonus>("gachaBonuses", b => b.id).FindById(id)
+        ?? throw new InvalidOperationException("Missing gacha bonus definition.");
+
+    public float GetGachaBonusPointRate(bool paid)
+    {
+        var config = master.GetTable<MasterClientConfig>("clientConfigs", c => c.id).FindById(paid ? 114 : 113)
+            ?? throw new InvalidOperationException("Missing gacha bonus point rate.");
+        var rate = float.Parse(config.value, CultureInfo.InvariantCulture);
+        if (config.type != "Float" || !float.IsFinite(rate) || rate <= 0)
+            throw new InvalidOperationException("Invalid gacha bonus point rate.");
+        return rate;
+    }
 
     public int ResolveGachaCeilItemId(MasterGacha? gacha, int gachaId)
     {

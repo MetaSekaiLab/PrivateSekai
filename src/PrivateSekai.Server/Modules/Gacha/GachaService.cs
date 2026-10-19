@@ -8,6 +8,7 @@ using game::Sekai.ApiData;
 using PrivateSekai.Modules.Cards;
 using PrivateSekai.Modules.Inventory;
 using PrivateSekai.Modules.Missions;
+using PrivateSekai.Modules.Profiles;
 using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 
@@ -20,6 +21,7 @@ public sealed class GachaService(
     ResourceMasterQueries resourceMaster,
     ResourceService resources,
     MissionService missions,
+    CostumeService costumes,
     Random? random = null)
 {
     public UserGachaResponse ExecuteGacha(int gachaId, int gachaBehaviorId, bool isPriorityUsePaidJewel)
@@ -33,16 +35,20 @@ public sealed class GachaService(
             (user.Data.userColorfulPassV2 == null || user.Data.userColorfulPassV2.expiredAt < (ulong)now))
             throw new GachaRequestRejectedException(409);
         var spinCount = GetGachaSpinCount(behavior);
-        var behaviorType = behavior?.gachaBehaviorType;
+        var behaviorType = behavior.gachaBehaviorType;
 
+        var paidBefore = user.Data.userChargedCurrency?.paid ?? 0;
         var consumedCosts = ConsumeGachaCost(behavior, isPriorityUsePaidJewel);
 
-        var drawnCardIds = DrawGachaCards(gacha, behaviorType, spinCount);
+        var bonusCardIds = ApplyGachaBonus(gacha, behavior, spinCount, paidBefore - (user.Data.userChargedCurrency?.paid ?? 0));
+        if (bonusCardIds.Length > spinCount) throw new InvalidOperationException("Gacha bonus exceeds the requested spin count.");
+        var drawnCardIds = DrawGachaCards(gacha, behaviorType, spinCount - bonusCardIds.Length);
         var obtainPrizes = new List<UserGachaSpinObtainPrize>();
-        foreach (var cardId in drawnCardIds)
+        foreach (var (cardId, lotteryType) in bonusCardIds.Select(id => (id, "fixed_gacha_bonus"))
+            .Concat(drawnCardIds.Select(id => (id, "normal"))))
         {
             var isNew = GrantGachaCard(cardId);
-            var costume3ds = isNew ? GrantInitialCostumes(cardId) : [];
+            var costume3ds = isNew ? costumes.ObtainForCard(cardId) : [];
             obtainPrizes.Add(new UserGachaSpinObtainPrize
             {
                 card = new UserResource
@@ -53,14 +59,15 @@ public sealed class GachaService(
                     quantity = 1
                 },
                 newFlg = isNew,
-                gachaLotteryType = "normal",
+                gachaLotteryType = lotteryType,
                 costume3d = costume3ds,
                 cardExtra = []
             });
         }
 
         var userGacha = UpsertUserGacha(gachaId, gachaBehaviorId, now);
-        var obtainGachaCeilItems = GrantGachaCeilItem(gacha, gachaId, spinCount);
+        var obtainGachaCeilItems = behavior.resourceCategory == "free_resource" && behavior.gachaSpinnableType == "colorful_pass"
+            ? [] : GrantGachaCeilItem(gacha, gachaId, spinCount);
         missions.RefreshGachaPanels();
 
         return new UserGachaResponse
@@ -144,6 +151,51 @@ public sealed class GachaService(
     }
 
     private bool WithinPeriod(long start, long end) => start <= user.Now && (end == 0 ? start != 0 : user.Now < end);
+
+    private int[] ApplyGachaBonus(MasterGacha gacha, MasterGachaBehavior behavior, int spinCount, int paidConsumed)
+    {
+        if (gacha.gachaBonusId <= 0 || behavior.resourceCategory == "free_resource") return [];
+        var bonus = master.GetGachaBonus(gacha.gachaBonusId);
+        var defaultRate = master.GetGachaBonusPointRate(false);
+        var paidSpins = behavior.costResourceType == "paid_jewel" ? spinCount : 0;
+        if (behavior.costResourceType == "jewel")
+        {
+            var quantity = behavior.costResourceQuantity ?? 0;
+            if (quantity <= 0 || quantity % spinCount != 0)
+                throw new InvalidOperationException("Invalid per-spin gacha jewel cost.");
+            paidSpins = Math.Min(spinCount, paidConsumed / (quantity / spinCount));
+        }
+        var increment = defaultRate * (spinCount - paidSpins) + master.GetGachaBonusPointRate(true) * paidSpins;
+        var points = (user.Data.userGachaBonusPoints ?? []).ToList();
+        var point = points.SingleOrDefault(p => p.gachaId == gacha.id);
+        if (point == null)
+        {
+            point = new UserGachaBonusPoint { userId = user.UserId, gachaId = gacha.id };
+            points.Add(point);
+        }
+        if (!float.IsFinite(point.gachaBonusPoint) || point.gachaBonusPoint < 0 || point.gachaBonusPoint >= 100 ||
+            !float.IsFinite(point.totalGachaBonusPoint) || point.totalGachaBonusPoint < 0)
+            throw new InvalidOperationException("Invalid saved gacha bonus points.");
+        var after = point.gachaBonusPoint + increment;
+        var obtained = new List<int>();
+        for (var border = (int)(point.gachaBonusPoint / 50) + 1; border <= (int)(after / 50); border++)
+        {
+            if (border % 2 != 0)
+                obtained.Add(DrawGachaCardByRarity(gacha, "rarity_4", null, bonus.switchFixedBonusWeight));
+            else
+            {
+                var pickups = (gacha.gachaPickups ?? []).Where(p => p.gachaPickupType == "normal").Select(p => p.cardId).Distinct().ToArray();
+                if (pickups.Length == 0 || pickups.Any(id => cards.GetCardRarityType(id) != "rarity_4" || !gacha.gachaDetails.Any(d => d.cardId == id)))
+                    throw new InvalidOperationException("Missing gacha bonus pickup pool.");
+                obtained.Add(pickups[(int)(random ?? Random.Shared).NextInt64(pickups.Length)]);
+            }
+        }
+        point.gachaBonusPoint = after % 100;
+        point.totalGachaBonusPoint += increment;
+        user.Data.userGachaBonusPoints = points.OrderBy(p => p.gachaId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userGachaBonusPoints));
+        return obtained.ToArray();
+    }
 
     private static int GetGachaSpinCount(MasterGachaBehavior? behavior)
     {
@@ -288,7 +340,7 @@ public sealed class GachaService(
         return false;
     }
 
-    private int DrawGachaCardByRarity(MasterGacha? gacha, string? rarityType, Func<int, bool>? cardFilter)
+    private int DrawGachaCardByRarity(MasterGacha? gacha, string? rarityType, Func<int, bool>? cardFilter, bool useFixedBonusWeight = false)
     {
         if (gacha?.gachaDetails == null)
             throw new InvalidOperationException("Missing gacha card pool.");
@@ -297,7 +349,7 @@ public sealed class GachaService(
             .Select(detail => new
             {
                 CardId = detail.cardId,
-                Weight = detail.weight
+                Weight = useFixedBonusWeight ? detail.fixedBonusWeight : detail.weight
             })
             .Where(detail => detail.CardId > 0 && detail.Weight > 0)
             .Where(detail => cardFilter?.Invoke(detail.CardId) != false)
@@ -362,7 +414,7 @@ public sealed class GachaService(
 
         userGacha.count++;
         userGacha.lastSpinAt = now;
-        user.Data.userGachas = gachas.ToArray();
+        user.Data.userGachas = gachas.OrderBy(g => g.gachaId).ThenBy(g => g.gachaBehaviorId).ToArray();
         user.MarkChanged(nameof(SuiteUser.userGachas));
         return userGacha;
     }
@@ -486,28 +538,6 @@ public sealed class GachaService(
         }
         else missions.RecordDuplicateCard(card.characterId);
         return isNew;
-    }
-
-    private UserResource[] GrantInitialCostumes(int cardId)
-    {
-        var owned = new HashSet<int>(user.Data.userCostume3dStatuses?.Select(s => s.costume3dId) ?? []);
-        var obtained = new List<UserResource>();
-        foreach (var costumeId in cards.GetCardCostume3dIds(cardId))
-        {
-            if (!owned.Add(costumeId))
-                continue;
-
-            var resource = new UserResource
-            {
-                resourceId = costumeId,
-                resourceType = "costume_3d",
-                resourceLevel = 0,
-                quantity = 1
-            };
-            resources.Grant(resource);
-            obtained.Add(resource);
-        }
-        return obtained.ToArray();
     }
 
     private UserResource[] GrantGachaCeilItem(MasterGacha? gacha, int gachaId, int quantity)
