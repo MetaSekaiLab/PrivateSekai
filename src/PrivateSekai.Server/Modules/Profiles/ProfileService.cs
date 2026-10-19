@@ -14,6 +14,24 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore thumbnails, MasterData master)
 {
+    public int SaveAvatarMotionFavorites(UserAvatarMotionFavoriteRequest request)
+    {
+        var favorites = request.userAvatarMotionFavorites ?? [];
+        var limit = int.Parse(master.GetTable<MasterConfig>("configs").Rows
+            .Single(c => c.configKey == "favorite_avatar_motion_max_count").value, CultureInfo.InvariantCulture);
+        if (favorites.Any(f => f == null)) return 400;
+        var owned = (user.Data.userAvatarMotions ?? []).Select(m => m.avatarMotionId).ToHashSet();
+        if (favorites.Any(f => !owned.Contains(f.avatarMotionId) || f.num < 0 || f.num >= limit)) return 409;
+        if (favorites.Select(f => f.num).Distinct().Count() != favorites.Length ||
+            favorites.Select(f => f.avatarMotionId).Distinct().Count() != favorites.Length)
+            return 400;
+        if (favorites.Length == 0 && (user.Data.userAvatarMotionFavorites?.Length ?? 0) == 0) return 200;
+        user.Data.userAvatarMotionFavorites = favorites.OrderBy(f => f.avatarMotionId)
+            .Select(f => new UserAvatarMotionFavorite { avatarMotionId = f.avatarMotionId, num = f.num }).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userAvatarMotionFavorites));
+        return 200;
+    }
+
     public void SaveConfig(PostUserConfigRequest request)
     {
         if (request.defaultMusicType == null && request.isDisplayLoginStatus == null && request.friendRequestScope == null)

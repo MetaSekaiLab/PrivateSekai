@@ -30,6 +30,7 @@ internal static class Program
         MusicVideoChecks.Run();
         UserConfigChecks.Run();
         ProfileChecks.Run();
+        AvatarMotionFavoriteChecks.Run();
         LoginStatusChecks.Run();
         FriendChecks.Run();
         FriendFavoriteChecks.Run();

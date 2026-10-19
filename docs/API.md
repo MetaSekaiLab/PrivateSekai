@@ -710,6 +710,19 @@ Client 操作为 `stamp-favorite-save`，发送时填入当前账号，不改共
 
 证据为 `PatchUserStampFavoriteAPI`、`ScreenLayerStampSetting.CreateRequest` / `OnClickItem` 的调用链、dump 请求模型与官方请求及 Suite 回读。
 
+## PATCH `/api/user/{userId}/avatar-motion-favorite`
+
+- Path 为当前账号 `userId`，无 query。Body 使用 `UserAvatarMotionFavoriteRequest.userAvatarMotionFavorites`，每项包含动作编号 `avatarMotionId` 和槽位 `num`。
+- 虚拟演出设置页确认时，`VirtualLiveSettingMotionPage.ExecuteAPI` 按当前快捷栏构造完整列表，槽位从 0 开始；已有动作可交换位置。成功回调合并 `UserAvatarMotionFavoriteResponse.updatedResources` 并重建设置页。演出动作选择器按 `num` 排序取前 5 项，再查询动作 master。
+- 列表整体替换，未提交项删除；响应和持久记录按动作 ID 升序排列，保留指定槽位，允许空槽。非空请求重复保存仍刷新完整 `userAvatarMotionFavorites`；清空已有列表返回空数组，重复清空省略该刷新字段。
+- 空数组、缺失列表均表示清空；Client 将 null 列表编码为缺失字段。只改变快捷栏，不改变持有动作或消耗资源。
+- `favorite_avatar_motion_max_count` 当前为 5，合法槽位为 0～4。未持有／未知／零编号动作、负数或越界槽位返回 409；合法动作和槽位范围内的重复动作、重复位置返回 400。错误体均为 `ClientErrorResponse`，空 `errorCode` 和 `errorMessage`，拒绝时整体保留原配置。
+- 组合错误先检查持有和位置范围，再检查重复：未持有且重复返回 409；六项列表含槽位 5 返回 409，六项全部位于 0～4 则因重复返回 400。不能仅按列表长度决定错误码。
+
+证据：`PatchUserAvatorMotionFavoriteAPI.Execute`（RVA `0x6185ffc`，PATCH）、请求／响应 dump 契约、设置页的 `ExecuteAPI`（RVA `0x4e28ccc`）和交换逻辑、`VirtualLiveAvatarMotionLiveSelector.CreateCellList`（RVA `0x6446438`）及 master 配置。Client 操作为 `avatar-motion-favorite-save`；Server 使用本人用户事务，复制请求记录，编码失败回滚。
+
+业务检查覆盖完整五槽、替换、末槽、清空、错误组合和回滚；真实 HTTP 检查覆盖协议、刷新字段、持久化和拒绝时状态不变。23 组官方样本重放通过，比较完整业务响应、动作持有和快捷栏增量，以及独立会话回读的关联任务。未启动实际游戏。
+
 ## PUT `/api/user/{userId}/shop/{shopId}/item/{shopItemId}`
 
 > 审计版本: jp-6.5.5

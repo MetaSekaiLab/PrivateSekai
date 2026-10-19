@@ -102,6 +102,7 @@ AccountReadHttpChecks.WriteTemplates(directory);
 LiveHttpChecks.WriteBoostMaster(directory);
 FriendMissionHttpChecks.WriteMaster(directory);
 BeginnerCompletionHttpChecks.WriteMaster(directory);
+AvatarMotionFavoriteHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -189,6 +190,11 @@ if (args is ["--replay-friend-favorite", var friendFavoriteManifest, var friendF
 {
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, friendFavoriteMaster));
     builder.Services.AddSingleton(FriendFavoriteReplay.Clock(friendFavoriteManifest));
+}
+if (args is ["--replay-avatar-motion-favorite", var motionManifest, var motionMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, motionMaster));
+    builder.Services.AddSingleton(AvatarMotionFavoriteReplay.Clock(motionManifest));
 }
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
@@ -392,6 +398,11 @@ try
     {
         using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await FriendFavoriteReplay.Run(client, readback, store, friendFavoritePath, friendFavoriteOutput);
+        return;
+    }
+    if (args is ["--replay-avatar-motion-favorite", var motionPath, _, var motionOutput])
+    {
+        await AvatarMotionFavoriteReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, motionPath, motionOutput);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -678,6 +689,7 @@ try
     await HomeHttpChecks.Run(client, store, directory, Check);
     await FriendMissionHttpChecks.Run(client, store, Check);
     await FriendFavoriteHttpChecks.Run(client, config, store, directory, Check);
+    await AvatarMotionFavoriteHttpChecks.Run(client, config, store, directory, Check);
     await BeginnerCompletionHttpChecks.Run(client, store, Check);
     await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);
