@@ -1,5 +1,6 @@
 extern alias game;
 
+using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
 using game::Sekai.ApiData;
@@ -9,6 +10,12 @@ namespace PrivateSekai.Modules.Shop;
 
 public sealed class ShopMasterQueries(MasterData master)
 {
+    public MasterVirtualShop? GetVirtualShop(int id) =>
+        master.GetTable<MasterVirtualShop>("virtualShops", s => s.id).FindById(id);
+
+    public IReadOnlyList<MasterVirtualShop> GetVirtualShops() =>
+        master.GetTable<MasterVirtualShop>("virtualShops", s => s.id).Rows;
+
     public MasterStamp? GetStamp(int id) =>
         master.GetTable<MasterStamp>("stamps", s => s.id).FindById(id);
 

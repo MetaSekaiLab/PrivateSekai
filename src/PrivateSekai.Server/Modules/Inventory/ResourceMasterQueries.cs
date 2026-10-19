@@ -11,6 +11,11 @@ namespace PrivateSekai.Modules.Inventory;
 
 public sealed class ResourceMasterQueries(MasterData master)
 {
+    public int[] FindSingleResourceBoxIds(string purpose, string type, int id) =>
+        master.GetTable<MasterResourceBox>("resourceBoxes", b => b.id).Rows
+            .Where(b => b.resourceBoxPurpose == purpose && b.details?.Length == 1 && b.details[0].resourceType == type &&
+                b.details[0].resourceId == id && b.details[0].resourceQuantity == 1).Select(b => b.id).ToArray();
+
     public IReadOnlyList<MasterMusicVocal> GetMasterMusicVocals() =>
         master.GetTable<MasterMusicVocal>("musicVocals", v => v.id).Rows;
 

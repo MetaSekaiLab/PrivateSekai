@@ -138,6 +138,14 @@ bondsExpRateKey.ConstructorArguments.Add(new CustomAttributeArgument(module.Type
 bondsExpRate.CustomAttributes.Add(bondsExpRateKey);
 boostData.Fields.Add(bondsExpRate);
 
+// 官方虚拟商店区分缺失购买次数与显式零值；构建副本保留字段存在性。
+var virtualShopItem = module.GetType("Sekai.UserVirtualShopItem");
+var buyCount = virtualShopItem.Fields.Single(f => f.Name == "buyCount");
+var nullableInt = module.GetType("Sekai.UserAvatarRequest").Fields.Single(f => f.Name == "avatarCostumeId").FieldType;
+if (buyCount.FieldType.FullName != "System.Int32" || nullableInt.FullName != "System.Nullable`1<System.Int32>")
+    throw new InvalidDataException("虚拟商店 dump 已变化，请重新核验购买次数字段。");
+buyCount.FieldType = nullableInt;
+
 // 官方普通演出结算返回本次新成就及奖励；仅补充构建副本。
 var liveClearData = module.GetType("Sekai.UserLiveClearResponse");
 foreach (var (name, elementType) in new[]
@@ -168,6 +176,7 @@ File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(
         "Sekai.UserPresentData: add grantedAt:Int64",
         "Sekai.UserHonor, Sekai.UserProfile: add userId:Int64",
         "Sekai.MasterBoost: add bondsExpRate:Int32",
+        "Sekai.UserVirtualShopItem: buyCount:Int32 -> Nullable<Int32> to preserve optional wire field",
         "Sekai.UserLiveClearResponse: add userMusicAchievements:UserMusicAchievement[], musicAchievementRewards:UserResource[]"
     },
     models = models.Select(t => t.FullName.Replace('/', '+')).Order(StringComparer.Ordinal)

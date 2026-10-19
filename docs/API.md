@@ -2861,3 +2861,17 @@ Client 提供 `honor-mission-receive`；Server 通过用户事务发奖与更新
 Server 已接入首次登录发奖及重复刷新保护，Client 提供对应场景与官方记录重放。奖励按 master 写入邮箱，不直接增加背包；邮箱、登录记录及首次荣誉任务进度在同一用户操作内提交。现有实现只支持已核验的新手及限时赠礼文案，认证、完整 Suite 和首页刷新已返回首次领取状态头；后续日次、跨日推进及活动边界仍待实现与核验。
 
 官方首次刷新样本：普通、新手及两组限时登录记录的 `progress` 均为 1，`receivedAt` 相同，`displayTexts=[]`，保留 `userId`；顶层依次展示普通、新手、限时奖励，后续 suite 按类型及 ID 排列。邮箱新增 10 项，资源种类、ID 和数量与 `login_bonus` 奖励箱展开结果一致；样本中赠礼有效期为发放后 30 天，`seq` 等于有符号 64 位最大值减 `grantedAt`。首次与重复刷新均更新 `lastLoginAt`；重复刷新顶层 `userLoginBonuses=[]`，已保存登录记录及邮箱不变。`X-Login-Bonus-Status` 在首次刷新前为 true，刷新后为 false。首次及重复样本的登录记录、邮箱、荣誉任务和玩家数据范围重放无差异；不代表全量背景字段或完整登录周期已对齐。
+
+## POST `/api/user/{userId}/virtual-shop/{virtualShopId}/item/{virtualShopItemId}?costResourceType={costResourceType}`
+
+- Path：当前账号、商店和商品编号；无 body。Query 使用客户端大写枚举 `VIRTUAL_COIN`、`JEWEL` 或 `PAID_JEWEL`，可用价格来自 `virtualShops.virtualShopItems` 的对应可空字段，不能把缺失价格当成免费。
+- 调用时机：虚拟演出商店的购买确认页通过 `VirtualLiveShopExchangeConfirmDialog.ExecuteAPI` 请求。成功后合并 `updatedResources`；后续确认穿戴使用单独的外观保存接口，购买本身不改变当前穿戴。
+- Response：`UserVirtualShopResponse.updatedResources`、`userResources`、`obtainedFirstPurchaseBonusList`。普通外观商品返回实际获得资源和空赠品列表；资源省略零值 `resourceLevel`。刷新包含完整 `userVirtualShops`，保留原有商店、商品顺序，另返回对应持有列表及消耗的钱包字段。
+- 普通一次性商品购买后状态由 `sale` 变为 `sold_out`。已持有物品不能从其他商品入口重复扣款；对应普通入口也更新为售罄。普通商品的 `buyCount` 保持缺失，其他商品原有显式零值仍保留；构建的 dump 副本将该字段修正为可空整数，以区分这两种线上状态。
+- 余额不足返回 409、`errorCode=not_enough_resource`。重复购买、已售罄、销售期已结束或未提供所选价格返回 409、空错误码；不存在的商品或商店返回 404、空错误码。上述错误的 `errorMessage` 均为空。已售罄校验先于余额不足，拒绝后不扣款、不发奖、不改变商品状态。
+
+证据：`PostUserVirtualShopAPI.Execute`（RVA `0x6193cb8`，POST、无 body）及回调、构造函数对消耗类型的枚举转换、购买确认页（RVA `0x4cc7ec0`）、请求响应 dump、嵌套商品 master 与 `virtual_shop_item` 资源盒，以及官方购买和独立会话回读。
+
+Client 操作为 `virtual-shop-purchase`；Server 在同一用户事务中完成扣款、发放和售罄，编码失败整体回滚。16 组官方 HTTP 重放覆盖免费水晶购买服装／配件／动作、虚拟币购买服装／动作，以及重复、余额不足、未提供的消耗、未知编号和过期商品；完整业务响应、相关持有、钱包、全部商店和独立回读一致。付费余额扣除、免费不足时补扣付费、同物品多入口、套装／肤色／荧光棒资源和 SQLite 重启另有本地检查，不作为官方成功样本。
+
+当前完整用例为普通一次性外观商品购买；演出票礼包、首购赠品和可重复购买的消耗品属于独立规则，尚未实现，不进入普通发奖分支。未启动游戏。

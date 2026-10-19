@@ -66,6 +66,12 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
         Check(!expectedSignature.Any(s => s.StartsWith("bondsExpRate:", StringComparison.Ordinal)), "Boost 原始契约前置");
         expectedSignature = expectedSignature.Append("bondsExpRate:System.Int32:bondsExpRate").Order(StringComparer.Ordinal).ToArray();
     }
+    if (type == typeof(Sekai.UserVirtualShopItem))
+    {
+        Check(expectedSignature.Contains("buyCount:System.Int32:buyCount"), "虚拟商店原始契约前置");
+        expectedSignature = expectedSignature.Select(s => s == "buyCount:System.Int32:buyCount"
+            ? "buyCount:System.Nullable`1<System.Int32>:buyCount" : s).ToArray();
+    }
     if (type == typeof(Sekai.UserLiveClearResponse))
     {
         Check(!expectedSignature.Any(s => s.StartsWith("userMusicAchievements:", StringComparison.Ordinal) ||
@@ -121,6 +127,19 @@ Check(JsonSerializer.Deserialize<Sekai.UserPresentData>("{\"presentId\":\"legacy
 var boostWithBonds = JsonSerializer.Deserialize<Sekai.MasterBoost>("{\"costBoost\":1,\"bondsExpRate\":5}", DumpJson.Options)!;
 var restoredBoost = DumpSerializer.Deserialize<Sekai.MasterBoost>(DumpSerializer.Serialize(boostWithBonds));
 Check(restoredBoost.bondsExpRate == 5, "Boost 羁绊经验倍率从 JSON 导入并保留 MessagePack 字段");
+
+foreach (var count in new int?[] { null, 0, 2 })
+{
+    var item = new Sekai.UserVirtualShopItem { virtualShopId = 1, virtualShopItemId = 2, buyCount = count };
+    var itemBytes = DumpSerializer.Serialize(item);
+    using var itemJson = JsonDocument.Parse(MessagePackSerializer.ConvertToJson(itemBytes));
+    Check(itemJson.RootElement.TryGetProperty("buyCount", out var value) == count.HasValue &&
+        (!count.HasValue || value.GetInt32() == count), "虚拟商店购买次数保留缺失、显式零值和正值");
+    Check(DumpSerializer.Deserialize<Sekai.UserVirtualShopItem>(itemBytes).buyCount == count,
+        "虚拟商店可空购买次数MessagePack往返");
+    var imported = JsonSerializer.Deserialize<Sekai.UserVirtualShopItem>(itemJson.RootElement.GetRawText(), DumpJson.Options)!;
+    Check(imported.buyCount == count, "虚拟商店可空购买次数JSON导入");
+}
 
 var liveAchievements = JsonSerializer.Deserialize<Sekai.UserLiveClearResponse>(
     """{"userMusicAchievements":[{"musicId":7,"musicAchievementId":2}],"musicAchievementRewards":[{"resourceType":"coin","quantity":2000}]}""",

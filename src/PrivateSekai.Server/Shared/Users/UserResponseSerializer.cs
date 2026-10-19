@@ -21,6 +21,7 @@ internal static class UserResponseSerializer
                 new EventExchangeFormatter(),
                 new MissionReceiveFormatter(),
                 new CostumeShopFormatter(),
+                new VirtualShopFormatter(),
                 new CharacterMissionFormatter(),
                 new FriendProfileFormatter(),
                 new FieldFilterFormatter<UserFriend>((s, key) => key == "approvedAt" && s.approvedAt == 0),
@@ -145,6 +146,20 @@ internal static class UserResponseSerializer
 
         public UserCostume3DShopResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
             DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserCostume3DShopResponse>().Deserialize(ref reader, DumpSerializer.Options);
+    }
+
+    internal sealed class VirtualShopFormatter : IMessagePackFormatter<UserVirtualShopResponse?>
+    {
+        public void Serialize(ref MessagePackWriter writer, UserVirtualShopResponse? value, MessagePackSerializerOptions options)
+        {
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) => key == "resourceLevel" && r.resourceLevel == 0) },
+                new[] { options.Resolver }));
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserVirtualShopResponse>().Serialize(ref writer, value!, scoped);
+        }
+
+        public UserVirtualShopResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserVirtualShopResponse>().Deserialize(ref reader, DumpSerializer.Options);
     }
 
     internal sealed class ChallengeStartFormatter : IMessagePackFormatter<UserChallengeLiveStartResponse?>

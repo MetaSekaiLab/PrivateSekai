@@ -55,6 +55,11 @@ public sealed class CurrencyResourceHandler : IResourceHandler
                 data.userChargedCurrency.paid = Math.Max(0, Math.Max(0, data.userChargedCurrency.paid) - quantity);
                 user.MarkChanged(nameof(SuiteUser.userChargedCurrency));
                 return data.userChargedCurrency.paid;
+            case "virtual_coin":
+                if (data.userGamedata == null) return 0;
+                data.userGamedata.virtualCoin = Math.Max(0, data.userGamedata.virtualCoin - quantity);
+                user.MarkChanged(nameof(SuiteUser.userGamedata));
+                return data.userGamedata.virtualCoin;
             case "jewel":
                 data.userChargedCurrency ??= new ChargedCurrency { paidUnitPrices = [] };
                 var currency = data.userChargedCurrency;

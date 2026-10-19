@@ -11,7 +11,8 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileResourceHandler : IResourceHandler
 {
-    public IReadOnlyCollection<string> ResourceTypes { get; } = ["costume_3d", "avatar_motion", "stamp"];
+    public IReadOnlyCollection<string> ResourceTypes { get; } =
+        ["costume_3d", "avatar_motion", "avatar_costume", "avatar_accessory", "avatar_coordinate", "avatar_skin_color", "penlight", "stamp"];
 
     public void Grant(UserSession user, UserResource resource)
     {
@@ -49,6 +50,41 @@ public sealed class ProfileResourceHandler : IResourceHandler
                 motions.Add(new UserAvatarMotion { avatarMotionId = resource.resourceId });
                 user.Data.userAvatarMotions = motions.OrderBy(m => m.avatarMotionId).ToArray();
                 user.MarkChanged(nameof(SuiteUser.userAvatarMotions));
+                break;
+            case "avatar_costume":
+                var avatarCostumes = (user.Data.userAvatarCostumes ?? []).ToList();
+                if (avatarCostumes.Any(c => c.avatarCostumeId == resource.resourceId)) return;
+                avatarCostumes.Add(new UserAvatarCostume { avatarCostumeId = resource.resourceId });
+                user.Data.userAvatarCostumes = avatarCostumes.OrderBy(c => c.avatarCostumeId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userAvatarCostumes));
+                break;
+            case "avatar_accessory":
+                var accessories = (user.Data.userAvatarAccessories ?? []).ToList();
+                if (accessories.Any(a => a.avatarAccessoryId == resource.resourceId)) return;
+                accessories.Add(new UserAvatarAccessory { avatarAccessoryId = resource.resourceId });
+                user.Data.userAvatarAccessories = accessories.OrderBy(a => a.avatarAccessoryId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userAvatarAccessories));
+                break;
+            case "avatar_coordinate":
+                var coordinates = (user.Data.userAvatarCoordinates ?? []).ToList();
+                if (coordinates.Any(c => c.avatarCoordinateId == resource.resourceId)) return;
+                coordinates.Add(new UserAvatarCoordinate { avatarCoordinateId = resource.resourceId });
+                user.Data.userAvatarCoordinates = coordinates.OrderBy(c => c.avatarCoordinateId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userAvatarCoordinates));
+                break;
+            case "avatar_skin_color":
+                var colors = (user.Data.userAvatarSkinColors ?? []).ToList();
+                if (colors.Any(c => c.avatarSkinColorId == resource.resourceId)) return;
+                colors.Add(new UserAvatarSkinColor { avatarSkinColorId = resource.resourceId });
+                user.Data.userAvatarSkinColors = colors.OrderBy(c => c.avatarSkinColorId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userAvatarSkinColors));
+                break;
+            case "penlight":
+                var penlights = (user.Data.userPenlights ?? []).ToList();
+                if (penlights.Any(p => p.penlightId == resource.resourceId)) return;
+                penlights.Add(new UserPenlight { penlightId = resource.resourceId });
+                user.Data.userPenlights = penlights.OrderBy(p => p.penlightId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userPenlights));
                 break;
             default:
                 throw new NotSupportedException($"Resource '{resource.resourceType}' cannot be granted.");

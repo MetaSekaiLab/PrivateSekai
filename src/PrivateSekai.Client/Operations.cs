@@ -51,6 +51,7 @@ public static class Operations
         ["boost-item"] = new("POST", "/api/user/{userId}/boost-item", typeof(UserBoostItemRequest), "updatedResources"),
         ["present-receive"] = new("POST", "/api/user/{userId}/present", typeof(UserPresentAPIRequest), "receivedUserPresents"),
         ["shop-purchase"] = new("POST", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
+        ["virtual-shop-purchase"] = new("POST", "/api/user/{userId}/virtual-shop/{virtualShopId}/item/{virtualShopItemId}?costResourceType={costResourceType}", null, "userResources"),
         ["character-costume-save"] = new("PUT", "/api/user/{userId}/character-costume-3d/character/{characterId}/unit/{unit}", typeof(UserCharacterCostume3DRequest), "updatedResources"),
         ["costume-craft"] = new("POST", "/api/user/{userId}/costume-3d-shop/{shopItemId}", null, "updatedResources"),
         ["shop-upgrade"] = new("PUT", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
@@ -154,6 +155,11 @@ public static class Operations
             {
                 if (!Enum.GetNames<UnitType>().Any(u => u.ToUpperInvariant() == pair.Value))
                     throw new InvalidOperationException("组合路径参数须使用客户端枚举的大写名称。");
+            }
+            else if (pair.Key == "costResourceType")
+            {
+                if (pair.Value is not ("VIRTUAL_COIN" or "JEWEL" or "PAID_JEWEL"))
+                    throw new InvalidOperationException("虚拟商店消耗类型须使用客户端的大写枚举。");
             }
             else if (pair.Key == "opponentUserId")
             {

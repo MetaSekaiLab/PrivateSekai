@@ -9,8 +9,26 @@ using PrivateSekai.Transport;
 
 namespace PrivateSekai.Modules.Shop;
 
-public sealed class ShopController(UserOperation operations, UserSession user, ShopService shop, MissionMasterQueries missionMaster) : PrskController
+public sealed class ShopController(UserOperation operations, UserSession user, ShopService shop, MissionMasterQueries missionMaster,
+    VirtualShopService virtualShop) : PrskController
 {
+    [HttpPost("api/user/{userId}/virtual-shop/{virtualShopId}/item/{virtualShopItemId}")]
+    public IActionResult PurchaseVirtualItem(long userId, int virtualShopId, int virtualShopItemId, [FromQuery] string costResourceType)
+    {
+        var status = 200;
+        var encoded = operations.Execute(userId, () =>
+        {
+            var result = virtualShop.Purchase(virtualShopId, virtualShopItemId, costResourceType);
+            status = result.Status;
+            return status == 200 ? (object)new UserVirtualShopResponse
+            {
+                updatedResources = user.BuildRefresh(), userResources = result.Rewards, obtainedFirstPurchaseBonusList = []
+            } : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = result.ErrorCode, ErrorMessage = "" };
+        });
+        Response.StatusCode = status;
+        return Encoded(encoded);
+    }
+
     [HttpPut("api/user/{userId}/event-exchange/{eventExchangeId}")]
     public IActionResult ExchangeEvent(long userId, int eventExchangeId, [FromQuery] int count)
     {

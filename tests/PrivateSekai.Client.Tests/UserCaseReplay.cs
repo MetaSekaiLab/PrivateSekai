@@ -10,14 +10,17 @@ using PrivateSekai.Protocol;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
 
-internal static class AvatarMotionFavoriteReplay
+internal static class UserCaseReplay
 {
-    private static readonly string[] Fields = ["userAvatarMotionFavorites", "userAvatarMotions", "userBeginnerMissionV2s", "userMissionStatuses"];
+    public static readonly string[] MotionFields = ["userAvatarMotionFavorites", "userAvatarMotions", "userBeginnerMissionV2s", "userMissionStatuses"];
+    public static readonly string[] VirtualShopFields = ["userVirtualShops", "userAvatarMotions", "userAvatarCostumes", "userAvatarAccessories",
+        "userAvatarCoordinates", "userAvatarSkinColors", "userPenlights", "userAvatar", "userChargedCurrency", "userGamedata",
+        "userBeginnerMissionV2s", "userMissionStatuses"];
 
     public static TimeProvider Clock(string manifest) => new ReplayClock(Timestamp(Load(Load(manifest)["records"]![0]!["record"]!.GetValue<string>())));
 
     public static async Task Run(TargetConfiguration config, MemoryUserStore store, TimeProvider time,
-        string directory, string manifest, string output)
+        string directory, string manifest, string output, string operation, string[] fields)
     {
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
             throw new InvalidOperationException("重放输出目录必须为空。");
@@ -27,9 +30,9 @@ internal static class AvatarMotionFavoriteReplay
         {
             var official = Load(fixture!["record"]!.GetValue<string>());
             var rejected = official["status"]?.GetValue<string>() == "stopped";
-            if (official["operation"]?.GetValue<string>() != "avatar-motion-favorite-save" || official["before"] == null ||
+            if (official["operation"]?.GetValue<string>() != operation || official["before"] == null ||
                 (rejected && (official["failurePhase"]?.GetValue<string>() != "request" || official["lastHttpStatus"] == null)))
-                throw new InvalidOperationException("需要已收到明确业务响应及写前状态的动作收藏样本。");
+                throw new InvalidOperationException("需要已收到明确业务响应及写前状态的对应操作样本。");
             ((ReplayClock)time).Timestamp = Timestamp(official);
             var before = official["before"]!.DeepClone();
             Remap(before);
@@ -39,12 +42,16 @@ internal static class AvatarMotionFavoriteReplay
             data.userRegistration.userId = 1;
             store.Save(1, new UserState { Data = data });
             using var client = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
-            var body = fixture["requestBody"]!.DeepClone().AsObject();
+            var body = fixture["requestBody"]?.DeepClone().AsObject();
             if (!JsonNode.DeepEquals(client.Redactor.Clean(body), official["request"]))
                 throw new InvalidOperationException("请求与官方样本不一致。");
+            foreach (var key in new[] { "args", "query" })
+                if (!JsonNode.DeepEquals(fixture[key] ?? new JsonObject(), official[key] ?? new JsonObject()))
+                    throw new InvalidOperationException("路径或查询参数与官方样本不一致。");
             await client.Send(new() { Operation = "system" });
             JsonNode? response;
-            try { response = await client.Send(new() { Operation = "avatar-motion-favorite-save", Body = body }); }
+            Remap(body);
+            try { response = await client.Send(new() { Operation = operation, Body = body, Args = Map(fixture["args"]), Query = Map(fixture["query"]) }); }
             catch (ClientFailure) { response = client.LastResponse?.DeepClone(); }
             var status = client.LastHttpStatus;
             var expected = (rejected ? official["lastResponse"] : official["response"])!.DeepClone();
@@ -59,21 +66,21 @@ internal static class AvatarMotionFavoriteReplay
                 ["label"] = fixture["label"]!.DeepClone(),
                 ["httpStatusMatches"] = status == (rejected ? official["lastHttpStatus"] : official["httpStatus"])!.GetValue<int>(),
                 ["responseDifferences"] = Differences(client.Redactor.Clean(expected), client.Redactor.Clean(response)),
-                ["readbackDifferences"] = Differences(client.Redactor.Clean(Select(expectedAfter)), client.Redactor.Clean(Select(after))),
+                ["readbackDifferences"] = Differences(client.Redactor.Clean(Select(expectedAfter, fields)), client.Redactor.Clean(Select(after, fields))),
                 ["deltaDifferences"] = Differences(
-                    Comparison.DeltaView(Comparison.Diff(client.Redactor.Clean(Select(before)), client.Redactor.Clean(Select(expectedAfter)))),
-                    Comparison.DeltaView(Comparison.Diff(client.Redactor.Clean(Select(before)), client.Redactor.Clean(Select(after))))),
+                    Comparison.DeltaView(Comparison.Diff(client.Redactor.Clean(Select(before, fields)), client.Redactor.Clean(Select(expectedAfter, fields)))),
+                    Comparison.DeltaView(Comparison.Diff(client.Redactor.Clean(Select(before, fields)), client.Redactor.Clean(Select(after, fields))))),
                 ["expectedResponse"] = client.Redactor.Clean(expected),
                 ["actualResponse"] = client.Redactor.Clean(response)
             };
             results.Add(report);
-            JsonFiles.Write(Path.Combine(output, "avatar-motion-favorite-compare.json"), results);
+            JsonFiles.Write(Path.Combine(output, "case-compare.json"), results);
             if (!report["httpStatusMatches"]!.GetValue<bool>() || report.Where(pair => pair.Key.EndsWith("Differences", StringComparison.Ordinal))
                 .Any(pair => pair.Value!.AsArray().Count != 0))
-                throw new InvalidOperationException("动作快捷栏完整响应或独立回读有差异，见报告。");
-            Console.WriteLine($"动作快捷栏 {fixture["label"]!.GetValue<string>()} 对拍通过。");
+                throw new InvalidOperationException("完整响应或独立回读有差异，见报告。");
+            Console.WriteLine($"{operation} {fixture["label"]!.GetValue<string>()} 对拍通过。");
         }
-        Console.WriteLine($"动作快捷栏共 {results.Count} 组完整响应及独立回读对拍通过。");
+        Console.WriteLine($"{operation} 共 {results.Count} 组完整响应及独立回读对拍通过。");
     }
 
     private static void Remap(JsonNode? node)
@@ -85,7 +92,10 @@ internal static class AvatarMotionFavoriteReplay
             else Remap(obj[key]);
     }
 
-    private static JsonObject Select(JsonNode? source) => new(Fields.Where(field => source?.AsObject().ContainsKey(field) == true)
+    private static Dictionary<string, string> Map(JsonNode? node) => node?.AsObject()
+        .ToDictionary(pair => pair.Key, pair => pair.Value!.GetValue<string>()) ?? [];
+
+    private static JsonObject Select(JsonNode? source, string[] fields) => new(fields.Where(field => source?.AsObject().ContainsKey(field) == true)
         .Select(field => KeyValuePair.Create(field, source![field]?.DeepClone())));
 
     private static JsonArray Differences(JsonNode? expected, JsonNode? actual) =>

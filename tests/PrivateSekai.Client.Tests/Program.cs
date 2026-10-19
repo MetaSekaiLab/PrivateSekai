@@ -103,6 +103,7 @@ LiveHttpChecks.WriteBoostMaster(directory);
 FriendMissionHttpChecks.WriteMaster(directory);
 BeginnerCompletionHttpChecks.WriteMaster(directory);
 AvatarMotionFavoriteHttpChecks.WriteMaster(directory);
+VirtualShopHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -194,7 +195,12 @@ if (args is ["--replay-friend-favorite", var friendFavoriteManifest, var friendF
 if (args is ["--replay-avatar-motion-favorite", var motionManifest, var motionMaster, _])
 {
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, motionMaster));
-    builder.Services.AddSingleton(AvatarMotionFavoriteReplay.Clock(motionManifest));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(motionManifest));
+}
+if (args is ["--replay-virtual-shop", var virtualManifest, var virtualMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, virtualMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(virtualManifest));
 }
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
@@ -402,7 +408,14 @@ try
     }
     if (args is ["--replay-avatar-motion-favorite", var motionPath, _, var motionOutput])
     {
-        await AvatarMotionFavoriteReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, motionPath, motionOutput);
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, motionPath, motionOutput,
+            "avatar-motion-favorite-save", UserCaseReplay.MotionFields);
+        return;
+    }
+    if (args is ["--replay-virtual-shop", var virtualPath, _, var virtualOutput])
+    {
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, virtualPath, virtualOutput,
+            "virtual-shop-purchase", UserCaseReplay.VirtualShopFields);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -690,6 +703,7 @@ try
     await FriendMissionHttpChecks.Run(client, store, Check);
     await FriendFavoriteHttpChecks.Run(client, config, store, directory, Check);
     await AvatarMotionFavoriteHttpChecks.Run(client, config, store, directory, Check);
+    await VirtualShopHttpChecks.Run(client, config, store, directory, Check);
     await BeginnerCompletionHttpChecks.Run(client, store, Check);
     await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);
