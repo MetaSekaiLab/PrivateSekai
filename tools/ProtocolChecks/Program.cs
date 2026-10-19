@@ -51,9 +51,9 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
                 ? "musicVoiceId:System.Int32:musicVocalId" : s)
             .Append("isAuto:System.Boolean:isAuto").Order(StringComparer.Ordinal).ToArray();
     }
-    if (type == typeof(Sekai.UserHonor) || type == typeof(Sekai.UserProfile))
+    if (type == typeof(Sekai.UserHonor) || type == typeof(Sekai.UserProfile) || type == typeof(Sekai.UserFixCostume))
     {
-        Check(!expectedSignature.Any(s => s.StartsWith("userId:", StringComparison.Ordinal)), "称号及名片原始契约前置");
+        Check(!expectedSignature.Any(s => s.StartsWith("userId:", StringComparison.Ordinal)), "用户所属字段原始契约前置");
         expectedSignature = expectedSignature.Append("userId:System.Int64:userId").Order(StringComparer.Ordinal).ToArray();
     }
     if (type == typeof(Sekai.UserPresentData))
@@ -116,6 +116,11 @@ foreach (var auto in new[] { false, true })
 }
 var legacyStatus = JsonSerializer.Deserialize<Sekai.UserChallengeLivePlayStatus>("{\"musicVoiceId\":7}", DumpJson.Options)!;
 Check(legacyStatus.musicVoiceId == 7, "本地旧 JSON 的 CLR 字段别名仍可读取");
+
+var fixedCostume = JsonSerializer.Deserialize<Sekai.UserFixCostume>(
+    """{"userId":9007199254740993,"characterId":21,"unit":"piapro"}""", DumpJson.Options)!;
+Check(DumpSerializer.Deserialize<Sekai.UserFixCostume>(DumpSerializer.Serialize(fixedCostume)).userId == 9007199254740993L,
+    "服装固定记录从JSON导入后保留64位所属用户");
 
 var presentWithTime = JsonSerializer.Deserialize<Sekai.UserPresentData>(
     "{\"presentId\":\"fixture\",\"grantedAt\":1790999824218}", DumpJson.Options)!;

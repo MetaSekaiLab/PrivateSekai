@@ -115,8 +115,8 @@ grantedAtKey.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSys
 grantedAt.CustomAttributes.Add(grantedAtKey);
 presentData.Fields.Add(grantedAt);
 
-// 官方称号及名片包含所属用户；仅补充构建副本。
-foreach (var name in new[] { "Sekai.UserHonor", "Sekai.UserProfile" })
+// 官方称号、名片及服装固定记录包含所属用户；仅补充构建副本。
+foreach (var name in new[] { "Sekai.UserHonor", "Sekai.UserProfile", "Sekai.UserFixCostume" })
 {
     var type = module.GetType(name);
     if (type.Fields.Any(f => f.Name == "userId"))
@@ -174,7 +174,7 @@ File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(
     {
         "Sekai.UserChallengeLivePlayStatus: musicVoiceId key -> musicVocalId; add isAuto:Boolean",
         "Sekai.UserPresentData: add grantedAt:Int64",
-        "Sekai.UserHonor, Sekai.UserProfile: add userId:Int64",
+        "Sekai.UserHonor, Sekai.UserProfile, Sekai.UserFixCostume: add userId:Int64",
         "Sekai.MasterBoost: add bondsExpRate:Int32",
         "Sekai.UserVirtualShopItem: buyCount:Int32 -> Nullable<Int32> to preserve optional wire field",
         "Sekai.UserLiveClearResponse: add userMusicAchievements:UserMusicAchievement[], musicAchievementRewards:UserResource[]"

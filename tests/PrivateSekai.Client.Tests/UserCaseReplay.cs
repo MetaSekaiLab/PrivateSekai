@@ -17,11 +17,14 @@ internal static class UserCaseReplay
         "userAvatarCoordinates", "userAvatarSkinColors", "userPenlights", "userAvatar", "userChargedCurrency", "userGamedata",
         "userBeginnerMissionV2s", "userMissionStatuses"];
     public static readonly string[] AvatarFields = [.. VirtualShopFields, "userAvatarMotionFavorites"];
+    public static readonly string[] CostumeFixFields = ["userFixCostumes", "userCharacterCostume3ds", "userCostume3dStatuses",
+        "userCostume3dShopItems", "userMaterials", "userChargedCurrency", "userGamedata", "userBeginnerMissionV2s",
+        "userMissionStatuses", "userCharacterMissions", "userCharacterMissionStatuses"];
 
     public static TimeProvider Clock(string manifest) => new ReplayClock(Timestamp(Load(Load(manifest)["records"]![0]!["record"]!.GetValue<string>())));
 
     public static async Task Run(TargetConfiguration config, MemoryUserStore store, TimeProvider time,
-        string directory, string manifest, string output, string operation, string[] fields)
+        string directory, string manifest, string output, string operation, string[] fields, string? secondaryOperation = null)
     {
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
             throw new InvalidOperationException("重放输出目录必须为空。");
@@ -30,8 +33,9 @@ internal static class UserCaseReplay
         foreach (var fixture in Load(manifest)["records"]!.AsArray())
         {
             var official = Load(fixture!["record"]!.GetValue<string>());
+            var action = official["operation"]?.GetValue<string>();
             var rejected = official["status"]?.GetValue<string>() == "stopped";
-            if (official["operation"]?.GetValue<string>() != operation || official["before"] == null ||
+            if ((action != operation && (secondaryOperation == null || action != secondaryOperation)) || official["before"] == null ||
                 (rejected && (official["failurePhase"]?.GetValue<string>() != "request" || official["lastHttpStatus"] == null)))
                 throw new InvalidOperationException("需要已收到明确业务响应及写前状态的对应操作样本。");
             ((ReplayClock)time).Timestamp = Timestamp(official);
@@ -52,7 +56,7 @@ internal static class UserCaseReplay
             await client.Send(new() { Operation = "system" });
             JsonNode? response;
             Remap(body);
-            try { response = await client.Send(new() { Operation = operation, Body = body, Args = Map(fixture["args"]), Query = Map(fixture["query"]) }); }
+            try { response = await client.Send(new() { Operation = action!, Body = body, Args = Map(fixture["args"]), Query = Map(fixture["query"]) }); }
             catch (ClientFailure) { response = client.LastResponse?.DeepClone(); }
             var status = client.LastHttpStatus;
             var expected = (rejected ? official["lastResponse"] : official["response"])!.DeepClone();
@@ -79,7 +83,7 @@ internal static class UserCaseReplay
             if (!report["httpStatusMatches"]!.GetValue<bool>() || report.Where(pair => pair.Key.EndsWith("Differences", StringComparison.Ordinal))
                 .Any(pair => pair.Value!.AsArray().Count != 0))
                 throw new InvalidOperationException("完整响应或独立回读有差异，见报告。");
-            Console.WriteLine($"{operation} {fixture["label"]!.GetValue<string>()} 对拍通过。");
+            Console.WriteLine($"{action} {fixture["label"]!.GetValue<string>()} 对拍通过。");
         }
         Console.WriteLine($"{operation} 共 {results.Count} 组完整响应及独立回读对拍通过。");
     }

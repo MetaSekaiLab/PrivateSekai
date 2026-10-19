@@ -54,6 +54,8 @@ public static class Operations
         ["virtual-shop-purchase"] = new("POST", "/api/user/{userId}/virtual-shop/{virtualShopId}/item/{virtualShopItemId}?costResourceType={costResourceType}", null, "userResources"),
         ["avatar-save"] = new("PUT", "/api/user/{userId}/avatar", typeof(UserAvatarRequest), "updatedResources"),
         ["penlight-save"] = new("PATCH", "/api/user/{userId}/penlight/{penlightId}", typeof(UserPenlightRequest), "updatedResources"),
+        ["costume-fix"] = new("PUT", "/api/user/{userId}/fix-costume/{characterId}", typeof(UserFixCostumeRequest), "updatedResources"),
+        ["costume-unfix"] = new("DELETE", "/api/user/{userId}/fix-costume/{characterId}", null, "updatedResources"),
         ["character-costume-save"] = new("PUT", "/api/user/{userId}/character-costume-3d/character/{characterId}/unit/{unit}", typeof(UserCharacterCostume3DRequest), "updatedResources"),
         ["costume-craft"] = new("POST", "/api/user/{userId}/costume-3d-shop/{shopItemId}", null, "updatedResources"),
         ["shop-upgrade"] = new("PUT", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),

@@ -11,6 +11,25 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class CostumeService(UserSession user, CostumeMasterQueries master, MissionService missions, ResourceService resources)
 {
+    public int Fix(int characterId, string? unit)
+    {
+        if (unit == null) return 400;
+        user.Data.userFixCostumes = (user.Data.userFixCostumes ?? []).Where(c => c.characterId != characterId)
+            .Append(new UserFixCostume { userId = user.UserId, characterId = characterId, unit = unit })
+            .OrderBy(c => c.characterId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userFixCostumes));
+        return 200;
+    }
+
+    public int Unfix(int characterId)
+    {
+        var current = user.Data.userFixCostumes ?? [];
+        if (!current.Any(c => c.characterId == characterId)) return 404;
+        user.Data.userFixCostumes = current.Where(c => c.characterId != characterId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userFixCostumes));
+        return 200;
+    }
+
     public (UserResource[] Costs, UserResource[] Rewards, UserCharacterMissionV2Status[] Achieved) Craft(int shopItemId)
     {
         var definition = master.GetShopItem(shopItemId) ?? throw new ArgumentException("Unknown costume shop item.");

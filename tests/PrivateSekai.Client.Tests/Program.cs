@@ -207,6 +207,11 @@ if (args is ["--replay-avatar" or "--replay-penlight", var settingsManifest, var
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, settingsMaster));
     builder.Services.AddSingleton(UserCaseReplay.Clock(settingsManifest));
 }
+if (args is ["--replay-costume-fix", var fixManifest, var fixMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, fixMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(fixManifest));
+}
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
@@ -427,6 +432,12 @@ try
     {
         await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, settingsPath, settingsOutput,
             args[0] == "--replay-avatar" ? "avatar-save" : "penlight-save", UserCaseReplay.AvatarFields);
+        return;
+    }
+    if (args is ["--replay-costume-fix", var fixPath, _, var fixOutput])
+    {
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, fixPath, fixOutput,
+            "costume-fix", UserCaseReplay.CostumeFixFields, "costume-unfix");
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -717,6 +728,7 @@ try
     await VirtualShopHttpChecks.Run(client, config, store, directory, Check);
     await AvatarHttpChecks.Run(client, config, store, directory, Check);
     await PenlightHttpChecks.Run(client, config, store, directory, Check);
+    await CostumeFixHttpChecks.Run(client, config, store, directory, Check);
     await BeginnerCompletionHttpChecks.Run(client, store, Check);
     await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);

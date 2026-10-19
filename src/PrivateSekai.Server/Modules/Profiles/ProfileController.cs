@@ -12,6 +12,42 @@ namespace PrivateSekai.Modules.Profiles;
 public sealed class ProfileController(UserOperation operations, UserSession user, ProfileService profiles, CostumeService costumes,
     MissionMasterQueries missionMaster) : PrskController
 {
+    [HttpPut("api/user/{userId}/fix-costume/{characterId}")]
+    [PrskEmptyErrorResponse]
+    public IActionResult FixCostume(long userId, int characterId, [FromBody] UserFixCostumeRequest request)
+    {
+        if (request.unit != null && request.unit is not ("none" or "piapro" or "theme_park" or "idol" or "street" or "light_sound" or "school_refusal"))
+        {
+            Response.StatusCode = 400;
+            return Encoded([]);
+        }
+        var status = 200;
+        var bytes = operations.Execute(userId, () =>
+        {
+            status = costumes.Fix(characterId, request.unit);
+            return status == 200
+                ? (object)new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() }
+                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
+        });
+        Response.StatusCode = status;
+        return Encoded(bytes);
+    }
+
+    [HttpDelete("api/user/{userId}/fix-costume/{characterId}")]
+    public IActionResult UnfixCostume(long userId, int characterId)
+    {
+        var status = 200;
+        var bytes = operations.Execute(userId, () =>
+        {
+            status = costumes.Unfix(characterId);
+            return status == 200
+                ? (object)new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() }
+                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
+        });
+        Response.StatusCode = status;
+        return Encoded(bytes);
+    }
+
     [HttpPatch("api/user/{userId}/penlight/{penlightId}")]
     public IActionResult SavePenlight(long userId, int penlightId, [FromBody] UserPenlightRequest request)
     {

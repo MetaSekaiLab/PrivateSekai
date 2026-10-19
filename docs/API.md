@@ -2900,3 +2900,18 @@ Server 在本人用户事务中复制并保存外观，编码失败整体回滚�
 证据：`PatchUserPenlight.Execute`（RVA `0x6186c54`，PATCH）、回调（RVA `0x6186df4`）、请求响应 dump、`VirtualLiveSettingPenlightPage.OnClickCell`（RVA `0x4e29dc4`）和 `ExecuteAPI`（RVA `0x4e29fac`），以及实际购买第二支后的官方切换、重复、false 请求与独立会话回读。
 
 Server 使用本人事务保存选择，编码失败回滚。12 组官方样本重放通过，9 次成功、3 次 404；比较完整业务响应、荧光棒、外观、持有、钱包、商店、快捷动作和任务状态。Client 提供 `--replay-penlight`。第三支荧光棒切换、原存储顺序、SQLite 重启、对方存档不变和 Client 请求编号校验另有本地检查。未启动实际游戏。
+
+## PUT / DELETE `/api/user/{userId}/fix-costume/{characterId}`
+
+- Path：当前账号及角色编号；无 query。PUT body 使用 `UserFixCostumeRequest`，只有 `unit`；DELETE 无 body。Client 操作为 `costume-fix`、`costume-unfix`。
+- 调用时机：普通服装设置中的 MV 固定开关发生变化后，`CostumeSelectMVSettings.Submit` 调用 PUT 或 DELETE。`isMVOnlyDeckEdit` 分支写客户端本地缓存，不调用这两个接口。
+- 固定记录只保存角色和组合，不复制头饰、发型或服装编号。客户端 `GetCostumeFixUnit` 读取记录，`CostumeUtility.GetWearingCostumeFromCard` 在角色 `supportUnitType=full` 且未忽略固定设置时选择该组合的当前服装；`none` 表示无组合覆盖。
+- PUT 按角色替换或新增一条记录，按 `characterId` 升序返回完整 `userFixCostumes`，重复保存也刷新。条目保留 `userId`、`characterId`、`unit`。原 dump 未声明所属用户字段，构建副本已补充 `Int64 userId`，原始 dump 不改。
+- 接受的组合为小写 `none`、`piapro`、`theme_park`、`idol`、`street`、`light_sound`、`school_refusal`。`any`、未知值、大写和空字符串返回 400、零字节正文；缺失组合返回 400 的 `ClientErrorResponse`，错误码和消息为空。当前 dump 编码省略 null 字段，得到同一缺失字段请求。
+- 官方 PUT 接受角色 0、未知正编号，以及未配置对应组合服装的角色；不增加 master 存在、所属组合或服装持有校验。此处描述接口存储行为，不表示未知角色具有正常游戏入口。
+- DELETE 按角色移除固定记录，成功返回剩余完整列表，删除最后一项返回空数组。未固定、重复取消返回 404，错误码和消息为空；已保存的未知角色同样可以成功取消。拒绝不会部分更新其他角色。
+- 两个成功响应均为 `SuiteUserCommonResponse.updatedResources`，回调合并用户状态；客户端 `UpdateFixCostume` 将非 null 列表整体替换。固定操作不改变各组合的服装配置、持有和任务进度。
+
+证据：`PutUserFixCostumeAPI.Execute`（RVA `0x619aa20`）及回调、`DeleteUserFixCostumeAPI.Execute`（RVA `0x6178308`）及回调、dump 契约、`CostumeSelectMVSettings.Setup`／`Submit`（RVA `0x62ef99c`／`0x62effb0`）、`UserDataManager.GetCostumeFixUnit`／`IsFixCostume`／`UpdateFixCostume`、服装选择方法（RVA `0x4d7f270`），以及官方写入和独立会话回读。
+
+Server 在本人事务中完成固定及取消，编码失败回滚。28 组官方样本重放通过，21 次成功、5 次 400、2 次 404；比较完整业务响应、固定记录、各组合服装、持有、材料、钱包和关联任务。Client 的 `--replay-costume-fix` 成对重放两个操作；SQLite 重启、其他账号不变及两种操作的编码失败另有本地检查。未启动实际游戏。
