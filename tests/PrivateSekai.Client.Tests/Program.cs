@@ -185,6 +185,11 @@ if (args is ["--replay-friend", var friendManifest, var friendMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, friendMaster));
     builder.Services.AddSingleton(FriendReplay.Clock(friendManifest));
 }
+if (args is ["--replay-friend-favorite", var friendFavoriteManifest, var friendFavoriteMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, friendFavoriteMaster));
+    builder.Services.AddSingleton(FriendFavoriteReplay.Clock(friendFavoriteManifest));
+}
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
@@ -381,6 +386,12 @@ try
         using var peer = new ProtocolClient(new TargetConfiguration { BaseUrl = config.BaseUrl, UserId = 2 },
             directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
         await FriendReplay.Run(client, readback, peer, store, friendPath, friendOutput);
+        return;
+    }
+    if (args is ["--replay-friend-favorite", var friendFavoritePath, _, var friendFavoriteOutput])
+    {
+        using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+        await FriendFavoriteReplay.Run(client, readback, store, friendFavoritePath, friendFavoriteOutput);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -666,6 +677,7 @@ try
     await LiveHttpChecks.Run(client, config, store, directory, Check);
     await HomeHttpChecks.Run(client, store, directory, Check);
     await FriendMissionHttpChecks.Run(client, store, Check);
+    await FriendFavoriteHttpChecks.Run(client, config, store, directory, Check);
     await BeginnerCompletionHttpChecks.Run(client, store, Check);
     await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);
@@ -804,6 +816,17 @@ try
     Check(Comparison.Diff(Comparison.DeltaView(changes), Comparison.DeltaView(other)).Count == 0, "初始库存不同但消耗一致");
     Check(Comparison.Diff(JsonNode.Parse("{}"), JsonNode.Parse("""{"x":null}""")).Single().Kind == "added", "区分缺失与 null");
     var redactor = new Redactor();
+    var favoriteRequest = JsonNode.Parse("""{"favoriteUserIds":[2147483648,9223372036854775807,2147483648]}""")!.AsObject();
+    var favoriteBytes = Operations.EncodeBody(Operations.All["friend-favorite-save"], favoriteRequest)!;
+    Check(DumpSerializer.Deserialize<PutUserFriendFavoriteRequest>(favoriteBytes).favoriteUserIds
+        .SequenceEqual(new long[] { 2147483648, long.MaxValue, 2147483648 }),
+        "好友收藏使用 dump 契约并保留 64 位编号和重复项");
+    var favoriteCleaned = redactor.Clean(favoriteRequest)!;
+    Check(favoriteCleaned["favoriteUserIds"]!.AsArray().Count == 3 &&
+        favoriteCleaned["favoriteUserIds"]!.AsArray().All(id => id!.GetValue<string>() == "<redacted>"),
+        "好友收藏记录隐藏账号编号并保留请求数组结构");
+    Check(favoriteRequest["favoriteUserIds"]![0]!.GetValue<long>() == 2147483648,
+        "好友收藏脱敏不修改实际发送请求");
     foreach (var serverType in new[] { "udp", "multi", "cheerful", "virtual_live", "streaming_live", "rank_match", "mysekai", "custom_multi" })
         Check(Operations.Path(Operations.All["diarkis-auth"], new() { Args = new() { ["diarkisServerType"] = serverType } }, 1)
             == "/api/user/1/diarkis-auth?diarkisServerType=" + serverType, "实时认证支持客户端枚举中的服务器类型");

@@ -32,6 +32,7 @@ internal static class Program
         ProfileChecks.Run();
         LoginStatusChecks.Run();
         FriendChecks.Run();
+        FriendFavoriteChecks.Run();
         FriendMissionChecks.Run();
         BeginnerMissionResponseChecks.Run();
         BeginnerCompletionChecks.Run();

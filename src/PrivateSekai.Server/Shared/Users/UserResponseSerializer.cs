@@ -3,6 +3,7 @@ extern alias game;
 using System;
 using System.Linq;
 using game::Sekai;
+using game::Sekai.RankLive;
 using MessagePack;
 using MessagePack.Formatters;
 using MessagePack.Resolvers;
@@ -41,6 +42,12 @@ internal static class UserResponseSerializer
                     (s.grantedAt > 0 && ((key == "resourceId" && s.resourceId == 0) || (key == "resourceLevel" && s.resourceLevel == 0) ||
                         (key == "expiredAt" && s.expiredAt == 0)))),
                 new FieldFilterFormatter<UserGamedata>((s, key) => key == "lastLoginAt" && s.lastLoginAt == 0),
+                new FieldFilterFormatter<UserGachaCeilExchange>((s, key) =>
+                    key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0),
+                new FieldFilterFormatter<UserHomeBanner>((s, key) =>
+                    (key == "fromUserRank" && s.fromUserRank == 0) || (key == "toUserRank" && s.toUserRank == 0) ||
+                    (key == "transitionDestinationId" && s.transitionDestinationId == 0)),
+                new FieldFilterFormatter<UserRankMatchResult>((s, key) => key == "rankMatchSeasonId" && s.rankMatchSeasonId == 0),
                 new FieldFilterFormatter<UserHonorMission>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserHomeRefreshResponse>((s, key) => key == "shouldReflectWebPayment" && !s.shouldReflectWebPayment),
                 new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" &&

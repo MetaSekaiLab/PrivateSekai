@@ -24,7 +24,8 @@ public sealed class Redactor
             foreach (var pair in obj) result[pair.Key] = Clean(pair.Value, pair.Key);
             return result;
         }
-        if (node is JsonArray array) return new JsonArray(array.Select(n => Clean(n)).ToArray());
+        if (node is JsonArray array)
+            return new JsonArray(array.Select(n => Clean(n, field == "favoriteUserIds" ? "targetUserId" : "")).ToArray());
         if (node is JsonValue value)
         {
             if (value.TryGetValue<string>(out var text))

@@ -9,6 +9,21 @@ namespace PrivateSekai.Modules.Home;
 
 public sealed class FriendService(UserSession user, FriendMasterQueries master)
 {
+    public void SaveFavorites(PutUserFriendFavoriteRequest request)
+    {
+        var selected = (request.favoriteUserIds ?? throw new ArgumentException("Missing favorite user list.")).ToHashSet();
+        var changed = false;
+        foreach (var friend in user.Data.userFriends ?? [])
+        {
+            if (friend.friendStatus != "friend") continue;
+            var favorite = selected.Contains(friend.opponentUserId);
+            if (friend.isFavorite == favorite) continue;
+            friend.isFavorite = favorite;
+            changed = true;
+        }
+        if (changed) user.MarkChanged(nameof(SuiteUser.userFriends));
+    }
+
     public (int Status, string ErrorCode) Remove(UserState peer, string type)
     {
         var peerId = peer.Data.userRegistration!.userId;

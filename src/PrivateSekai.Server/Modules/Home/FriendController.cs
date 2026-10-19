@@ -11,6 +11,22 @@ namespace PrivateSekai.Modules.Home;
 
 public sealed class FriendController(UserOperation operations, UserSession user, FriendService friends, FriendQueries queries) : PrskController
 {
+    [HttpPut("api/user/{userId}/friend")]
+    public IActionResult SaveFavorites(long userId, [FromBody] PutUserFriendFavoriteRequest request)
+    {
+        if (request.favoriteUserIds == null)
+        {
+            Response.StatusCode = 400;
+            return Encoded(operations.Query(userId, () => new System.Collections.Generic.Dictionary<string, string>
+                { ["favoriteUserIds"] = "NotNull" }));
+        }
+        return Encoded(operations.Execute(userId, () =>
+        {
+            friends.SaveFavorites(request);
+            return new SuiteUserCommonResponse { updatedResources = queries.Project(user.BuildRefresh()) };
+        }));
+    }
+
     [HttpPost("api/user/{userId}/friend/{opponentUserId}")]
     public IActionResult SendRequest(long userId, long opponentUserId, [FromBody] PostUserFriendRequest request) =>
         Apply(userId, opponentUserId, peer => friends.Request(peer, request));

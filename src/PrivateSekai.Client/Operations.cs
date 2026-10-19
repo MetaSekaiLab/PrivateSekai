@@ -37,6 +37,7 @@ public static class Operations
         ["friend-cancel"] = new("DELETE", "/api/user/{userId}/friend/{opponentUserId}?type=cancel_friend_request", null, "updatedResources"),
         ["friend-reject"] = new("DELETE", "/api/user/{userId}/friend/{opponentUserId}?type=reject_friend_request", null, "updatedResources"),
         ["friend-release"] = new("DELETE", "/api/user/{userId}/friend/{opponentUserId}?type=release_friend", null, "updatedResources"),
+        ["friend-favorite-save"] = new("PUT", "/api/user/{userId}/friend", typeof(PutUserFriendFavoriteRequest), "updatedResources"),
         ["suite-break-time"] = new("GET", "/api/suite/user/{userId}/parts?name=user_event_break_time", null, "now", false),
         ["account-restrict-info"] = new("GET", "/api/user/{userId}/restrict-info", null, "isRestrictDeviceTransfer", false),
         ["inherit-set"] = new("PUT", "/api/user/{userId}/inherit", typeof(UserIPassInheritRequest), "userInherit"),

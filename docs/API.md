@@ -2770,6 +2770,19 @@ Normal FC 补充：同一普通结算入口中，首次成功手动完成某曲 
 
 6 组 HTTP 对拍覆盖正常取消／拒绝／删除及无关系时重复操作，另 6 组覆盖表中的错方向或错状态动作，验证错误体、好友字段存在性、完整列表和双方回读。在线状态的回读排除规则与上一节相同。自身或未知目标、非法 type、过期关系及双方记录不一致仍待采样；实现对未确认的状态组合保留不支持分支。
 
+## PUT `/api/user/{userId}/friend`
+
+- Path：当前账号的 64 位 `userId`；无 query。Body 使用 dump 契约 `PutUserFriendFavoriteRequest`，字段 `favoriteUserIds` 为 64 位整数列表，允许空列表。
+- 调用时机：好友列表中切换收藏标记，退出列表时，`FriendListState.OnExit` 收集当前全部收藏编号，经 `FriendUtility.FavoriteAsync` 保存。请求表示完整收藏集合；未提交的已确认好友会取消收藏。
+- 仅更新本人 `friendStatus=friend` 记录的 `isFavorite`，保持列表顺序、消息、关系和业务时间；不修改对方。申请中、本人、未知或已删除的编号被忽略，不建立关系。重复编号和编号顺序不改变结果，空列表清空收藏。
+- Response：`SuiteUserCommonResponse.updatedResources`。收藏确有变化时返回全部 `userFriends`，包括未改动的好友和申请记录；重复保存或无有效变化时省略该字段。客户端合并刷新；常规刷新关联的好友新手任务照常更新。
+- 缺失 `favoriteUserIds` 返回 400，响应为 `{"favoriteUserIds":"NotNull"}`，不修改状态、不触发任务刷新。Client 的 null 列表按 dump 编码省略字段，同样被拒绝；空列表才表示清空。
+- 删除关系会移除对应收藏记录，重新成为好友后默认未收藏；向收藏接口提交旧编号不会恢复关系。
+
+证据：`PutUserFriendFavoriteAPI.Execute` 的 PUT 方法和路径、`PutUserFriendFavoriteRequest.favoriteUserIds` 的 MessagePack key、`OnReceivecResponce` 的资源合并，以及 `FriendListState.OnExit`、`FriendUtility.FavoriteAsync` 的完整列表调用链。官方样本覆盖单个／批量收藏、替换、清空、重复、重复编号、申请双方、未知／自身／非正编号、删除后旧编号、重新添加及空值校验。
+
+Client 操作为 `friend-favorite-save`，捕获隐藏列表中的账号编号，保留数组结构且不修改实际请求。Server 使用本人事务，只在收藏变化时标记好友资源。业务检查另覆盖 300 位好友、对方存档不变和编码失败回滚；真实 HTTP 检查覆盖加密请求、刷新字段、持久化与校验失败。24 组官方样本重放通过，比较完整业务响应、好友列表增量及独立会话回读中的好友和关联任务状态。为对齐该响应，共用编码补齐可兑换余量、横幅等级范围／目标 ID、排位赛季 ID 的零值省略规则，并检查保留非零值。未启动实际游戏。
+
 ## POST `/api/user/{userId}/config`
 
 - Path：当前 `userId`；无 query。Body：`PostUserConfigRequest`，包含可空的 `defaultMusicType`、`isDisplayLoginStatus`、`friendRequestScope`。未指定或 null 表示保留原值，false 则明确关闭在线状态显示。
