@@ -21,6 +21,7 @@ internal static class UserResponseSerializer
                 new EventExchangeFormatter(),
                 new MissionReceiveFormatter(),
                 new GachaFormatter(),
+                new GachaExchangeFormatter(),
                 new CostumeShopFormatter(),
                 new VirtualShopFormatter(),
                 new CharacterMissionFormatter(),
@@ -129,6 +130,20 @@ internal static class UserResponseSerializer
 
         public UserGachaResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
             DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserGachaResponse>().Deserialize(ref reader, DumpSerializer.Options);
+    }
+
+    internal sealed class GachaExchangeFormatter : IMessagePackFormatter<UserGachaCeilExchangeResponse?>
+    {
+        public void Serialize(ref MessagePackWriter writer, UserGachaCeilExchangeResponse? value, MessagePackSerializerOptions options)
+        {
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) => key == "resourceLevel" && r.resourceLevel == 0) },
+                new[] { options.Resolver }));
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserGachaCeilExchangeResponse>().Serialize(ref writer, value!, scoped);
+        }
+
+        public UserGachaCeilExchangeResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserGachaCeilExchangeResponse>().Deserialize(ref reader, DumpSerializer.Options);
     }
 
     internal sealed class CharacterMissionFormatter : IMessagePackFormatter<UserCharacterMissionV2Response?>

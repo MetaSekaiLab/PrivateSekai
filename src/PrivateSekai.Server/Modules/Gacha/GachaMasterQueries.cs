@@ -22,13 +22,13 @@ public sealed class GachaMasterQueries(MasterData master)
         return GetMasterGacha(gachaId)?.gachaCeilItemId ?? 0;
     }
 
-    public MasterGachaCeilExchange? GetMasterGachaCeilExchange(int gachaCeilExchangeId)
+    public (MasterGachaCeilExchangeSummary Summary, MasterGachaCeilExchange Exchange)? FindGachaCeilExchange(int gachaCeilExchangeId)
     {
         foreach (var summary in master.GetTable<MasterGachaCeilExchangeSummary>("gachaCeilExchangeSummaries", s => s.id).Rows)
         {
             var exchange = summary.gachaCeilExchanges?.FirstOrDefault(e => e.id == gachaCeilExchangeId);
             if (exchange != null)
-                return exchange;
+                return (summary, exchange);
         }
 
         return null;

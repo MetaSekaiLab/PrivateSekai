@@ -81,6 +81,13 @@ foreach (var name in manifest.RootElement.GetProperty("models").EnumerateArray()
             .Append("musicAchievementRewards:Sekai.UserResource[]:musicAchievementRewards")
             .Order(StringComparer.Ordinal).ToArray();
     }
+    if (type == typeof(Sekai.MasterGachaCeilExchange))
+    {
+        Check(!expectedSignature.Any(s => s.StartsWith("startAt:", StringComparison.Ordinal) ||
+            s.StartsWith("endAt:", StringComparison.Ordinal)), "天井兑换开放期原始契约前置");
+        expectedSignature = expectedSignature.Append("startAt:System.Int64:startAt")
+            .Append("endAt:System.Int64:endAt").Order(StringComparer.Ordinal).ToArray();
+    }
     Check(expectedSignature.SequenceEqual(Signature(compiledTypes[source.FullName])), $"元数据及已核验修正 {type.FullName}");
     foreach (var union in DumpContract.For(type).Unions)
     {

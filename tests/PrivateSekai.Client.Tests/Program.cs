@@ -225,6 +225,11 @@ if (args is ["--replay-gacha", var gachaManifest, var gachaMaster, _])
     builder.Services.AddSingleton<GachaReplayRandom>();
     builder.Services.AddSingleton<Random>(services => services.GetRequiredService<GachaReplayRandom>());
 }
+if (args is ["--replay-gacha-exchange", var gachaExchangeManifest, var gachaExchangeMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, gachaExchangeMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(gachaExchangeManifest));
+}
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
@@ -463,6 +468,12 @@ try
     {
         await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, gachaPath, gachaOutput,
             "gacha-draw", UserCaseReplay.GachaFields, prepare: app.Services.GetRequiredService<GachaReplayRandom>().Prepare);
+        return;
+    }
+    if (args is ["--replay-gacha-exchange", var gachaExchangePath, _, var gachaExchangeOutput])
+    {
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, gachaExchangePath, gachaExchangeOutput,
+            "gacha-exchange", UserCaseReplay.GachaExchangeFields);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -745,6 +756,7 @@ try
     Check(shopRequests.SequenceEqual(new (string, long?)[] { ("POST", 0), ("PUT", 0), ("POST", 0) }),
         "商店购买与升级分别使用 POST 和 PUT，均不发送 body");
     await GachaHttpChecks.Run(client, config, store, directory, Check);
+    await GachaHttpChecks.RunExchange(client, config, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);
     await HomeHttpChecks.Run(client, store, directory, Check);
     await FriendMissionHttpChecks.Run(client, store, Check);

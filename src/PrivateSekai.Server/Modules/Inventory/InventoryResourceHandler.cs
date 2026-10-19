@@ -118,9 +118,7 @@ public sealed class InventoryResourceHandler : IResourceHandler
         }
 
         material.quantity = quantity < 0 ? Math.Max(0, material.quantity + quantity) : material.quantity + quantity;
-        user.Data.userMaterials = quantity < 0
-            ? materials.OrderBy(m => m.materialId).ToArray()
-            : materials.ToArray();
+        user.Data.userMaterials = materials.OrderBy(m => m.materialId).ToArray();
         user.MarkChanged(nameof(SuiteUser.userMaterials));
         return material.quantity;
     }

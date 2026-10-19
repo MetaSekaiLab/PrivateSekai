@@ -146,6 +146,19 @@ if (buyCount.FieldType.FullName != "System.Int32" || nullableInt.FullName != "Sy
     throw new InvalidDataException("虚拟商店 dump 已变化，请重新核验购买次数字段。");
 buyCount.FieldType = nullableInt;
 
+// 当前天井兑换条目包含独立开放期；仅补充构建副本。
+var gachaCeilExchange = module.GetType("Sekai.MasterGachaCeilExchange");
+foreach (var name in new[] { "startAt", "endAt" })
+{
+    if (gachaCeilExchange.Fields.Any(f => f.Name == name))
+        throw new InvalidDataException("天井兑换 dump 已变化，请重新核验开放期字段。");
+    var field = new FieldDefinition(name, FieldAttributes.Public, module.TypeSystem.Int64);
+    var key = new CustomAttribute(vocalKey.Constructor);
+    key.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, name));
+    field.CustomAttributes.Add(key);
+    gachaCeilExchange.Fields.Add(field);
+}
+
 // 官方普通演出结算返回本次新成就及奖励；仅补充构建副本。
 var liveClearData = module.GetType("Sekai.UserLiveClearResponse");
 foreach (var (name, elementType) in new[]
@@ -177,6 +190,7 @@ File.WriteAllText(Path.Combine(output, "models.json"), JsonSerializer.Serialize(
         "Sekai.UserHonor, Sekai.UserProfile, Sekai.UserFixCostume: add userId:Int64",
         "Sekai.MasterBoost: add bondsExpRate:Int32",
         "Sekai.UserVirtualShopItem: buyCount:Int32 -> Nullable<Int32> to preserve optional wire field",
+        "Sekai.MasterGachaCeilExchange: add startAt:Int64, endAt:Int64",
         "Sekai.UserLiveClearResponse: add userMusicAchievements:UserMusicAchievement[], musicAchievementRewards:UserResource[]"
     },
     models = models.Select(t => t.FullName.Replace('/', '+')).Order(StringComparer.Ordinal)

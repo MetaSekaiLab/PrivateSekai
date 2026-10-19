@@ -18,7 +18,9 @@ internal static class GachaHttpChecks
              {"id":2,"startAt":1,"endAt":2,"gachaBehaviors":[{"id":4,"spinCount":1,"costResourceType":"jewel","costResourceQuantity":100}]}]
             """);
         File.WriteAllText(Path.Combine(directory, "gachaCeilExchangeSummaries.json"), """
-            [{"id":1,"gachaCeilExchanges":[{"id":1,"resourceBoxId":31,"exchangeLimit":2,
+            [{"id":1,"startAt":1,"gachaCeilExchanges":[{"id":1,"startAt":1,"resourceBoxId":31,"exchangeLimit":2,
+              "gachaCeilExchangeCost":{"resourceType":"gacha_ceil_item","gachaCeilItemId":9,"quantity":1}}]},
+             {"id":2,"startAt":1,"endAt":2,"gachaCeilExchanges":[{"id":2,"startAt":1,"endAt":2,"resourceBoxId":31,
               "gachaCeilExchangeCost":{"resourceType":"gacha_ceil_item","gachaCeilItemId":9,"quantity":1}}]}]
             """);
         var path = Path.Combine(directory, "resourceBoxes.json");
@@ -79,6 +81,60 @@ internal static class GachaHttpChecks
             check(failed && invalid.LastHttpStatus == entry.Status && invalid.LastResponse?["errorCode"]?.GetValue<string>() == entry.Code &&
                 invalid.LastResponse?["errorMessage"]?.GetValue<string>() == "", "抽卡加密HTTP返回官方错误分类与空文案");
             check(DumpSerializer.Serialize(store.Read(1)!.Data).SequenceEqual(before), "抽卡HTTP拒绝整体回滚并保留待刷新字段");
+        }
+        await client.Send(new() { Operation = "system" });
+        store.Save(1, original);
+    }
+
+    public static async Task RunExchange(ProtocolClient client, TargetConfiguration config, MemoryUserStore store,
+        string directory, Action<bool, string> check)
+    {
+        var original = store.Read(1)!;
+        var state = store.Read(1)!;
+        state.Data.userGachaCeilItems = [new() { gachaCeilItemId = 9, quantity = 3 }];
+        state.Data.userGachaCeilExchanges = [];
+        state.Data.userMaterials = [];
+        state.Data.refreshableTypes = [];
+        store.Save(1, state);
+        ScenarioStep Exchange(int id, int count) => new() { Operation = "gacha-exchange", Body = new()
+        {
+            ["gachaCeilExchangeRequest"] = new JsonObject { ["gachaExchangeId"] = id, ["exchangeCount"] = count }
+        } };
+        var response = await client.Send(Exchange(1, 2));
+        check(response["obtainUserResources"]![0]!["quantity"]!.GetValue<int>() == 10 &&
+            response["obtainUserResources"]![0]!["resourceLevel"] == null &&
+            response["updatedResources"]!["userGachaCeilExchanges"]![0]!["exchangeRemaining"]!.GetValue<int>() == 0,
+            "批量天井兑换返回总获得量、省略零等级，售罄响应保留零剩余次数");
+        using (var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray()))
+        {
+            await readback.Send(new() { Operation = "system" });
+            var suite = await readback.Suite();
+            check(suite["userGachaCeilItems"]![0]!["quantity"]!.GetValue<int>() == 1 &&
+                suite["userMaterials"]![0]!["quantity"]!.GetValue<int>() == 10 &&
+                suite["userGachaCeilExchanges"]![0]!["exchangeStatus"]!.GetValue<string>() == "not_exchangeable",
+                "独立会话回读同时保存天井扣除、材料到账和售罄状态");
+        }
+        state = store.Read(1)!;
+        state.Data.refreshableTypes = ["userMaterials"];
+        store.Save(1, state);
+        var before = DumpSerializer.Serialize(state.Data);
+        foreach (var entry in new[]
+        {
+            (Step: Exchange(1, 1), Status: 409, Code: ""), (Step: Exchange(0, 1), Status: 404, Code: ""),
+            (Step: Exchange(1, 0), Status: 400, Code: ""), (Step: Exchange(1, -1), Status: 400, Code: ""),
+            (Step: Exchange(2, 1), Status: 409, Code: "invalid_term"),
+            (Step: new ScenarioStep { Operation = "gacha-exchange", Body = new() }, Status: 500, Code: "")
+        })
+        {
+            using var invalid = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+            await invalid.Send(new() { Operation = "system" });
+            var failed = false;
+            try { await invalid.Send(entry.Step); } catch (ClientFailure) { failed = true; }
+            check(failed && invalid.LastHttpStatus == entry.Status && (entry.Status == 500 ?
+                invalid.LastResponse?["byteCount"]?.GetValue<int>() == 0 :
+                invalid.LastResponse?["errorCode"]?.GetValue<string>() == entry.Code && invalid.LastResponse?["errorMessage"]?.GetValue<string>() == ""),
+                "天井兑换HTTP按官方样本返回非法数量、未知、过期、售罄与缺失详情错误");
+            check(DumpSerializer.Serialize(store.Read(1)!.Data).SequenceEqual(before), "兑换HTTP拒绝保留完整库存、剩余次数及待刷新字段");
         }
         await client.Send(new() { Operation = "system" });
         store.Save(1, original);

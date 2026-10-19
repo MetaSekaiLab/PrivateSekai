@@ -55,14 +55,24 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
     /// 执行抽卡天井道具兑换。客户端在抽卡页头部或抽卡兑换页确认兑换后提交兑换配置，成功后合并用户资源差异，并展示获得资源、服装或饰品等结果。
     /// </summary>
     [HttpPut("api/user/{userId:long}/exchange/gacha-ceil-item")]
+    [PrskEmptyErrorResponse]
     public IActionResult HandleGachaCeilItemExchange(long userId, [FromBody] UserGachaCeilExchangeRequest request)
     {
-        return Encoded(operations.Execute(userId, () =>
+        try
         {
-            var response = gacha.ExchangeGachaCeilItem(request);
-            response.updatedResources = user.BuildRefresh();
-            return response;
-        }));
+            return Encoded(operations.Execute(userId, () =>
+            {
+                var response = gacha.ExchangeGachaCeilItem(request);
+                response.updatedResources = user.BuildRefresh();
+                return response;
+            }));
+        }
+        catch (GachaRequestRejectedException error)
+        {
+            Response.StatusCode = error.Status;
+            return Encoded(error.Status == 500 ? [] : operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = (uint)error.Status, ErrorCode = error.Code, ErrorMessage = "" }));
+        }
     }
 
     /// <summary>

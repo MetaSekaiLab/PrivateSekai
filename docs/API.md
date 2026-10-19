@@ -1774,6 +1774,18 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 - `Sekai.ScreenLayerGachaItemExchange.OnClickCell` / `OnClickDialogOK`: 抽卡兑换页选择项目并确认兑换的入口。
 - `Sekai.ScreenLayerGachaItemExchange.OnFinishedExchangeResultDialog`: 兑换结果后续处理入口。
 
+### 指定数量材料兑换核验
+
+当前确认的材料兑换发送 `gachaCeilExchangeRequest`，包含兑换 ID、数量及两个替代费用字段；不使用替代票时两字段均为零，无 query 参数。服务端检查兑换组和具体条目的开放期，起点包含、终点不包含；当前 master 条目新增的 `startAt`、`endAt` 仅补入协议构建副本，原始 dump 保留。
+
+费用和资源箱奖励均按兑换数量结算。限量条目扣除剩余次数，耗尽后保存 `not_exchangeable`；不限量条目不补造剩余次数字段。获得材料按编号排序，资源等级为零时省略 `resourceLevel`，非零等级保留。
+
+已核实的错误：未知兑换 ID 返回 404，非正数量返回 400，缺少请求详情返回空正文 500，过期返回 409 `invalid_term`，超过剩余次数返回空错误码的 409，余额不足返回 409 `not_enough_resource`。次数校验先于余额检查；拒绝请求不改变库存、兑换次数或待刷新字段。
+
+证据包括 `GachaHeaderExtension.ExecuteExchange`、`GachaCeilTicketExchangeConfirmDialog.Setup`、`ScreenLayerGachaItemExchange.OnClickDialogOK`、`TimeUtility.IsWithinTime`，以及当前 master 和 11 组官方请求。两次成功分别覆盖限量单次、不限量批量兑换，另有九次拒绝；完整响应、相关状态增量和独立登录回读均无差异。比较包含抽卡、货币、材料、卡牌及角色任务字段，并新增兑换次数和替代票使用记录；未运行游戏界面。
+
+本地另验证最后一次兑换售罄、开放期边界、资源处理或响应编码失败回滚、账号隔离及数据库重启。替代票抵扣按客户端滑块计算：每张减少主费用的 `substituteQuantity`，票券只扣实际张数，累计不得超过替代上限；此分支有客户端与本地验证，尚无官方成功样本。卡牌兑换和 `gachaCeilExchangeIds` 批量入口不属于上述材料兑换结论。
+
 ## PUT `/api/user/{userId}/rate-choice-gacha-wish`
 
 > 审计版本: jp-6.5.5

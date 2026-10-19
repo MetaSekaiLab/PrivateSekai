@@ -103,35 +103,37 @@ public sealed class GachaService(
 
     public UserGachaCeilExchangeResponse ExchangeGachaCeilItem(UserGachaCeilExchangeRequest request)
     {
-        var exchangeRequest = request.gachaCeilExchangeRequest;
-        if (exchangeRequest == null || exchangeRequest.gachaExchangeId <= 0 || exchangeRequest.exchangeCount <= 0)
-        {
-            return new UserGachaCeilExchangeResponse
-            {
-                obtainUserResources = []
-            };
-        }
-
-        var exchange = master.GetMasterGachaCeilExchange(exchangeRequest.gachaExchangeId);
-        var resourceBoxId = exchange?.resourceBoxId ?? 0;
-        var obtainResources = resourceMaster.BuildResourcesFromBox("gacha_ceil_exchange", resourceBoxId);
-
+        var exchangeRequest = request.gachaCeilExchangeRequest ?? throw new GachaRequestRejectedException(500);
+        if (exchangeRequest.exchangeCount <= 0) throw new GachaRequestRejectedException(400);
+        var found = master.FindGachaCeilExchange(exchangeRequest.gachaExchangeId) ?? throw new GachaRequestRejectedException(404);
+        var exchange = found.Exchange;
+        if (!WithinPeriod(found.Summary.startAt, found.Summary.endAt) || !WithinPeriod(exchange.startAt, exchange.endAt))
+            throw new GachaRequestRejectedException(409, "invalid_term");
         var exchangeCount = exchangeRequest.exchangeCount;
-        ConsumeGachaCeilExchangeCost(exchange?.gachaCeilExchangeCost, exchangeCount);
-        ConsumeGachaCeilSubstituteCost(exchange, exchangeRequest);
-
-        var exchangeId = exchangeRequest.gachaExchangeId;
-        var exchangeLimit = exchange?.exchangeLimit ?? 0;
-        UpsertUserGachaCeilExchange(exchangeId, exchangeLimit, exchangeCount);
-
+        var saved = user.Data.userGachaCeilExchanges?.SingleOrDefault(e => e.gachaCeilExchangeId == exchange.id);
+        if ((saved != null && saved.exchangeStatus != "exchangeable") ||
+            (exchange.exchangeLimit > 0 && exchangeCount > (saved?.exchangeRemaining ?? exchange.exchangeLimit)))
+            throw new GachaRequestRejectedException(409);
+        var costs = BuildGachaCeilCosts(exchange, exchangeRequest);
+        foreach (var cost in costs)
+            if (GetExchangeBalance(cost.resourceType!, cost.resourceId) < cost.quantity)
+                throw new GachaRequestRejectedException(409, "not_enough_resource");
+        var obtainResources = resourceMaster.BuildResourcesFromBox("gacha_ceil_exchange", exchange.resourceBoxId);
+        if (obtainResources.Length == 0) throw new InvalidOperationException("Missing gacha exchange rewards.");
+        foreach (var cost in costs) resources.Consume(cost.resourceType, cost.resourceId, cost.quantity);
+        if (exchangeRequest.substituteCostCount > 0)
+            UpsertUserGachaCeilExchangeSubstituteCost(exchange.id, exchangeRequest.substituteCostCount);
+        UpsertUserGachaCeilExchange(exchange.id, exchange.exchangeLimit, exchangeCount);
         var obtained = new Dictionary<(string? Type, int Id, int Level), UserResource>();
-        for (var i = 0; i < exchangeCount; i++)
+        foreach (var resource in obtainResources)
         {
-            foreach (var resource in obtainResources)
+            var reward = new UserResource
             {
-                resources.Grant(resource);
-                AddObtainedResource(obtained, resource);
-            }
+                resourceType = resource.resourceType, resourceId = resource.resourceId, resourceLevel = resource.resourceLevel,
+                quantity = checked(resource.quantity * exchangeCount)
+            };
+            resources.Grant(reward);
+            AddObtainedResource(obtained, reward);
         }
 
         return new UserGachaCeilExchangeResponse
@@ -139,6 +141,8 @@ public sealed class GachaService(
             obtainUserResources = obtained.Values.ToArray()
         };
     }
+
+    private bool WithinPeriod(long start, long end) => start <= user.Now && (end == 0 ? start != 0 : user.Now < end);
 
     private static int GetGachaSpinCount(MasterGachaBehavior? behavior)
     {
@@ -362,36 +366,40 @@ public sealed class GachaService(
         return userGacha;
     }
 
-    private void ConsumeGachaCeilExchangeCost(MasterGachaCeilExchangeCost? cost, int exchangeCount)
+    private UserResource[] BuildGachaCeilCosts(MasterGachaCeilExchange exchange, UserGachaCeilItemExchangeRequest request)
     {
-        if (cost == null || exchangeCount <= 0)
-            return;
-
+        var cost = exchange.gachaCeilExchangeCost ?? throw new InvalidOperationException("Missing gacha exchange cost.");
         var resourceId = cost.resourceId > 0 ? cost.resourceId : cost.gachaCeilItemId;
-        var quantity = cost.quantity * exchangeCount;
-        ConsumeExchangeResource(cost.resourceType, resourceId, quantity);
+        if (cost.quantity <= 0 || resourceId <= 0 || string.IsNullOrEmpty(cost.resourceType))
+            throw new InvalidOperationException("Invalid gacha exchange cost.");
+        var primary = new UserResource { resourceType = cost.resourceType, resourceId = resourceId, quantity = checked(cost.quantity * request.exchangeCount) };
+        var costs = new List<UserResource> { primary };
+        if (request.substituteCostCount < 0) throw new GachaRequestRejectedException(400);
+        if (request.substituteCostCount > 0)
+        {
+            var substitute = exchange.substituteCosts?.SingleOrDefault(c => c.id == request.gachaCeilExchangeSubstituteCostId)
+                ?? throw new GachaRequestRejectedException(400);
+            var used = user.Data.userGachaCeilExchangeSubstituteCosts?.SingleOrDefault(c => c.gachaCeilExchangeId == exchange.id)?.substituteCostUsedCount ?? 0;
+            if (request.substituteCostCount > exchange.substituteLimit - used) throw new GachaRequestRejectedException(409);
+            primary.quantity = checked(primary.quantity - substitute.substituteQuantity * request.substituteCostCount);
+            if (primary.quantity < 0) throw new GachaRequestRejectedException(400);
+            costs.Add(new UserResource { resourceType = substitute.resourceType, resourceId = substitute.resourceId, quantity = request.substituteCostCount });
+        }
+        return costs.GroupBy(c => (c.resourceType, c.resourceId)).Select(g => new UserResource
+            { resourceType = g.Key.resourceType, resourceId = g.Key.resourceId, quantity = g.Sum(c => c.quantity) }).ToArray();
     }
 
-    private void ConsumeGachaCeilSubstituteCost(MasterGachaCeilExchange? exchange, UserGachaCeilItemExchangeRequest request)
+    private long GetExchangeBalance(string type, int id) => type switch
     {
-        if (exchange?.substituteCosts == null ||
-            request.gachaCeilExchangeSubstituteCostId <= 0 ||
-            request.substituteCostCount <= 0)
-        {
-            return;
-        }
-
-        foreach (var entry in exchange.substituteCosts)
-        {
-            if (entry.id != request.gachaCeilExchangeSubstituteCostId)
-                continue;
-
-            var quantity = entry.substituteQuantity * request.substituteCostCount;
-            ConsumeExchangeResource(entry.resourceType, entry.resourceId, quantity);
-            UpsertUserGachaCeilExchangeSubstituteCost(request.gachaExchangeId, request.substituteCostCount);
-            return;
-        }
-    }
+        "gacha_ceil_item" => user.Data.userGachaCeilItems?.SingleOrDefault(i => i.gachaCeilItemId == id)?.quantity ?? 0,
+        "gacha_ticket" => user.Data.userGachaTickets?.SingleOrDefault(i => i.gachaTicketId == id)?.quantity ?? 0,
+        "material" => user.Data.userMaterials?.SingleOrDefault(i => i.materialId == id)?.quantity ?? 0,
+        "practice_ticket" => user.Data.userPracticeTickets?.SingleOrDefault(i => i.practiceTicketId == id)?.quantity ?? 0,
+        "coin" => user.Data.userGamedata?.coin ?? 0,
+        "paid_jewel" => user.Data.userChargedCurrency?.paid ?? 0,
+        "jewel" => (long)(user.Data.userChargedCurrency?.free ?? 0) + (user.Data.userChargedCurrency?.paid ?? 0),
+        _ => throw new NotSupportedException("Unsupported gacha exchange cost.")
+    };
 
     private void UpsertUserGachaCeilExchange(int gachaCeilExchangeId, int exchangeLimit, int exchangeCount)
     {
@@ -412,7 +420,7 @@ public sealed class GachaService(
 
         if (exchangeLimit > 0)
         {
-            userExchange.exchangeRemaining = Math.Max(0, userExchange.exchangeRemaining - exchangeCount);
+            userExchange.exchangeRemaining -= exchangeCount;
             userExchange.exchangeStatus = userExchange.exchangeRemaining == 0 ? "not_exchangeable" : "exchangeable";
         }
 
@@ -517,15 +525,6 @@ public sealed class GachaService(
         return [reward];
     }
 
-    private void ConsumeExchangeResource(string? type, int id, int quantity)
-    {
-        if (quantity <= 0)
-            return;
-
-        if (type is "material" or "coin" or "jewel" or "paid_jewel"
-            or "gacha_ceil_item" or "gacha_ticket" or "practice_ticket")
-            resources.Consume(type, id, quantity);
-    }
 }
 
 public sealed class GachaRequestRejectedException(int status, string code = "") : Exception
