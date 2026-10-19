@@ -186,6 +186,12 @@ public sealed class ProtocolClient : IDisposable
                     throw new InvalidOperationException("个人资料请求的账号与当前目标不一致。");
                 body["userId"] = UserId;
             }
+            if (step.Operation == "avatar-save" && body != null)
+            {
+                if (body["userId"] != null && body["userId"]!.GetValue<long>() != UserId)
+                    throw new InvalidOperationException("外观请求的账号与当前目标不一致。");
+                body["userId"] = UserId;
+            }
             if (step.Operation == "deck-save" && body?["userDeckUpdates"] is JsonArray deckUpdates)
                 foreach (var update in deckUpdates)
                 {

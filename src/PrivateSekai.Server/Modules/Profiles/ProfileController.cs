@@ -12,6 +12,22 @@ namespace PrivateSekai.Modules.Profiles;
 public sealed class ProfileController(UserOperation operations, UserSession user, ProfileService profiles, CostumeService costumes,
     MissionMasterQueries missionMaster) : PrskController
 {
+    [HttpPut("api/user/{userId}/avatar")]
+    [PrskEmptyErrorResponse]
+    public IActionResult SaveAvatar(long userId, [FromBody] UserAvatarRequest request)
+    {
+        var status = 200;
+        var bytes = operations.Execute(userId, () =>
+        {
+            status = profiles.SaveAvatar(request);
+            return status == 200
+                ? (object)new UserAvatarResponse { updatedResources = user.BuildRefresh() }
+                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
+        });
+        Response.StatusCode = status;
+        return Encoded(status == 500 ? [] : bytes);
+    }
+
     [HttpPatch("api/user/{userId}/avatar-motion-favorite")]
     public IActionResult SaveAvatarMotionFavorites(long userId, [FromBody] UserAvatarMotionFavoriteRequest request)
     {

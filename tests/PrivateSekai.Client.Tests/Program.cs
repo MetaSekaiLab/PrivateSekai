@@ -202,6 +202,11 @@ if (args is ["--replay-virtual-shop", var virtualManifest, var virtualMaster, _]
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, virtualMaster));
     builder.Services.AddSingleton(UserCaseReplay.Clock(virtualManifest));
 }
+if (args is ["--replay-avatar", var avatarManifest, var avatarMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, avatarMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(avatarManifest));
+}
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
@@ -416,6 +421,12 @@ try
     {
         await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, virtualPath, virtualOutput,
             "virtual-shop-purchase", UserCaseReplay.VirtualShopFields);
+        return;
+    }
+    if (args is ["--replay-avatar", var avatarPath, _, var avatarOutput])
+    {
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, avatarPath, avatarOutput,
+            "avatar-save", UserCaseReplay.AvatarFields);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -704,6 +715,7 @@ try
     await FriendFavoriteHttpChecks.Run(client, config, store, directory, Check);
     await AvatarMotionFavoriteHttpChecks.Run(client, config, store, directory, Check);
     await VirtualShopHttpChecks.Run(client, config, store, directory, Check);
+    await AvatarHttpChecks.Run(client, config, store, directory, Check);
     await BeginnerCompletionHttpChecks.Run(client, store, Check);
     await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);

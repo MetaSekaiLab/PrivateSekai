@@ -52,6 +52,7 @@ public static class Operations
         ["present-receive"] = new("POST", "/api/user/{userId}/present", typeof(UserPresentAPIRequest), "receivedUserPresents"),
         ["shop-purchase"] = new("POST", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),
         ["virtual-shop-purchase"] = new("POST", "/api/user/{userId}/virtual-shop/{virtualShopId}/item/{virtualShopItemId}?costResourceType={costResourceType}", null, "userResources"),
+        ["avatar-save"] = new("PUT", "/api/user/{userId}/avatar", typeof(UserAvatarRequest), "updatedResources"),
         ["character-costume-save"] = new("PUT", "/api/user/{userId}/character-costume-3d/character/{characterId}/unit/{unit}", typeof(UserCharacterCostume3DRequest), "updatedResources"),
         ["costume-craft"] = new("POST", "/api/user/{userId}/costume-3d-shop/{shopItemId}", null, "updatedResources"),
         ["shop-upgrade"] = new("PUT", "/api/user/{userId}/shop/{shopId}/item/{shopItemId}", null, "updatedResources"),

@@ -14,6 +14,23 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore thumbnails, MasterData master)
 {
+    public int SaveAvatar(UserAvatarRequest request)
+    {
+        if (request.avatarSkinColorId == null) return 500;
+        if ((request.avatarCostumeId is { } costume && user.Data.userAvatarCostumes?.Any(c => c.avatarCostumeId == costume) != true) ||
+            (request.avatarAccessoryId is { } accessory && user.Data.userAvatarAccessories?.Any(a => a.avatarAccessoryId == accessory) != true) ||
+            (request.avatarSkinColorId is { } color && user.Data.userAvatarSkinColors?.Any(c => c.avatarSkinColorId == color) != true) ||
+            (request.avatarCoordinateId is { } coordinate && user.Data.userAvatarCoordinates?.Any(c => c.avatarCoordinateId == coordinate) != true))
+            return 409;
+        user.Data.userAvatar = new UserAvatar
+        {
+            avatarCostumeId = request.avatarCostumeId, avatarAccessoryId = request.avatarAccessoryId,
+            avatarSkinColorId = request.avatarSkinColorId, avatarCoordinateId = request.avatarCoordinateId
+        };
+        user.MarkChanged(nameof(SuiteUser.userAvatar));
+        return 200;
+    }
+
     public int SaveAvatarMotionFavorites(UserAvatarMotionFavoriteRequest request)
     {
         var favorites = request.userAvatarMotionFavorites ?? [];

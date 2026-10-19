@@ -16,6 +16,7 @@ internal static class UserCaseReplay
     public static readonly string[] VirtualShopFields = ["userVirtualShops", "userAvatarMotions", "userAvatarCostumes", "userAvatarAccessories",
         "userAvatarCoordinates", "userAvatarSkinColors", "userPenlights", "userAvatar", "userChargedCurrency", "userGamedata",
         "userBeginnerMissionV2s", "userMissionStatuses"];
+    public static readonly string[] AvatarFields = [.. VirtualShopFields, "userAvatarMotionFavorites"];
 
     public static TimeProvider Clock(string manifest) => new ReplayClock(Timestamp(Load(Load(manifest)["records"]![0]!["record"]!.GetValue<string>())));
 
