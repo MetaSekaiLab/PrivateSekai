@@ -1715,6 +1715,18 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 - `Sekai.ScreenGacha.ExecuteSpinGacha` / `OnCallBackResponcePutUserGachaAPI`: 抽卡页发起请求和结果处理入口。
 - `Sekai.ScreenLayerGachaResult.OnCallBackResponcePutUserGachaAPI`: 结果页继续抽卡或重抽后的结果处理入口。
 
+### 普通单抽与入口拒绝补核
+
+- 基于客户端 7.0.0 和认证返回的当前 master，普通单抽先确认卡池、所属行为、开放期、所需通行证资格及资源余额。未知卡池或行为返回 404、空错误码；不在开放期返回 `409 invalid_term`；水晶、付费水晶或指定票券不足返回 `409 not_enough_resource`；缺少通行证资格返回 409、空错误码。以上 `errorMessage` 均为空，拒绝不扣款、不发卡、不改任务和抽取次数，也不消费待刷新字段。
+- 普通开放期为 `startAt <= now < endAt`；`endAt=0` 时要求非零起点且已到起点，两个时间均零不可用。时间边界来自 `GachaUtility.GetOpenedMasterGachaMap` 和 `TimeUtility.IsWithinTime`，不是按展示文案判断。
+- 正常抽取使用该卡池的稀有度概率及卡牌权重；缺少概率、有效卡池、正抽取数量或消耗配置时整体失败，不能补抽全卡列表或将未知消耗当免费。资源通过统一资源服务扣发。
+- 水晶 `consumedCosts.quantity` 为扣款后的剩余总余额，省略零值 `resourceId`，保留 `resourceLevel=0`。票券、天井持有条目省略 `userId`。新卡保存完整初始状态和剧情，并按卡牌编号插入持有列表；本次响应返回完整相关列表。
+- 首次获得卡牌增加所属角色的 `collect_member` 进度，新增进度按类型及角色编号排序；按 master 达成的状态持久化，本次提示只映射到响应。重复卡累计 `duplicateCount`，不再增加首次收集进度。`userGacha` 按卡池与行为计次，天井按实际抽取数量累计；未变化的荣誉进度和角色任务状态不强制刷新。
+
+证据补充：`PutUserGachaAPI.Execute`（RVA `0x617aa48`）及成功资源合并、`MasterGachaBehavior.IsExecutable`（RVA `0x6149e2c`）、`GachaUtility.GetHaveGachaResourceQuantity`（RVA `0x4da5f90`）、`UserColorfulPassV2.HasColorfulPass`、`TimeUtility.IsWithinTime`（RVA `0x4df8d20`），以及官方普通单抽、八组拒绝与各次独立会话回读。成功样本包含连续两次单抽、新卡入库、角色收集任务、次数和天井增加。本地另覆盖免费／付费优先、重复卡、票券刚好用完、开放期边界、响应失败回滚和数据库重启。
+
+10 组对拍通过，固定了官方成功样本实际抽中的卡牌，核对该结果下的完整业务响应、相关状态增量与独立回读；该方法不验证官方概率分布。结论限于普通单抽及上述拒绝路径，指定次数、选卡／选道具、保底分布和附赠规则需按各自用例核验；未运行游戏抽卡动画。
+
 ## PUT `/api/user/{userId}/exchange/gacha-ceil-item`
 
 > 审计版本: jp-6.5.5

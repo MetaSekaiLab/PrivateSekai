@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using PrivateSekai.Client;
+using PrivateSekai.Config;
+using PrivateSekai.Protocol;
 using PrivateSekai.Storage;
 
 internal static class GachaHttpChecks
@@ -8,8 +10,12 @@ internal static class GachaHttpChecks
     {
         // 单卡池保证测试确定性，数值只用于隔离测试。
         File.WriteAllText(Path.Combine(directory, "gachas.json"), """
-            [{"id":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":1,"weight":1}],
-              "gachaBehaviors":[{"id":1,"gachaBehaviorType":"normal","spinCount":1,"costResourceType":"jewel","costResourceQuantity":100}]}]
+            [{"id":1,"startAt":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":1,"weight":1}],
+              "gachaCardRarityRates":[{"cardRarityType":"rarity_1","lotteryType":"normal","rate":100}],
+              "gachaBehaviors":[{"id":1,"gachaBehaviorType":"normal","spinCount":1,"costResourceType":"jewel","costResourceQuantity":100},
+                {"id":2,"gachaBehaviorType":"normal","spinCount":1,"costResourceType":"gacha_ticket","costResourceId":1,"costResourceQuantity":1},
+                {"id":3,"gachaBehaviorType":"normal","spinCount":1,"costResourceType":"jewel","costResourceQuantity":1000}]},
+             {"id":2,"startAt":1,"endAt":2,"gachaBehaviors":[{"id":4,"spinCount":1,"costResourceType":"jewel","costResourceQuantity":100}]}]
             """);
         File.WriteAllText(Path.Combine(directory, "gachaCeilExchangeSummaries.json"), """
             [{"id":1,"gachaCeilExchanges":[{"id":1,"resourceBoxId":31,"exchangeLimit":2,
@@ -21,7 +27,7 @@ internal static class GachaHttpChecks
         JsonFiles.Write(path, boxes);
     }
 
-    public static async Task Run(ProtocolClient client, MemoryUserStore store, string directory, Action<bool, string> check)
+    public static async Task Run(ProtocolClient client, TargetConfiguration config, MemoryUserStore store, string directory, Action<bool, string> check)
     {
         var state = store.Read(1)!;
         state.Data.userCards = [new() { cardId = 1, level = 1 }];
@@ -52,5 +58,29 @@ internal static class GachaHttpChecks
         var record = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "gacha/002.json")))!;
         check(record["query"]!["isPriorityUsePaidJewel"]!.GetValue<string>() == "true" &&
             record["args"]!["gachaId"]!.GetValue<string>() == "1", "脱敏记录保留抽卡路径和付费优先参数");
+        check(record["response"]!["consumedCosts"]![0]!["quantity"]!.GetValue<int>() == 600 &&
+            record["response"]!["consumedCosts"]![0]!["resourceId"] == null &&
+            record["response"]!["updatedResources"]!["userGachaCeilItems"]![0]!["userId"] == null,
+            "单抽消耗响应为剩余余额，天井道具省略所属用户字段");
+        var original = store.Read(1)!;
+        state = store.Read(1)!;
+        state.Data.refreshableTypes = ["userMaterials"];
+        store.Save(1, state);
+        var before = DumpSerializer.Serialize(state.Data);
+        foreach (var entry in new[] { (Id: 0, Behavior: 0, Status: 404, Code: ""),
+            (Id: 1, Behavior: int.MaxValue, Status: 404, Code: ""), (Id: 2, Behavior: 4, Status: 409, Code: "invalid_term"),
+            (Id: 1, Behavior: 2, Status: 409, Code: "not_enough_resource"), (Id: 1, Behavior: 3, Status: 409, Code: "not_enough_resource") })
+        {
+            using var invalid = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+            await invalid.Send(new() { Operation = "system" });
+            var failed = false;
+            try { await invalid.Send(new() { Operation = "gacha-draw", Args = new() { ["gachaId"] = entry.Id.ToString(), ["gachaBehaviorId"] = entry.Behavior.ToString() } }); }
+            catch (ClientFailure) { failed = true; }
+            check(failed && invalid.LastHttpStatus == entry.Status && invalid.LastResponse?["errorCode"]?.GetValue<string>() == entry.Code &&
+                invalid.LastResponse?["errorMessage"]?.GetValue<string>() == "", "抽卡加密HTTP返回官方错误分类与空文案");
+            check(DumpSerializer.Serialize(store.Read(1)!.Data).SequenceEqual(before), "抽卡HTTP拒绝整体回滚并保留待刷新字段");
+        }
+        await client.Send(new() { Operation = "system" });
+        store.Save(1, original);
     }
 }

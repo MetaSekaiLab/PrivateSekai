@@ -19,16 +19,22 @@ internal static class UserCaseReplay
     public static readonly string[] AvatarFields = [.. VirtualShopFields, "userAvatarMotionFavorites"];
     public static readonly string[] CostumeFixFields = ["userFixCostumes", "userCharacterCostume3ds", "userCostume3dStatuses",
         "userCostume3dShopItems", "userMaterials", "userChargedCurrency", "userGamedata", "userBeginnerMissionV2s",
-        "userMissionStatuses", "userCharacterMissions", "userCharacterMissionStatuses"];
+        "userMissionStatuses", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
     public static readonly string[] StampUseFields = ["userHonorMissions", "userMissionStatuses", "userHonors", "userProfile", "userProfileHonors",
         "userStamps", "userStampFavorites", "userStampFavoriteTabs", "userMaterials", "userChargedCurrency", "userGamedata",
-        "userBeginnerMissionV2s", "userCharacterMissions", "userCharacterMissionStatuses"];
+        "userBeginnerMissionV2s", "userCharacterMissionV2s", "userCharacterMissionV2Statuses"];
+    public static readonly string[] GachaFields = ["userCards", "userGachas", "userGachaCeilItems", "userGachaTickets", "userGachaBonusPoints",
+        "userChargedCurrency", "userCostume3dStatuses", "userCharacterMissionV2s", "userCharacterMissionV2Statuses",
+        "userHonorMissions", "userMissionStatuses", "userBeginnerMissionV2s", "userMaterials", "userGamedata"];
 
     public static TimeProvider Clock(string manifest) => new ReplayClock(Timestamp(Load(Load(manifest)["records"]![0]!["record"]!.GetValue<string>())));
 
     public static async Task Run(TargetConfiguration config, MemoryUserStore store, TimeProvider time,
-        string directory, string manifest, string output, string operation, string[] fields, string? secondaryOperation = null)
+        string directory, string manifest, string output, string operation, string[] fields, string? secondaryOperation = null,
+        Action<JsonObject>? prepare = null)
     {
+        var keys = DumpContract.For(typeof(SuiteUser)).Members.Select(member => (string)member.Key).ToHashSet(StringComparer.Ordinal);
+        if (fields.Any(field => !keys.Contains(field))) throw new InvalidOperationException("回读比较字段必须使用SuiteUser实际协议键。");
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
             throw new InvalidOperationException("重放输出目录必须为空。");
         Directory.CreateDirectory(output);
@@ -36,6 +42,7 @@ internal static class UserCaseReplay
         foreach (var fixture in Load(manifest)["records"]!.AsArray())
         {
             var official = Load(fixture!["record"]!.GetValue<string>());
+            prepare?.Invoke(official);
             var action = official["operation"]?.GetValue<string>();
             var rejected = official["status"]?.GetValue<string>() == "stopped";
             if ((action != operation && (secondaryOperation == null || action != secondaryOperation)) || official["before"] == null ||
@@ -63,9 +70,11 @@ internal static class UserCaseReplay
             catch (ClientFailure) { response = client.LastResponse?.DeepClone(); }
             var status = client.LastHttpStatus;
             var expected = (rejected ? official["lastResponse"] : official["response"])!.DeepClone();
-            var expectedAfter = rejected ? Load(fixture["readback"]!.GetValue<string>())["response"]!.DeepClone() : official["after"]!.DeepClone();
+            var expectedAfter = fixture["readback"] is { } readbackFile
+                ? Load(readbackFile.GetValue<string>())["response"]!.DeepClone() : official["after"]!.DeepClone();
             Remap(expected);
             Remap(expectedAfter);
+            if (!rejected && fixture["readback"] != null) await client.Suite();
             using var readback = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
             await readback.Send(new() { Operation = "system" });
             var after = await readback.Suite();

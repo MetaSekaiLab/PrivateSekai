@@ -20,6 +20,7 @@ internal static class UserResponseSerializer
                 new ChallengeStartFormatter(),
                 new EventExchangeFormatter(),
                 new MissionReceiveFormatter(),
+                new GachaFormatter(),
                 new CostumeShopFormatter(),
                 new VirtualShopFormatter(),
                 new CharacterMissionFormatter(),
@@ -50,6 +51,8 @@ internal static class UserResponseSerializer
                     (key == "transitionDestinationId" && s.transitionDestinationId == 0)),
                 new FieldFilterFormatter<UserRankMatchResult>((s, key) => key == "rankMatchSeasonId" && s.rankMatchSeasonId == 0),
                 new FieldFilterFormatter<UserHonorMission>((_, key) => key == "userId"),
+                new FieldFilterFormatter<UserGachaCeilItem>((_, key) => key == "userId"),
+                new FieldFilterFormatter<UserGachaTicket>((_, key) => key == "userId"),
                 new FieldFilterFormatter<UserHomeRefreshResponse>((s, key) => key == "shouldReflectWebPayment" && !s.shouldReflectWebPayment),
                 new FieldFilterFormatter<UserMissionStatus>((s, key) => key == "userId" &&
                     (s.missionType is "beginner_mission_v2" or "live_mission" or "honor_mission" ||
@@ -111,6 +114,21 @@ internal static class UserResponseSerializer
 
         public UserMissionReceiveResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
             DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserMissionReceiveResponse>().Deserialize(ref reader, DumpSerializer.Options);
+    }
+
+    internal sealed class GachaFormatter : IMessagePackFormatter<UserGachaResponse?>
+    {
+        public void Serialize(ref MessagePackWriter writer, UserGachaResponse? value, MessagePackSerializerOptions options)
+        {
+            var scoped = options.WithResolver(CompositeResolver.Create(
+                new IMessagePackFormatter[] { new FieldFilterFormatter<UserResource>((r, key) =>
+                    key == "resourceId" && r.resourceId == 0 && r.resourceType is "jewel" or "paid_jewel") },
+                new[] { options.Resolver }));
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserGachaResponse>().Serialize(ref writer, value!, scoped);
+        }
+
+        public UserGachaResponse? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options) =>
+            DumpSerializer.Options.Resolver.GetFormatterWithVerify<UserGachaResponse>().Deserialize(ref reader, DumpSerializer.Options);
     }
 
     internal sealed class CharacterMissionFormatter : IMessagePackFormatter<UserCharacterMissionV2Response?>

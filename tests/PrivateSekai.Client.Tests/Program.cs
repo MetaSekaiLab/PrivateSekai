@@ -218,6 +218,13 @@ if (args is ["--replay-stamp-use", var stampUseManifest, var stampUseMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, stampUseMaster));
     builder.Services.AddSingleton(UserCaseReplay.Clock(stampUseManifest));
 }
+if (args is ["--replay-gacha", var gachaManifest, var gachaMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, gachaMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(gachaManifest));
+    builder.Services.AddSingleton<GachaReplayRandom>();
+    builder.Services.AddSingleton<Random>(services => services.GetRequiredService<GachaReplayRandom>());
+}
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
@@ -450,6 +457,12 @@ try
     {
         await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, stampUsePath, stampUseOutput,
             "stamp-use-history", UserCaseReplay.StampUseFields, "honor-mission-receive");
+        return;
+    }
+    if (args is ["--replay-gacha", var gachaPath, _, var gachaOutput])
+    {
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, gachaPath, gachaOutput,
+            "gacha-draw", UserCaseReplay.GachaFields, prepare: app.Services.GetRequiredService<GachaReplayRandom>().Prepare);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -731,7 +744,7 @@ try
     await ShopHttpChecks.Run(client, store, directory, Check);
     Check(shopRequests.SequenceEqual(new (string, long?)[] { ("POST", 0), ("PUT", 0), ("POST", 0) }),
         "商店购买与升级分别使用 POST 和 PUT，均不发送 body");
-    await GachaHttpChecks.Run(client, store, directory, Check);
+    await GachaHttpChecks.Run(client, config, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);
     await HomeHttpChecks.Run(client, store, directory, Check);
     await FriendMissionHttpChecks.Run(client, store, Check);

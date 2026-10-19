@@ -642,7 +642,8 @@ internal static class FeatureChecks
         var incompleteGacha = new GachaService(user,
             services.GetRequiredService<GachaMasterQueries>(),
             services.GetRequiredService<CardMasterQueries>(),
-            services.GetRequiredService<ResourceMasterQueries>(), incompleteResources);
+            services.GetRequiredService<ResourceMasterQueries>(), incompleteResources,
+            services.GetRequiredService<MissionService>());
         var failure = Check.Throws<NotSupportedException>(
             () => operation.Execute(4, () => incompleteGacha.ExecuteGacha(1, 1, false)), "抽卡中途资源处理失败");
         Check.That(failure.Message.Contains("gacha_ceil_item", StringComparison.Ordinal), "抽卡失败发生在末尾天井道具发放阶段");
@@ -695,6 +696,7 @@ internal static class FeatureChecks
                 """,
             ["cards"] = """
                 [{"id":1,"characterId":1,"cardRarityType":"rarity_1"},
+                 {"id":10,"characterId":1,"cardRarityType":"rarity_3"},
                  {"id":2,"characterId":1,"cardRarityType":"rarity_3","specialTrainingPower1BonusFixed":100,
                   "specialTrainingRewardResourceBoxId":90,
                   "specialTrainingCosts":[{"cardId":2,"cost":{"resourceType":"material","resourceId":10,"quantity":100}},
@@ -705,7 +707,8 @@ internal static class FeatureChecks
             ["characterMissionV2ParameterGroups"] = """[{"id":14,"seq":1,"requirement":1},{"id":15,"seq":1,"requirement":10}]""",
             ["cardCostume3ds"] = """[{"cardId":10,"costume3dId":20}]""",
             ["gachas"] = """
-                [{"id":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":10,"weight":1}],
+                [{"id":1,"startAt":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":10,"weight":1}],
+                  "gachaCardRarityRates":[{"cardRarityType":"rarity_3","lotteryType":"normal","rate":100}],
                   "gachaBehaviors":[{"id":1,"gachaBehaviorType":"normal","spinCount":2,"costResourceType":"jewel","costResourceQuantity":300}]}]
                 """,
             ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":3,"trainingMaxLevel":3},{"cardRarityType":"rarity_3","maxLevel":40,"trainingMaxLevel":50}]""",

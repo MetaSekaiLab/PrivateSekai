@@ -108,6 +108,13 @@ public sealed class MissionService(
     public void RecordCardSpecialTraining(int characterId) =>
         RecordCharacterMissionProgress(master.GetCardCollectionMissions(characterId));
 
+    public void RecordCardAcquisition(int characterId)
+    {
+        RecordCharacterMissionProgress(master.GetCardCollectionMissions(characterId));
+        user.Data.userCharacterMissions = (user.Data.userCharacterMissions ?? [])
+            .OrderBy(m => m.characterMissionType, StringComparer.Ordinal).ThenBy(m => m.characterId).ToArray();
+    }
+
     private UserCharacterMissionV2Status[] RecordCharacterMissionProgress(IEnumerable<MasterCharacterMissionV2> definitions)
     {
         var achieved = new List<UserCharacterMissionV2Status>();

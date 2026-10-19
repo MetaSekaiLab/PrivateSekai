@@ -7,6 +7,7 @@ using game::Sekai;
 using game::Sekai.ApiData;
 using PrivateSekai.Modules.Cards;
 using PrivateSekai.Modules.Inventory;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 
@@ -17,17 +18,24 @@ public sealed class GachaService(
     GachaMasterQueries master,
     CardMasterQueries cards,
     ResourceMasterQueries resourceMaster,
-    ResourceService resources)
+    ResourceService resources,
+    MissionService missions,
+    Random? random = null)
 {
     public UserGachaResponse ExecuteGacha(int gachaId, int gachaBehaviorId, bool isPriorityUsePaidJewel)
     {
         var now = user.Now;
-        var gacha = master.GetMasterGacha(gachaId);
-        var behavior = master.GetMasterGachaBehavior(gacha, gachaBehaviorId);
+        var gacha = master.GetMasterGacha(gachaId) ?? throw new GachaRequestRejectedException(404);
+        var behavior = master.GetMasterGachaBehavior(gacha, gachaBehaviorId) ?? throw new GachaRequestRejectedException(404);
+        if (gacha.startAt > now || (gacha.endAt == 0 ? gacha.startAt == 0 : now >= gacha.endAt))
+            throw new GachaRequestRejectedException(409, "invalid_term");
+        if (behavior.gachaSpinnableType == "colorful_pass" &&
+            (user.Data.userColorfulPassV2 == null || user.Data.userColorfulPassV2.expiredAt < (ulong)now))
+            throw new GachaRequestRejectedException(409);
         var spinCount = GetGachaSpinCount(behavior);
         var behaviorType = behavior?.gachaBehaviorType;
 
-        var consumedCosts = ConsumeGachaCost(behavior, spinCount, isPriorityUsePaidJewel);
+        var consumedCosts = ConsumeGachaCost(behavior, isPriorityUsePaidJewel);
 
         var drawnCardIds = DrawGachaCards(gacha, behaviorType, spinCount);
         var obtainPrizes = new List<UserGachaSpinObtainPrize>();
@@ -53,13 +61,6 @@ public sealed class GachaService(
 
         var userGacha = UpsertUserGacha(gachaId, gachaBehaviorId, now);
         var obtainGachaCeilItems = GrantGachaCeilItem(gacha, gachaId, spinCount);
-
-        user.MarkChanged(new []
-        {
-            nameof(SuiteUser.userCharacterMissions),
-            nameof(SuiteUser.userCharacterMissionStatuses),
-            nameof(SuiteUser.userHonorMissions)
-        });
 
         return new UserGachaResponse
         {
@@ -145,19 +146,29 @@ public sealed class GachaService(
         if (spinCount > 0)
             return spinCount;
 
-        return 1;
+        throw new InvalidOperationException("Missing gacha spin count.");
     }
 
-    private UserResource[] ConsumeGachaCost(MasterGachaBehavior? behavior, int spinCount, bool isPriorityUsePaidJewel)
+    private UserResource[] ConsumeGachaCost(MasterGachaBehavior? behavior, bool isPriorityUsePaidJewel)
     {
         if (string.Equals(behavior?.resourceCategory, "free_resource", StringComparison.Ordinal))
             return [];
 
         var costResourceType = behavior?.costResourceType;
         var costResourceId = behavior?.costResourceId ?? 0;
-        var costQuantity = behavior?.costResourceQuantity ?? 300 * spinCount;
+        var costQuantity = behavior?.costResourceQuantity ?? 0;
         if (costQuantity <= 0 || string.IsNullOrEmpty(costResourceType))
-            return [];
+            throw new InvalidOperationException("Missing gacha cost.");
+
+        var currency = user.Data.userChargedCurrency;
+        var available = costResourceType switch
+        {
+            "jewel" => (long)(currency?.free ?? 0) + (currency?.paid ?? 0),
+            "paid_jewel" => currency?.paid ?? 0,
+            "gacha_ticket" => user.Data.userGachaTickets?.SingleOrDefault(t => t.gachaTicketId == costResourceId)?.quantity ?? 0,
+            _ => throw new NotSupportedException("Unsupported gacha cost.")
+        };
+        if (available < costQuantity) throw new GachaRequestRejectedException(409, "not_enough_resource");
 
         return costResourceType switch
         {
@@ -189,7 +200,7 @@ public sealed class GachaService(
                     quantity = resources.Consume("gacha_ticket", costResourceId, costQuantity)
                 }
             ],
-            _ => []
+            _ => throw new NotSupportedException("Unsupported gacha cost.")
         };
     }
 
@@ -225,7 +236,7 @@ public sealed class GachaService(
     private string? DrawGachaRarity(MasterGacha? gacha, Func<int, bool>? cardFilter)
     {
         if (gacha?.gachaCardRarityRates == null)
-            return null;
+            throw new InvalidOperationException("Missing gacha rarity rates.");
 
         var candidates = gacha.gachaCardRarityRates
             .Where(rate => rate.lotteryType == "normal")
@@ -241,9 +252,9 @@ public sealed class GachaService(
 
         var totalRate = candidates.Sum(rate => rate.Rate);
         if (totalRate <= 0)
-            return null;
+            throw new InvalidOperationException("No eligible gacha rarity rates.");
 
-        var selected = Random.Shared.NextDouble() * totalRate;
+        var selected = (random ?? Random.Shared).NextDouble() * totalRate;
         double running = 0;
         foreach (var candidate in candidates)
         {
@@ -275,7 +286,7 @@ public sealed class GachaService(
     private int DrawGachaCardByRarity(MasterGacha? gacha, string? rarityType, Func<int, bool>? cardFilter)
     {
         if (gacha?.gachaDetails == null)
-            return DrawFallbackCard(cardFilter);
+            throw new InvalidOperationException("Missing gacha card pool.");
 
         var candidates = gacha.gachaDetails
             .Select(detail => new
@@ -290,13 +301,13 @@ public sealed class GachaService(
             .ToArray();
 
         if (candidates.Length == 0)
-            return DrawFallbackCard(cardFilter);
+            throw new InvalidOperationException("No eligible gacha cards.");
 
         var totalWeight = candidates.Sum(detail => (long)detail.Weight);
         if (totalWeight <= 0)
-            return DrawFallbackCard(cardFilter);
+            throw new InvalidOperationException("Invalid gacha card weights.");
 
-        var selected = Random.Shared.NextInt64(totalWeight);
+        var selected = (random ?? Random.Shared).NextInt64(totalWeight);
         long running = 0;
         foreach (var candidate in candidates)
         {
@@ -305,18 +316,7 @@ public sealed class GachaService(
                 return candidate.CardId;
         }
 
-        return DrawFallbackCard(cardFilter);
-    }
-
-    private int DrawFallbackCard(Func<int, bool>? cardFilter)
-    {
-        var candidates = cards.GetMasterCards()
-            .Select(card => card.id)
-            .Where(cardId => cardId > 0 && !string.Equals(cards.GetCardRarityType(cardId), "rarity_1", StringComparison.Ordinal))
-            .Where(cardId => cardFilter?.Invoke(cardId) != false)
-            .ToArray();
-
-        return candidates.Length == 0 ? 1 : candidates[Random.Shared.Next(candidates.Length)];
+        throw new InvalidOperationException("Gacha card selection failed.");
     }
 
     private bool IsRarity3OrHigher(int cardId) =>
@@ -469,6 +469,12 @@ public sealed class GachaService(
             resourceLevel = 1,
             quantity = 1
         });
+        if (isNew)
+        {
+            user.Data.userCards = user.Data.userCards!.OrderBy(c => c.cardId).ToArray();
+            var card = cards.GetMasterCard(cardId) ?? throw new InvalidOperationException("Missing gacha card definition.");
+            missions.RecordCardAcquisition(card.characterId);
+        }
         return isNew;
     }
 
@@ -520,4 +526,10 @@ public sealed class GachaService(
             or "gacha_ceil_item" or "gacha_ticket" or "practice_ticket")
             resources.Consume(type, id, quantity);
     }
+}
+
+public sealed class GachaRequestRejectedException(int status, string code = "") : Exception
+{
+    public int Status { get; } = status;
+    public string Code { get; } = code;
 }

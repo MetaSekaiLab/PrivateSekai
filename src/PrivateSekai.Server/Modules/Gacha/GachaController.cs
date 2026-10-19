@@ -1,5 +1,6 @@
 extern alias game;
 
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using game::Sekai.ApiData;
@@ -20,12 +21,34 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
         int gachaBehaviorId,
         [FromQuery] bool isPriorityUsePaidJewel = false)
     {
-        return Encoded(operations.Execute(userId, () =>
+        try
         {
-            var response = gacha.ExecuteGacha(gachaId, gachaBehaviorId, isPriorityUsePaidJewel);
-            response.updatedResources = user.BuildRefresh();
-            return response;
-        }));
+            return Encoded(operations.Execute(userId, () =>
+            {
+                var before = (user.Data.userCharacterMissionStatuses ?? [])
+                    .Select(s => (s.characterId, s.missionId, s.parameterGroupId, s.seq)).ToHashSet();
+                var response = gacha.ExecuteGacha(gachaId, gachaBehaviorId, isPriorityUsePaidJewel);
+                response.updatedResources = user.BuildRefresh();
+                if (response.updatedResources.userCharacterMissions != null)
+                {
+                    var achieved = (user.Data.userCharacterMissionStatuses ?? [])
+                        .Where(s => !before.Contains((s.characterId, s.missionId, s.parameterGroupId, s.seq))).ToArray();
+                    response.updatedResources.userCharacterMissions = response.updatedResources.userCharacterMissions.Select(m => new UserCharacterMissionV2
+                    {
+                        userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType,
+                        progress = m.progress, achievedMissions = m.characterMissionType == "collect_member"
+                            ? achieved.Where(s => s.characterId == m.characterId).ToArray() : []
+                    }).ToArray();
+                }
+                return response;
+            }));
+        }
+        catch (GachaRequestRejectedException error)
+        {
+            Response.StatusCode = error.Status;
+            return Encoded(operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = (uint)error.Status, ErrorCode = error.Code, ErrorMessage = "" }));
+        }
     }
 
     /// <summary>
