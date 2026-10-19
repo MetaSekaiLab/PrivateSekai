@@ -1,5 +1,6 @@
 extern alias game;
 
+using System;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using PrivateSekai.Shared.Users;
@@ -7,8 +8,32 @@ using PrivateSekai.Transport;
 
 namespace PrivateSekai.Modules.Missions;
 
-public sealed class MissionController(UserOperation operations, UserSession user, MissionService missions) : PrskController
+public sealed class MissionController(UserOperation operations, UserSession user, MissionService missions, MissionMasterQueries master) : PrskController
 {
+    [HttpPost("api/user/{userId}/stamp-use-history")]
+    [PrskEmptyErrorResponse]
+    public IActionResult RecordStampUse(long userId, [FromBody] UserStampUseHistoryRequest request)
+    {
+        try
+        {
+            return Encoded(operations.Execute(userId, () =>
+            {
+                var previous = HonorMissionResponse.AchievedIds(user.Data);
+                var status = missions.RecordStampUse(request);
+                if (status != 200) throw new MissionRequestRejectedException(status);
+                var refresh = user.BuildRefresh();
+                HonorMissionResponse.AddAchievementHints(refresh, previous, master);
+                return new SuiteUserCommonResponse { updatedResources = refresh };
+            }));
+        }
+        catch (MissionRequestRejectedException error)
+        {
+            Response.StatusCode = error.Status;
+            return Encoded(error.Status == 500 ? [] : operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = (uint)error.Status, ErrorCode = "", ErrorMessage = "" }));
+        }
+    }
+
     [HttpPut("api/user/{userId}/character/{characterId}/mission/{characterMissionType}")]
     [HttpPut("api/user/{userId}/character/{characterId}/mission")]
     public IActionResult ReceiveCharacterMission(long userId, int characterId, string? characterMissionType = null) =>
@@ -29,17 +54,21 @@ public sealed class MissionController(UserOperation operations, UserSession user
     [HttpPut("api/user/{userId}/mission/honor_mission")]
     public IActionResult ReceiveHonorMission(long userId, [FromBody] UserMissionReceiveRequest request)
     {
-        var status = 200;
-        var bytes = operations.Execute(userId, () =>
+        try
         {
-            var result = missions.ReceiveHonorMissionRewards(request.missionIds);
-            status = result.Status;
-            return status == 200
-                ? (object)new UserMissionReceiveResponse { ObtainedRewards = result.Rewards, UpdatedResources = user.BuildRefresh() }
-                : new ClientErrorResponse { HttpStatus = (uint)status, ErrorCode = "", ErrorMessage = "" };
-        });
-        Response.StatusCode = status;
-        return Encoded(bytes);
+            return Encoded(operations.Execute(userId, () =>
+            {
+                var result = missions.ReceiveHonorMissionRewards(request.missionIds);
+                if (result.Status != 200) throw new MissionRequestRejectedException(result.Status);
+                return new UserMissionReceiveResponse { ObtainedRewards = result.Rewards, UpdatedResources = user.BuildRefresh() };
+            }));
+        }
+        catch (MissionRequestRejectedException error)
+        {
+            Response.StatusCode = error.Status;
+            return Encoded(operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = (uint)error.Status, ErrorCode = "", ErrorMessage = "" }));
+        }
     }
 
     /// <summary>
@@ -67,5 +96,10 @@ public sealed class MissionController(UserOperation operations, UserSession user
             return Encoded(operations.Query(userId, () =>
                 new ClientErrorResponse { HttpStatus = 409, ErrorCode = "", ErrorMessage = "" }));
         }
+    }
+
+    private sealed class MissionRequestRejectedException(int status) : Exception
+    {
+        public int Status { get; } = status;
     }
 }

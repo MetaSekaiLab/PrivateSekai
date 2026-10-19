@@ -165,6 +165,18 @@ public sealed class MissionService(
 
     public void RecordNormalFullCombo() => UpdateHonorProgress("normal_full_combo");
 
+    public int RecordStampUse(UserStampUseHistoryRequest request)
+    {
+        var histories = request.userStampUseHistories;
+        if (histories == null || histories.Any(h => h == null) || histories.Select(h => h.stampId).Distinct().Count() != histories.Count)
+            return 500;
+        var owned = (user.Data.userStamps ?? []).Select(s => s.stampId).ToHashSet();
+        if (histories.Any(h => !owned.Contains(h.stampId) && !master.IsCheerfulCarnivalStamp(h.stampId))) return 409;
+        var increment = histories.Sum(h => h.useCount);
+        if (increment > 0) UpdateHonorProgress("multi_live_stamp", increment: increment);
+        return 200;
+    }
+
     public void RecordLiveFinish(bool cleared) =>
         UpdateHonorProgress(cleared ? "clear_live" : "finish_live_with_empty_life");
 
@@ -174,7 +186,7 @@ public sealed class MissionService(
         UpdateHonorProgress("play_level_clear", playLevel);
     }
 
-    private void UpdateHonorProgress(string type, int? maximum = null)
+    private void UpdateHonorProgress(string type, int? maximum = null, int increment = 1)
     {
         var records = (user.Data.userHonorMissions ?? []).ToList();
         var progress = records.SingleOrDefault(m => m.honorMissionType == type);
@@ -184,7 +196,7 @@ public sealed class MissionService(
             var index = records.FindIndex(m => string.CompareOrdinal(m.honorMissionType, type) > 0);
             records.Insert(index < 0 ? records.Count : index, progress);
         }
-        progress.progress = maximum.HasValue ? Math.Max(progress.progress, maximum.Value) : checked(progress.progress + 1);
+        progress.progress = maximum.HasValue ? Math.Max(progress.progress, maximum.Value) : checked(progress.progress + increment);
         user.Data.userHonorMissions = records.ToArray();
         user.MarkChanged(nameof(SuiteUser.userHonorMissions));
         foreach (var definition in master.GetHonorMissions(type))

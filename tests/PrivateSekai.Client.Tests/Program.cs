@@ -104,6 +104,7 @@ FriendMissionHttpChecks.WriteMaster(directory);
 BeginnerCompletionHttpChecks.WriteMaster(directory);
 AvatarMotionFavoriteHttpChecks.WriteMaster(directory);
 VirtualShopHttpChecks.WriteMaster(directory);
+StampUseHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -211,6 +212,11 @@ if (args is ["--replay-costume-fix", var fixManifest, var fixMaster, _])
 {
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, fixMaster));
     builder.Services.AddSingleton(UserCaseReplay.Clock(fixManifest));
+}
+if (args is ["--replay-stamp-use", var stampUseManifest, var stampUseMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, stampUseMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(stampUseManifest));
 }
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
@@ -438,6 +444,12 @@ try
     {
         await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, fixPath, fixOutput,
             "costume-fix", UserCaseReplay.CostumeFixFields, "costume-unfix");
+        return;
+    }
+    if (args is ["--replay-stamp-use", var stampUsePath, _, var stampUseOutput])
+    {
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, stampUsePath, stampUseOutput,
+            "stamp-use-history", UserCaseReplay.StampUseFields, "honor-mission-receive");
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -729,6 +741,7 @@ try
     await AvatarHttpChecks.Run(client, config, store, directory, Check);
     await PenlightHttpChecks.Run(client, config, store, directory, Check);
     await CostumeFixHttpChecks.Run(client, config, store, directory, Check);
+    await StampUseHttpChecks.Run(client, config, store, directory, Check);
     await BeginnerCompletionHttpChecks.Run(client, store, Check);
     await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);

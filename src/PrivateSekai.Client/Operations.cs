@@ -74,6 +74,7 @@ public static class Operations
         ["user-config-save"] = new("POST", "/api/user/{userId}/config", typeof(PostUserConfigRequest), "updatedResources"),
         ["profile-honor-save"] = new("PUT", "/api/user/{userId}/profile-honor", typeof(PutUserProfileHonorRequest), "updatedResources"),
         ["stamp-favorite-save"] = new("PATCH", "/api/user/{userId}/stamp-favorite", typeof(UserStampFavoriteRequest), "updatedResources"),
+        ["stamp-use-history"] = new("POST", "/api/user/{userId}/stamp-use-history", typeof(UserStampUseHistoryRequest), "updatedResources"),
         ["avatar-motion-favorite-save"] = new("PATCH", "/api/user/{userId}/avatar-motion-favorite", typeof(UserAvatarMotionFavoriteRequest), "updatedResources"),
         ["music-my-list-save"] = new("PUT", "/api/user/{userId}/myList/{listNo}", typeof(PutUserMusicMyListRequest), "updateResources"),
         ["music-my-list-reset"] = new("PATCH", "/api/user/{userId}/myList/{listNo}", null, "updateResources"),

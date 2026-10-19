@@ -2835,6 +2835,20 @@ Server 已补免费任务达成及结算提示，Client 支持领奖场景和 `-
 
 证据：`PutUserMissionReceiveAPI` 构造、Execute 和回调，任务请求与响应契约、`liveMissions` 与 `mission_reward` 资源盒，以及免费任务达成、领奖和回读样本。
 
+## POST `/api/user/{userId}/stamp-use-history`
+
+- Path：当前 `userId`；无 query。Body：`UserStampUseHistoryRequest.userStampUseHistories`，每项为 `UserStampUseHistory.stampId` 和 `useCount`，均为整数，不包含用户编号。
+- 客户端先在 `StampUtility` 的字典中按表情编号累计次数，`HonorMissionDataService.StampUseHistory` 将非空列表批量上报；普通联机演出最终确认、演出结算和 Cheerful 难度选择流程会调用并要求清空本地批次。最近使用表情的本地列表另有用途，不能将其作为服务端次数记录。
+- Response：`SuiteUserCommonResponse.updatedResources`，成功回调合并用户状态。有效批次的 `useCount` 先合计，仅正合计增加 `userHonorMissions` 中 `multi_live_stamp` 的进度；相同请求再次提交会再次累计。空数组、零或负合计返回 200，不倒扣进度，也不刷新该进度字段。
+- 已持有表情可上报；master 中 `stampType=cheerful_carnival_message` 的临时表情允许未持有时上报。未持有普通表情、未知或非正表情编号返回 409，`errorCode`、`errorMessage` 为空，零次数也先校验持有条件。混合合法与非法项整单拒绝。
+- 同批次重复表情编号、缺失列表或 null 元素返回 500、零字节正文；重复编号校验先于持有条件。null 列表由 dump 编码省略，与缺失列表相同。拒绝不改变次数、任务或奖励，也不消费原有待刷新字段。
+- 门槛来自 `honorMissions`：首次达成新增 `honor_mission` 的 `achieved` 状态，本次进度响应附 `achievedMissionIds`，Suite 回读该提示数组为空。达成及领奖后继续计数，保留 `received`，不重复提示或自动发奖。
+- 领奖使用下述通用称号任务接口。官方样本中任务 1901 的门槛为 1000，通过 `mission_reward` 资源盒发放称号 134、等级 1、数量 1；实现不固定这些编号和门槛。
+
+证据：`PostUserStampUseHistoryAPI` 构造、Execute（RVA `0x61911f8`）与成功回调，两个请求 dump 模型，`StampUtility.AddUserStampUseHistory`（RVA `0x4deffec`）、取出及清空方法、持有与临时表情检查，`HonorMissionDataService.StampUseHistory.MoveNext`（RVA `0x4ed59a0`）、调用点、相关 master，以及官方批次、领奖与独立回读样本。
+
+Client 提供 `stamp-use-history`；Server 在用户事务中累计、达成并构建本次提示，编码失败回滚。25 组官方样本重放通过，完整业务响应、称号及任务状态、表情持有与收藏、关联资料、材料和钱包的增量与独立会话回读均无差异；本地另检查批量跨多个门槛、待刷新字段保留、编码失败回滚和数据库重启。官方接口采样使用测试账号直接提交次数，未运行实际联机演出或游戏表情交互。
+
 ## PUT `/api/user/{userId}/mission/honor_mission`
 
 - Path：当前 `userId`；无 query。Body：`UserMissionReceiveRequest.missionIds`，称号任务 ID 数组。

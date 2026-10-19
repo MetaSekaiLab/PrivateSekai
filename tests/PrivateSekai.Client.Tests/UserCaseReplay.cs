@@ -20,6 +20,9 @@ internal static class UserCaseReplay
     public static readonly string[] CostumeFixFields = ["userFixCostumes", "userCharacterCostume3ds", "userCostume3dStatuses",
         "userCostume3dShopItems", "userMaterials", "userChargedCurrency", "userGamedata", "userBeginnerMissionV2s",
         "userMissionStatuses", "userCharacterMissions", "userCharacterMissionStatuses"];
+    public static readonly string[] StampUseFields = ["userHonorMissions", "userMissionStatuses", "userHonors", "userProfile", "userProfileHonors",
+        "userStamps", "userStampFavorites", "userStampFavoriteTabs", "userMaterials", "userChargedCurrency", "userGamedata",
+        "userBeginnerMissionV2s", "userCharacterMissions", "userCharacterMissionStatuses"];
 
     public static TimeProvider Clock(string manifest) => new ReplayClock(Timestamp(Load(Load(manifest)["records"]![0]!["record"]!.GetValue<string>())));
 

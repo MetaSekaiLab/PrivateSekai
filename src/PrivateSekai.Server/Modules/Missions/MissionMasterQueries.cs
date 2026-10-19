@@ -9,6 +9,9 @@ namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public bool IsCheerfulCarnivalStamp(int id) =>
+        master.GetTable<MasterStamp>("stamps", s => s.id).FindById(id)?.stampType == "cheerful_carnival_message";
+
     public MasterCharacterMissionV2[] GetCharacterMissions(int characterId) =>
         master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
             .Where(m => m.characterId == characterId).ToArray();
