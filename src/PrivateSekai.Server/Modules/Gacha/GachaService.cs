@@ -61,6 +61,7 @@ public sealed class GachaService(
 
         var userGacha = UpsertUserGacha(gachaId, gachaBehaviorId, now);
         var obtainGachaCeilItems = GrantGachaCeilItem(gacha, gachaId, spinCount);
+        missions.RefreshGachaPanels();
 
         return new UserGachaResponse
         {
@@ -469,6 +470,7 @@ public sealed class GachaService(
 
     private bool GrantGachaCard(int cardId)
     {
+        var card = cards.GetMasterCard(cardId) ?? throw new InvalidOperationException("Missing gacha card definition.");
         var isNew = user.Data.userCards?.All(card => card.cardId != cardId) ?? true;
         resources.Grant(new UserResource
         {
@@ -480,9 +482,9 @@ public sealed class GachaService(
         if (isNew)
         {
             user.Data.userCards = user.Data.userCards!.OrderBy(c => c.cardId).ToArray();
-            var card = cards.GetMasterCard(cardId) ?? throw new InvalidOperationException("Missing gacha card definition.");
-            missions.RecordCardAcquisition(card.characterId);
+            missions.RecordCardAcquisition(cardId, card.characterId);
         }
+        else missions.RecordDuplicateCard(card.characterId);
         return isNew;
     }
 

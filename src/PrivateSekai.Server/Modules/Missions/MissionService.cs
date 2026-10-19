@@ -108,14 +108,33 @@ public sealed class MissionService(
     public void RecordCardSpecialTraining(int characterId) =>
         RecordCharacterMissionProgress(master.GetCardCollectionMissions(characterId));
 
-    public void RecordCardAcquisition(int characterId)
+    public void RecordCardAcquisition(int cardId, int characterId)
     {
         RecordCharacterMissionProgress(master.GetCardCollectionMissions(characterId));
+        var voiceMissions = master.GetCharacterMissions(characterId)
+            .Where(m => m.characterMissionType == "collect_character_archive_voice").ToArray();
+        var voices = voiceMissions.Length == 0 ? 0 : master.GetCardArchiveVoiceCount(cardId);
+        if (voices > 0) RecordCharacterMissionProgress(voiceMissions, voices);
         user.Data.userCharacterMissions = (user.Data.userCharacterMissions ?? [])
             .OrderBy(m => m.characterMissionType, StringComparer.Ordinal).ThenBy(m => m.characterId).ToArray();
     }
 
-    private UserCharacterMissionV2Status[] RecordCharacterMissionProgress(IEnumerable<MasterCharacterMissionV2> definitions)
+    public void RecordDuplicateCard(int characterId)
+    {
+        RecordCharacterMissionProgress(master.GetCharacterMissions(characterId).Where(m => m.characterMissionType == "waiting_room"));
+        UpdateHonorProgress("duplicate_card_total");
+        user.Data.userCharacterMissions = (user.Data.userCharacterMissions ?? [])
+            .OrderBy(m => m.characterMissionType, StringComparer.Ordinal).ThenBy(m => m.characterId).ToArray();
+    }
+
+    public void RefreshGachaPanels()
+    {
+        if (user.Data.userPanelMissions is { Length: 0 } && user.Data.userPanelMissionSheets is { Length: 0 } &&
+            master.HasActivePanelCampaign(user.Now))
+            user.MarkChanged(nameof(SuiteUser.userPanelMissions));
+    }
+
+    private UserCharacterMissionV2Status[] RecordCharacterMissionProgress(IEnumerable<MasterCharacterMissionV2> definitions, int amount = 1)
     {
         var achieved = new List<UserCharacterMissionV2Status>();
         foreach (var definition in definitions)
@@ -132,7 +151,7 @@ public sealed class MissionService(
                 };
                 missions.Add(progress);
             }
-            progress.progress++;
+            progress.progress = checked(progress.progress + amount);
             var statuses = (user.Data.userCharacterMissionStatuses ?? []).ToList();
             foreach (var parameter in master.GetCharacterMissionParameters(definition.parameterGroupId))
             {

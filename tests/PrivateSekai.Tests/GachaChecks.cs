@@ -34,10 +34,18 @@ internal static class GachaChecks
         File.WriteAllText(Path.Combine(directory, "cards.json"), """[{"id":2,"characterId":2,"cardRarityType":"rarity_2"}]""");
         File.WriteAllText(Path.Combine(directory, "cardEpisodes.json"), """[{"id":20,"cardId":2},{"id":21,"cardId":2}]""");
         File.WriteAllText(Path.Combine(directory, "cardCostume3ds.json"), "[]");
-        File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"), """[{"id":2,"characterId":2,"characterMissionType":"collect_member","parameterGroupId":1}]""");
+        File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"), """
+            [{"id":2,"characterId":2,"characterMissionType":"collect_member","parameterGroupId":1},
+             {"id":3,"characterId":2,"characterMissionType":"waiting_room","parameterGroupId":1},
+             {"id":4,"characterId":2,"characterMissionType":"collect_character_archive_voice","parameterGroupId":1}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "characterArchiveVoices.json"), """
+            [{"id":1,"groupId":1,"gameCharacterId":2,"characterArchiveVoiceType":"collect_card","externalId":2}]
+            """);
         File.WriteAllText(Path.Combine(directory, "characterMissionV2ParameterGroups.json"), """[{"id":1,"seq":1,"requirement":1}]""");
         File.WriteAllText(Path.Combine(directory, "beginnerMissionV2s.json"), "[]");
-        File.WriteAllText(Path.Combine(directory, "honorMissions.json"), "[]");
+        File.WriteAllText(Path.Combine(directory, "honorMissions.json"), """[{"id":10,"honorMissionType":"duplicate_card_total","requirement":2}]""");
+        File.WriteAllText(Path.Combine(directory, "panelMissionCampaigns.json"), """[{"id":1,"startAt":900,"progressEndAt":1100}]""");
         var clock = new Clock { Now = 1000 };
         var store = new MemoryUserStore();
         using var provider = new ServiceCollection().AddPrivateSekai()
@@ -54,6 +62,8 @@ internal static class GachaChecks
         state.Data.userCharacterMissions = [];
         state.Data.userCharacterMissionStatuses = [];
         state.Data.userHonorMissions = [];
+        state.Data.userPanelMissions = [];
+        state.Data.userPanelMissionSheets = [];
         state.Data.refreshableTypes = ["userMaterials"];
         store.Save(1, state);
         store.Save(2, TestUsers.Create(2));
@@ -97,16 +107,21 @@ internal static class GachaChecks
             first.updatedResources.userChargedCurrency.free == 50 && first.updatedResources.userChargedCurrency.paid == 100,
             "普通单抽在起点时刻可执行，免费优先且消耗响应保持剩余总余额语义");
         Check.That(first.updatedResources.userCards.Single().episodes.Select(e => e.cardEpisodeId).SequenceEqual([20, 21]) &&
-            store.Read(1)!.Data.userCharacterMissions.Single().progress == 1 &&
-            store.Read(1)!.Data.userCharacterMissionStatuses.Single().missionStatus == "achieved",
-            "首次发卡保存卡牌剧情并推进所属角色收集任务、达成master门槛");
+            store.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "collect_member").progress == 1 &&
+            store.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "collect_character_archive_voice").progress == 1 &&
+            store.Read(1)!.Data.userCharacterMissionStatuses.Count(s => s.missionStatus == "achieved") == 2 &&
+            first.updatedResources.userPanelMissions.Length == 0,
+            "首次发卡保存剧情、推进收集及master关联语音任务，活动期未选面板返回空刷新");
         var second = Draw(paidFirst: true);
         Check.That(!second.obtainPrizes.Single().newFlg && second.updatedResources.userCards.Single().duplicateCount == 1 &&
             second.updatedResources.userChargedCurrency.free == 50 && second.updatedResources.userChargedCurrency.paid == 0 &&
             second.consumedCosts.Single().quantity == 50 && second.userGacha.count == 2,
             "再次单抽按付费优先扣款，重复卡进入重复数，抽取次数独立累计");
-        Check.That(second.updatedResources.userCharacterMissions == null && store.Read(1)!.Data.userCharacterMissions.Single().progress == 1 &&
-            store.Read(1)!.Data.userGachaCeilItems.Single().quantity == 2, "重复卡不增加首次收集进度，天井按实际抽取数量累计");
+        Check.That(store.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "collect_member").progress == 1 &&
+            store.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "collect_character_archive_voice").progress == 1 &&
+            store.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "waiting_room").progress == 1 &&
+            store.Read(1)!.Data.userHonorMissions.Single().progress == 1 && store.Read(1)!.Data.userGachaCeilItems.Single().quantity == 2,
+            "重复卡推进候场室及重复称号，不重复计算卡牌和语音收集，天井按实际抽数增加");
         Reject(1, 1, 409, "not_enough_resource");
         Reject(1, 3, 409, "not_enough_resource");
         state = store.Read(1)!;
@@ -119,7 +134,10 @@ internal static class GachaChecks
         using (var sql = new SqliteUserStore(path)) sql.Save(1, store.Read(1)!);
         using (var sql = new SqliteUserStore(path))
             Check.That(sql.Read(1)!.Data.userCards.Single().duplicateCount == 2 && sql.Read(1)!.Data.userGachaCeilItems.Single().quantity == 3 &&
-                sql.Read(1)!.Data.userCharacterMissions.Single().progress == 1, "数据库重启保留重复卡、天井及首次收集进度");
+                sql.Read(1)!.Data.userCharacterMissions.Single(m => m.characterMissionType == "collect_member").progress == 1 &&
+                sql.Read(1)!.Data.userHonorMissions.Single().progress == 2 &&
+                sql.Read(1)!.Data.userMissionStatuses.Single(s => s.missionType == "honor_mission" && s.missionId == 10).missionStatus == "achieved",
+                "数据库重启保留重复卡、天井、收集及重复称号达到门槛的状态");
         Check.That(DumpSerializer.Serialize(store.Read(2)!.Data).SequenceEqual(peer), "单抽与失败不改变其他账号");
     }
 

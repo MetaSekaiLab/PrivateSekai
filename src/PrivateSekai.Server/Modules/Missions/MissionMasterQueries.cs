@@ -3,12 +3,17 @@ extern alias game;
 using System;
 using System.Linq;
 using game::Sekai;
+using game::Sekai.ApiData;
 using PrivateSekai.Shared.Master;
 
 namespace PrivateSekai.Modules.Missions;
 
 public sealed class MissionMasterQueries(MasterData master)
 {
+    public bool HasActivePanelCampaign(long now) =>
+        master.GetTable<MasterPanelMissionCampaign>("panelMissionCampaigns", c => c.id).Rows
+            .Any(c => c.startAt <= now && now < c.progressEndAt);
+
     public bool IsCheerfulCarnivalStamp(int id) =>
         master.GetTable<MasterStamp>("stamps", s => s.id).FindById(id)?.stampType == "cheerful_carnival_message";
 
@@ -26,6 +31,11 @@ public sealed class MissionMasterQueries(MasterData master)
     public MasterCharacterMissionV2[] GetCardCollectionMissions(int characterId) =>
         master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
             .Where(m => m.characterId == characterId && m.characterMissionType == "collect_member").ToArray();
+
+    public int GetCardArchiveVoiceCount(int cardId) =>
+        master.GetTable<MasterCharacterArchiveVoice>("characterArchiveVoices", v => v.id).Rows
+            .Where(v => v.characterArchiveVoiceType == "collect_card" && v.externalId == cardId)
+            .Select(v => v.groupId).Distinct().Count();
 
     public MasterBeginnerMissionV2[] GetCardStoryMissions() =>
         master.GetTable<MasterBeginnerMissionV2>("beginnerMissionV2s", m => m.id).Rows

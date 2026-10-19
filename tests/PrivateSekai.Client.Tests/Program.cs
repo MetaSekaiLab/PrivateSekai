@@ -105,6 +105,7 @@ BeginnerCompletionHttpChecks.WriteMaster(directory);
 AvatarMotionFavoriteHttpChecks.WriteMaster(directory);
 VirtualShopHttpChecks.WriteMaster(directory);
 StampUseHttpChecks.WriteMaster(directory);
+GachaTenHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -757,6 +758,7 @@ try
         "商店购买与升级分别使用 POST 和 PUT，均不发送 body");
     await GachaHttpChecks.Run(client, config, store, directory, Check);
     await GachaHttpChecks.RunExchange(client, config, store, directory, Check);
+    await GachaTenHttpChecks.Run(client, config, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);
     await HomeHttpChecks.Run(client, store, directory, Check);
     await FriendMissionHttpChecks.Run(client, store, Check);

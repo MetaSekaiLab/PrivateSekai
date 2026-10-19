@@ -73,9 +73,9 @@ public sealed class UserSession
     }
 
     // 最外层映射响应时执行一次刷新，不清除其他模块的变化。
-    public SuiteUser BuildRefresh(IEnumerable<string>? excludedFields = null)
+    public SuiteUser BuildRefresh(IEnumerable<string>? excludedFields = null, bool prepareRefresh = true)
     {
-        PrepareRefresh();
+        if (prepareRefresh) PrepareRefresh();
         NormalizeEventBreakTime();
         var fields = new HashSet<string>(BaseFields, StringComparer.Ordinal);
         fields.UnionWith(_changed);

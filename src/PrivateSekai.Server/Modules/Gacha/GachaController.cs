@@ -4,12 +4,13 @@ using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using game::Sekai.ApiData;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 
 namespace PrivateSekai.Modules.Gacha;
 
-public sealed class GachaController(UserOperation operations, UserSession user, GachaService gacha) : PrskController
+public sealed class GachaController(UserOperation operations, UserSession user, GachaService gacha, MissionMasterQueries missionMaster) : PrskController
 {
     /// <summary>
     /// 执行一次抽卡行为。客户端根据抽卡按钮、资源消耗方式、bonus 奖励选择和剩余抽取次数选择不同 query 变体；成功后合并返回的用户资源差异，并用完整抽卡结果驱动动画和结果页。
@@ -25,19 +26,23 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
         {
             return Encoded(operations.Execute(userId, () =>
             {
+                var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
                 var before = (user.Data.userCharacterMissionStatuses ?? [])
                     .Select(s => (s.characterId, s.missionId, s.parameterGroupId, s.seq)).ToHashSet();
                 var response = gacha.ExecuteGacha(gachaId, gachaBehaviorId, isPriorityUsePaidJewel);
-                response.updatedResources = user.BuildRefresh();
+                response.updatedResources = user.BuildRefresh(prepareRefresh: false);
+                HonorMissionResponse.AddAchievementHints(response.updatedResources, previousHonor, missionMaster);
                 if (response.updatedResources.userCharacterMissions != null)
                 {
                     var achieved = (user.Data.userCharacterMissionStatuses ?? [])
                         .Where(s => !before.Contains((s.characterId, s.missionId, s.parameterGroupId, s.seq))).ToArray();
+                    var definitions = achieved.Select(s => s.characterId).Distinct().SelectMany(missionMaster.GetCharacterMissions)
+                        .ToDictionary(m => m.id);
                     response.updatedResources.userCharacterMissions = response.updatedResources.userCharacterMissions.Select(m => new UserCharacterMissionV2
                     {
                         userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType,
-                        progress = m.progress, achievedMissions = m.characterMissionType == "collect_member"
-                            ? achieved.Where(s => s.characterId == m.characterId).ToArray() : []
+                        progress = m.progress, achievedMissions = achieved.Where(s => s.characterId == m.characterId &&
+                            definitions[s.missionId].characterMissionType == m.characterMissionType).ToArray()
                     }).ToArray();
                 }
                 return response;
