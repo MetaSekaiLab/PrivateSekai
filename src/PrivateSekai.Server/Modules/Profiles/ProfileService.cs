@@ -14,6 +14,17 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class ProfileService(UserSession user, CustomProfileThumbnailStore thumbnails, MasterData master)
 {
+    public int SavePenlight(int id, bool favorite)
+    {
+        var penlights = user.Data.userPenlights ?? [];
+        if (!penlights.Any(p => p.penlightId == id)) return 404;
+        if (!favorite || penlights.All(p => p.favoriteFlg == (p.penlightId == id))) return 200;
+        foreach (var penlight in penlights) penlight.favoriteFlg = penlight.penlightId == id;
+        user.MarkChanged(nameof(SuiteUser.userPenlights));
+        user.MarkChanged(nameof(SuiteUser.userVirtualShops));
+        return 200;
+    }
+
     public int SaveAvatar(UserAvatarRequest request)
     {
         if (request.avatarSkinColorId == null) return 500;

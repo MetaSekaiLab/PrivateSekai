@@ -186,11 +186,18 @@ public sealed class ProtocolClient : IDisposable
                     throw new InvalidOperationException("个人资料请求的账号与当前目标不一致。");
                 body["userId"] = UserId;
             }
-            if (step.Operation == "avatar-save" && body != null)
+            if (step.Operation is "avatar-save" or "penlight-save" && body != null)
             {
                 if (body["userId"] != null && body["userId"]!.GetValue<long>() != UserId)
-                    throw new InvalidOperationException("外观请求的账号与当前目标不一致。");
+                    throw new InvalidOperationException("虚拟演出设置请求的账号与当前目标不一致。");
                 body["userId"] = UserId;
+            }
+            if (step.Operation == "penlight-save" && body != null)
+            {
+                var penlightId = int.Parse(step.Args["penlightId"], System.Globalization.CultureInfo.InvariantCulture);
+                if (body["penlightId"] != null && body["penlightId"]!.GetValue<int>() != penlightId)
+                    throw new InvalidOperationException("荧光棒请求的编号与路径不一致。");
+                body["penlightId"] = penlightId;
             }
             if (step.Operation == "deck-save" && body?["userDeckUpdates"] is JsonArray deckUpdates)
                 foreach (var update in deckUpdates)

@@ -32,6 +32,7 @@ internal static class Program
         ProfileChecks.Run();
         AvatarMotionFavoriteChecks.Run();
         AvatarChecks.Run();
+        PenlightChecks.Run();
         VirtualShopChecks.Run();
         LoginStatusChecks.Run();
         FriendChecks.Run();

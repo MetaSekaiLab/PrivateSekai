@@ -2872,7 +2872,7 @@ Server 已接入首次登录发奖及重复刷新保护，Client 提供对应场
 
 证据：`PostUserVirtualShopAPI.Execute`（RVA `0x6193cb8`，POST、无 body）及回调、构造函数对消耗类型的枚举转换、购买确认页（RVA `0x4cc7ec0`）、请求响应 dump、嵌套商品 master 与 `virtual_shop_item` 资源盒，以及官方购买和独立会话回读。
 
-Client 操作为 `virtual-shop-purchase`；Server 在同一用户事务中完成扣款、发放和售罄，编码失败整体回滚。16 组官方 HTTP 重放覆盖免费水晶购买服装／配件／动作、虚拟币购买服装／动作，以及重复、余额不足、未提供的消耗、未知编号和过期商品；完整业务响应、相关持有、钱包、全部商店和独立回读一致。付费余额扣除、免费不足时补扣付费、同物品多入口、套装／肤色／荧光棒资源和 SQLite 重启另有本地检查，不作为官方成功样本。
+Client 操作为 `virtual-shop-purchase`；Server 在同一用户事务中完成扣款、发放和售罄，编码失败整体回滚。16 组官方 HTTP 重放覆盖免费水晶购买服装／配件／动作、虚拟币购买服装／动作，以及重复、余额不足、未提供的消耗、未知编号和过期商品；完整业务响应、相关持有、钱包、全部商店和独立回读一致。另有一组免费水晶购买荧光棒的完整响应与回读重放通过，确认到账后默认未选中。付费余额扣除、免费不足时补扣付费、同物品多入口、套装／肤色资源和 SQLite 重启另有本地检查，不作为官方成功样本。
 
 当前完整用例为普通一次性外观商品购买；演出票礼包、首购赠品和可重复购买的消耗品属于独立规则，尚未实现，不进入普通发奖分支。未启动游戏。
 
@@ -2888,3 +2888,15 @@ Client 操作为 `virtual-shop-purchase`；Server 在同一用户事务中完成
 证据：`PutUserAvatarAPI.Execute`（RVA `0x6197880`，PUT）、响应回调（RVA `0x6197a14`）、请求和外观 dump、`VirtualLiveSettingSkinPage.ExecuteAPI`（RVA `0x4e2c548`）、`VirtualLiveSettingSkinColorPage.ExecuteAPI`（RVA `0x4e2ad0c`），以及官方写入和独立会话回读。
 
 Server 在本人用户事务中复制并保存外观，编码失败整体回滚。22 组官方样本重放通过：10 次成功、10 次 409、2 次 500，覆盖穿戴、替换服装与配件、换色、卸下配件、只保留肤色、单独佩戴配件、重复保存、恢复原外观及上述拒绝；比较完整业务响应、外观、相关持有、钱包、商店、快捷动作和任务状态。Client 提供 `--replay-avatar`。已持有套装的成功保存、SQLite 重启、请求引用隔离及对方存档不变另有本地检查；官方测试账号未持有套装，不将本地成功冒充官方样本。未启动实际游戏。
+
+## PATCH `/api/user/{userId}/penlight/{penlightId}`
+
+- Path：当前账号、荧光棒编号；无 query。Body 使用 `UserPenlightRequest`，字段为 `userId`、`penlightId`、`favoriteFlg`。Client 操作 `penlight-save` 运行时填入账号和路径中的编号，拒绝场景中与目标不符的编号，不修改共享场景。
+- 调用时机：虚拟演出荧光棒设置页确认选择。`VirtualLiveSettingPenlightPage.ExecuteAPI` 提交选中编号和 `favoriteFlg=true`；成功回调合并 `updatedResources`，随后设置页重新读取用户数据。
+- 选择已持有荧光棒时，将它设为 true，其他持有荧光棒设为 false。选择确有变化才在 `UserPenlightResponse.updatedResources` 返回完整 `userPenlights` 和 `userVirtualShops`，商店状态本身不变；重复选择省略这两个字段。
+- `favoriteFlg=false` 对已选和未选荧光棒都不做修改，也不返回荧光棒刷新；它不是取消当前选择。不可将该字段实现为任意收藏开关。
+- 未持有或未知编号，无论 true 还是 false 都返回 404，`errorCode`、`errorMessage` 为空；状态保持不变。购买第二支荧光棒只增加持有记录，默认 false，不自动改变原选择。
+
+证据：`PatchUserPenlight.Execute`（RVA `0x6186c54`，PATCH）、回调（RVA `0x6186df4`）、请求响应 dump、`VirtualLiveSettingPenlightPage.OnClickCell`（RVA `0x4e29dc4`）和 `ExecuteAPI`（RVA `0x4e29fac`），以及实际购买第二支后的官方切换、重复、false 请求与独立会话回读。
+
+Server 使用本人事务保存选择，编码失败回滚。12 组官方样本重放通过，9 次成功、3 次 404；比较完整业务响应、荧光棒、外观、持有、钱包、商店、快捷动作和任务状态。Client 提供 `--replay-penlight`。第三支荧光棒切换、原存储顺序、SQLite 重启、对方存档不变和 Client 请求编号校验另有本地检查。未启动实际游戏。

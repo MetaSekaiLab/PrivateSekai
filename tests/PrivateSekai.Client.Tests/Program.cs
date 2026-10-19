@@ -202,10 +202,10 @@ if (args is ["--replay-virtual-shop", var virtualManifest, var virtualMaster, _]
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, virtualMaster));
     builder.Services.AddSingleton(UserCaseReplay.Clock(virtualManifest));
 }
-if (args is ["--replay-avatar", var avatarManifest, var avatarMaster, _])
+if (args is ["--replay-avatar" or "--replay-penlight", var settingsManifest, var settingsMaster, _])
 {
-    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, avatarMaster));
-    builder.Services.AddSingleton(UserCaseReplay.Clock(avatarManifest));
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, settingsMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(settingsManifest));
 }
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
@@ -423,10 +423,10 @@ try
             "virtual-shop-purchase", UserCaseReplay.VirtualShopFields);
         return;
     }
-    if (args is ["--replay-avatar", var avatarPath, _, var avatarOutput])
+    if (args is ["--replay-avatar" or "--replay-penlight", var settingsPath, _, var settingsOutput])
     {
-        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, avatarPath, avatarOutput,
-            "avatar-save", UserCaseReplay.AvatarFields);
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, settingsPath, settingsOutput,
+            args[0] == "--replay-avatar" ? "avatar-save" : "penlight-save", UserCaseReplay.AvatarFields);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -716,6 +716,7 @@ try
     await AvatarMotionFavoriteHttpChecks.Run(client, config, store, directory, Check);
     await VirtualShopHttpChecks.Run(client, config, store, directory, Check);
     await AvatarHttpChecks.Run(client, config, store, directory, Check);
+    await PenlightHttpChecks.Run(client, config, store, directory, Check);
     await BeginnerCompletionHttpChecks.Run(client, store, Check);
     await MissionHttpChecks.Run(client, config, store, directory, Check);
     await StoryHttpChecks.Run(client, store, directory, Check);
