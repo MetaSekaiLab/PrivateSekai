@@ -83,32 +83,34 @@ public sealed class CardService(
 
     public void ExchangeCards(UserCard[]? userCards)
     {
-        if (userCards == null || userCards.Length == 0)
-            return;
-
-        user.Data.userCards ??= [];
-        var cards = user.Data.userCards;
-        foreach (var requestCard in userCards.Where(c => c.cardId > 0))
+        if (userCards == null || userCards.Any(c => c == null)) throw new CardExchangeRejectedException(500);
+        var fields = userCards.Select((card, index) => (card, index)).Where(p => p.card.duplicateCount < 0)
+            .ToDictionary(p => $"userCards[{p.index}].duplicateCount", _ => "Min");
+        if (fields.Count > 0) throw new CardExchangeRejectedException(400, fields);
+        foreach (var requestCard in userCards)
+            if (master.GetMasterCard(requestCard.cardId) == null) throw new CardExchangeRejectedException(400);
+        var cards = user.Data.userCards ?? [];
+        if (userCards.Select(c => c.cardId).Distinct().Count() != userCards.Length ||
+            userCards.Any(c => cards.All(owned => owned.cardId != c.cardId)))
+            throw new CardExchangeRejectedException(404);
+        foreach (var requestCard in userCards)
         {
-            var current = cards.FirstOrDefault(c => c.cardId == requestCard.cardId);
-            if (current == null)
-                continue;
-
-            var targetDuplicateCount = Math.Max(0, requestCard.duplicateCount);
-            var exchangeCount = current.duplicateCount - targetDuplicateCount;
-            if (exchangeCount <= 0)
-                continue;
-
-            current.duplicateCount = targetDuplicateCount;
-
+            var current = cards.Single(c => c.cardId == requestCard.cardId);
+            var exchangeCount = current.duplicateCount - requestCard.duplicateCount;
+            if (exchangeCount <= 0) throw new CardExchangeRejectedException(409);
             var exchangeResources = master.GetCardExchangeResources(master.GetCardRarityType(current.cardId));
-            for (var i = 0; i < exchangeCount; i++)
+            if (exchangeResources.Length == 0) throw new InvalidOperationException("Missing card exchange rewards.");
+            current.duplicateCount = requestCard.duplicateCount;
+            foreach (var resource in exchangeResources)
             {
-                foreach (var resource in exchangeResources)
-                    resourceService.Grant(resource);
+                resourceService.Grant(new UserResource
+                {
+                    resourceType = resource.resourceType, resourceId = resource.resourceId, resourceLevel = resource.resourceLevel,
+                    quantity = checked(resource.quantity * exchangeCount)
+                });
             }
         }
-
+        if (userCards.Length == 0) return;
         user.Data.userCards = cards.OrderBy(c => c.cardId).ToArray();
         user.MarkChanged(nameof(SuiteUser.userCards));
     }
@@ -273,4 +275,10 @@ public sealed class CardService(
         resourceService.Grant(new UserResource { resourceType = "card", resourceId = cardId, quantity = 1 });
         return user.Data.userCards!.First(c => c.cardId == cardId);
     }
+}
+
+public sealed class CardExchangeRejectedException(int status, Dictionary<string, string>? fields = null) : Exception
+{
+    public int Status { get; } = status;
+    public Dictionary<string, string>? Fields { get; } = fields;
 }

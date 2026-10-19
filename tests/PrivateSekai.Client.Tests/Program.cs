@@ -231,6 +231,11 @@ if (args is ["--replay-gacha-exchange", var gachaExchangeManifest, var gachaExch
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, gachaExchangeMaster));
     builder.Services.AddSingleton(UserCaseReplay.Clock(gachaExchangeManifest));
 }
+if (args is ["--replay-card-exchange", var cardExchangeManifest, var cardExchangeMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, cardExchangeMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(cardExchangeManifest));
+}
 if (args is ["--replay-character-mission", var characterMissionCapture, _, _])
     builder.Services.AddSingleton<TimeProvider>(ChallengeDeckReplay.Clock(characterMissionCapture));
 if (args is ["--replay-costume-craft", var craftCapture, _, _])
@@ -475,6 +480,12 @@ try
     {
         await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, gachaExchangePath, gachaExchangeOutput,
             "gacha-exchange", UserCaseReplay.GachaExchangeFields);
+        return;
+    }
+    if (args is ["--replay-card-exchange", var cardExchangePath, _, var cardExchangeOutput])
+    {
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, cardExchangePath, cardExchangeOutput,
+            "card-exchange", UserCaseReplay.CardExchangeFields);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -759,6 +770,7 @@ try
     await GachaHttpChecks.Run(client, config, store, directory, Check);
     await GachaHttpChecks.RunExchange(client, config, store, directory, Check);
     await GachaTenHttpChecks.Run(client, config, store, directory, Check);
+    await CardExchangeHttpChecks.Run(config, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);
     await HomeHttpChecks.Run(client, store, directory, Check);
     await FriendMissionHttpChecks.Run(client, store, Check);

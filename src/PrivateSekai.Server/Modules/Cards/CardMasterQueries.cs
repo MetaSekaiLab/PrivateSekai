@@ -177,23 +177,17 @@ public sealed class CardMasterQueries(MasterData master, ResourceMasterQueries r
             .ToArray();
     }
 
-    public int GetCardExchangeResourceBoxId(string? cardRarityType)
-    {
-        if (cardRarityType == null)
-            return 0;
-
-        return master.GetTable<MasterCardExchangeResource>("cardExchangeResources")
-            .Rows
-            .Where(row => string.Equals(row.cardRarityType, cardRarityType, StringComparison.Ordinal))
-            .OrderBy(row => row.seq)
-            .FirstOrDefault()
-            ?.resourceBoxId ?? 0;
-    }
-
     public UserResource[] GetCardExchangeResources(string? cardRarityType)
     {
-        var resourceBoxId = GetCardExchangeResourceBoxId(cardRarityType);
-        return resources.BuildResourcesFromBox("card_exchange_resource", resourceBoxId);
+        return master.GetTable<MasterCardExchangeResource>("cardExchangeResources").Rows
+            .Where(row => string.Equals(row.cardRarityType, cardRarityType, StringComparison.Ordinal)).OrderBy(row => row.seq)
+            .SelectMany(row =>
+            {
+                var rewards = resources.BuildResourcesFromBox("card_exchange_resource", row.resourceBoxId);
+                if (rewards.Length == 0 || rewards.Any(r => r.quantity <= 0))
+                    throw new InvalidOperationException("Missing or invalid card exchange rewards.");
+                return rewards;
+            }).ToArray();
     }
 
     public int[] GetCardCostume3dIds(int cardId) =>

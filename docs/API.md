@@ -1151,6 +1151,28 @@ Client 操作为 `stamp-favorite-save`，发送时填入当前账号，不改共
 - `Sekai.ScreenLayerWaitingRoom.OnClickConfirmOK`: 等待室确认转换后构造 request 并执行 API。
 - `Sekai.ScreenLayerWaitingRoom.OnFinishedPutUserCardExchangeAPI`: 转换成功后显示结果弹窗，并刷新等待室状态。
 
+### 候场室兑换核验
+
+`userCards[].duplicateCount` 是兑换后保留的重复数量，实际兑换数量为持有重复数减去该值。`OnClickConfirmOK`（RVA `0x4b66c54`）将每张选中的重复卡从所属 `UserCard.duplicateCount` 扣一，再按卡牌 ID 合并详情。Client 发包前绑定当前账号，其他账号的卡牌详情在本地拒绝，抓包中的所属账号仍脱敏。
+
+服务端只修改持有卡牌的重复数，保留主卡、养成、剧情、服装和编队。奖励按 `cardExchangeResources` 的稀有度匹配项、`seq` 和 `card_exchange_resource` 资源箱结算，按实际兑换数量批量发放；不再只取首个匹配项。缺少或损坏的奖励配置使整次操作回滚。兑换不扣除或再次增加历史候场室、重复卡称号的进度。
+
+已核实的请求结果如下：
+
+| 请求情况 | HTTP 与正文 |
+| --- | --- |
+| 缺少 `userCards`、数组含 null | 500，零字节正文 |
+| 任一负剩余数 | 400，字段名 `userCards[i].duplicateCount` 对应 `Min`，多项合并返回 |
+| 零或未知 master 卡牌 ID | 400，空错误码和文案的 `ClientErrorResponse` |
+| master 存在但未持有、重复卡牌条目 | 404，同上 |
+| 剩余数相同或增加 | 409，同上；含重复提交清零后的卡牌 |
+| 空数组 | 200，不刷新未改变的 `userCards` |
+| 正常兑换 | 200，返回全部持有卡牌和材料等 `updatedResources` |
+
+14 组官方请求包含一次二星卡成功、空数组成功和十二次拒绝，每次均独立登录回读。成功只将重复数从 1 改为 0、材料增加 5，其他卡牌字段及相关任务不变；混合列表包含未知卡时整体拒绝。完整响应、相关状态增量及独立回读对拍无差异，比较包含卡牌、材料、货币、抽卡、角色／称号／新手任务、角色及编队。
+
+本地另覆盖多卡、多张、四种可兑换稀有度、同稀有度多奖励箱、请求默认字段不覆盖养成、后项失败、编码失败、数量溢出、数据库重启及账号隔离。批量和其他稀有度的成功尚无官方样本，其实现依据上述客户端调用链和 master；未运行游戏界面。
+
 ## POST `/api/user/{userId}/card/{cardId}/practice-ticket`
 
 > 审计版本: jp-6.5.5
