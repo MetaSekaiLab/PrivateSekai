@@ -62,7 +62,14 @@ internal static class MultiLivePerformanceChecks
             "结算记录隐藏活动成员、断连成员及嵌套成绩账号");
         var path = Path.Combine(AppContext.BaseDirectory, "performance-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(path, """{"durationMilliseconds":180000,"ownerScore":{"score":100},"guestScore":{"score":200}}""");
-        check(MultiLivePerformance.Read(path).DurationMilliseconds == 180000, "成绩用例明确给出等待时长，不在实现中猜歌曲时长");
+        check(MultiLivePerformance.Read(path).DurationMilliseconds == 180000
+            && MultiLivePerformance.Read(path).OwnerBoostCount == 0 && MultiLivePerformance.Read(path).GuestBoostCount == 0,
+            "成绩用例明确等待时长，旧配置默认双方零体力");
+        File.WriteAllText(path, """{"durationMilliseconds":180000,"ownerBoostCount":1,"guestBoostCount":2,"ownerScore":{},"guestScore":{}}""");
+        check(MultiLivePerformance.Read(path).OwnerBoostCount == 1 && MultiLivePerformance.Read(path).GuestBoostCount == 2,
+            "演出用例分别保存双方体力选择，旧配置默认零体力");
+        File.WriteAllText(path, """{"durationMilliseconds":1,"ownerBoostCount":-1,"ownerScore":{},"guestScore":{}}""");
+        Reject(() => MultiLivePerformance.Read(path));
         File.WriteAllText(path, """{"durationMilliseconds":0,"ownerScore":{},"guestScore":{}}""");
         Reject(() => MultiLivePerformance.Read(path));
         File.WriteAllText(path, """{"durationMilliseconds":1,"ownerScore":{"fastCount":1},"guestScore":{}}""");

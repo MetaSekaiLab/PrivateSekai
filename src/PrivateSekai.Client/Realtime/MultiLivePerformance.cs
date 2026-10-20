@@ -11,6 +11,8 @@ namespace PrivateSekai.Client.Realtime;
 public sealed class MultiLivePerformance
 {
     public int DurationMilliseconds { get; init; }
+    public int OwnerBoostCount { get; init; }
+    public int GuestBoostCount { get; init; }
     public UserMultiLiveClearScoreRequest OwnerScore { get; init; } = null!;
     public UserMultiLiveClearScoreRequest GuestScore { get; init; } = null!;
 
@@ -22,6 +24,8 @@ public sealed class MultiLivePerformance
         }) ?? throw new InvalidDataException("缺少演出成绩用例。");
         if (value.DurationMilliseconds <= 0 || value.OwnerScore == null || value.GuestScore == null)
             throw new InvalidDataException("成绩用例必须包含等待时长及双方成绩。");
+        if (value.OwnerBoostCount < 0 || value.GuestBoostCount < 0)
+            throw new InvalidDataException("体力消耗不能为负数。");
         return value;
     }
 

@@ -70,8 +70,9 @@ public static class MultiLiveFlow
             ? SyncPropertyEncoding.ReadInt32(order) : p.index)
         .Select(p => long.Parse(p.userId, CultureInfo.InvariantCulture)).ToArray();
 
-    public static MultiLiveRequest PrepareRequest(SuiteUser user, string roomId, int lobbyId, MultiLiveSong song, long[] players)
+    public static MultiLiveRequest PrepareRequest(SuiteUser user, string roomId, int lobbyId, MultiLiveSong song, long[] players, int boostCount = 0)
     {
+        if (boostCount < 0) throw new InvalidDataException("体力消耗不能为负数。");
         if (players.Length is < 2 or > 5 || players.Distinct().Count() != players.Length
             || !players.Contains(user.userGamedata.userId)) throw new InvalidDataException("本场演出成员无效。");
         var ids = players.Concat(new long[5]).Take(5).ToArray();
@@ -79,7 +80,7 @@ public static class MultiLiveFlow
         {
             multiLiveLobbyId = lobbyId, photonRoomName = roomId, privateFlg = true,
             musicId = song.MusicId, musicDifficultyId = song.DifficultyId, musicVocalId = song.VocalId,
-            userId = user.userGamedata.userId, deckId = user.userGamedata.deck, boostCount = 0,
+            userId = user.userGamedata.userId, deckId = user.userGamedata.deck, boostCount = boostCount,
             userId1 = ids[0], userId2 = ids[1], userId3 = ids[2], userId4 = ids[3], userId5 = ids[4],
             selectedMusicId1 = song.MusicId, selectedMusicId2 = song.MusicId,
             selectedMusicId3 = ids[2] == 0 ? 0 : song.MusicId,
@@ -89,11 +90,12 @@ public static class MultiLiveFlow
         };
     }
 
-    public static UserMultiLiveRequest MemberRequest(SuiteUser user, string roomId, int lobbyId, MultiLiveSong song) => new()
+    public static UserMultiLiveRequest MemberRequest(SuiteUser user, string roomId, int lobbyId, MultiLiveSong song, int boostCount = 0) =>
+        boostCount < 0 ? throw new InvalidDataException("体力消耗不能为负数。") : new()
     {
         photonRoomName = roomId, privateFlg = true, multiLiveLobbyId = lobbyId, musicId = song.MusicId,
         deckId = user.userGamedata.deck, musicDifficultyId = song.DifficultyId, musicVocalId = song.VocalId,
-        boostCount = 0, musicCategoryName = MusicCategory.image.ToString(), privateRoomSettings = new() { liveRuleType = "normal" }
+        boostCount = boostCount, musicCategoryName = MusicCategory.image.ToString(), privateRoomSettings = new() { liveRuleType = "normal" }
     };
 
     public static async Task<bool> Run(DiarkisUdpClient owner, DiarkisUdpClient guest, ProtocolClient ownerHttp,
@@ -103,6 +105,9 @@ public static class MultiLiveFlow
     {
         var ownerId = room.userId;
         var guestId = joined.userId;
+        var ownerBoost = performance?.OwnerBoostCount ?? 0;
+        var guestBoost = performance?.GuestBoostCount ?? 0;
+        if (ownerBoost < 0 || guestBoost < 0) throw new InvalidDataException("体力消耗不能为负数。");
         var ownerScore = performance == null ? null : MultiLivePerformance.Score(performance.OwnerScore, ownerHttp.UserId, song.DifficultyId);
         var guestScore = performance == null ? null : MultiLivePerformance.Score(performance.GuestScore, guestHttp.UserId, song.DifficultyId);
         var ownerPlayers = new Dictionary<string, RoomSyncPlayer>
@@ -196,11 +201,11 @@ public static class MultiLiveFlow
         {
             ["phase"] = "master-prepare-attempted", ["ownerUserId"] = ownerHttp.UserId, ["guestUserId"] = guestHttp.UserId,
             ["roomId"] = room.roomId, ["musicId"] = song.MusicId, ["difficultyId"] = song.DifficultyId,
-            ["vocalId"] = song.VocalId, ["boostCount"] = 0
+            ["vocalId"] = song.VocalId, ["ownerBoostCount"] = ownerBoost, ["guestBoostCount"] = guestBoost
         };
         JsonFiles.Write(journalPath, journal);
         var prepare = await Http(ownerHttp.Send(new ScenarioStep
-            { Operation = "multi-live-prepare", Body = Body(PrepareRequest(ownerUser, room.roomId, lobbyId, song, order)) }));
+            { Operation = "multi-live-prepare", Body = Body(PrepareRequest(ownerUser, room.roomId, lobbyId, song, order, ownerBoost)) }));
         var liveId = prepare["liveId"]?.GetValue<string>();
         if (string.IsNullOrEmpty(liveId)) throw new InvalidDataException("房主演出准备未返回 Live ID。");
         journal["liveId"] = liveId;
@@ -217,11 +222,16 @@ public static class MultiLiveFlow
         await Http(guestHttp.Send(new ScenarioStep
         {
             Operation = "multi-live-member-start", Args = new() { ["liveId"] = liveId },
-            Body = Body(MemberRequest(guestUser, room.roomId, lobbyId, song))
+            Body = Body(MemberRequest(guestUser, room.roomId, lobbyId, song, guestBoost))
         }));
         report["memberPrepared"] = true;
         journal["phase"] = "member-prepared";
         JsonFiles.Write(journalPath, journal);
+        if (ownerBoost > 0 || guestBoost > 0)
+        {
+            report["ownerPreparedBoost"] = (await Http(ownerHttp.Suite()))["userBoost"]?.DeepClone();
+            report["guestPreparedBoost"] = (await Http(guestHttp.Suite()))["userBoost"]?.DeepClone();
+        }
         await guest.SendReliableAsync(2, PlayerPropertyCommand, DumpSerializer.Serialize(Status(PlayerStatus.InGameLiveReady)), token);
         await owner.MaintainConnectionAsync(Wait(guest, ownerId, Status(PlayerStatus.InGameLiveReady)), token);
         await guest.MaintainConnectionAsync(Wait(owner, guestId, Status(PlayerStatus.InGameLiveReady)), token);

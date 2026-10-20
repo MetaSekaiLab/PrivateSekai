@@ -72,6 +72,11 @@ internal static class MultiLiveFlowChecks
         check(member.boostCount == 0 && member.musicCategoryName == "image" && member.musicId == request.musicId
             && member.musicDifficultyId == request.musicDifficultyId && member.privateRoomSettings.liveRuleType == "normal",
             "成员登记同一场歌曲，使用image类别和零体力请求");
+        check(MultiLiveFlow.PrepareRequest(user, "fixture-room", 7, song, [22, 11], 1).boostCount == 1
+            && MultiLiveFlow.MemberRequest(user, "fixture-room", 7, song, 2).boostCount == 2,
+            "房主和成员分别携带各自选择的体力消耗");
+        Reject(() => MultiLiveFlow.PrepareRequest(user, "fixture-room", 7, song, [22, 11], -1));
+        Reject(() => MultiLiveFlow.MemberRequest(user, "fixture-room", 7, song, -1));
         var prepareDefinition = Operations.All["multi-live-prepare"];
         var encoded = Operations.EncodeBody(prepareDefinition, JsonSerializer.SerializeToNode(request, DumpJson.Options)!.AsObject())!;
         check(DumpSerializer.Deserialize<MultiLiveRequest>(encoded).userId2 == 11 && prepareDefinition.Method == "POST"

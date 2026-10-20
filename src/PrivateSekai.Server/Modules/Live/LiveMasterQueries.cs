@@ -187,6 +187,9 @@ public sealed class LiveMasterQueries(MasterData master)
         .Single(c => c.configKey == "rank_up_recover_boost_count").value,
         System.Globalization.CultureInfo.InvariantCulture);
 
+    public MasterBoost? GetNormalLiveBoost(int count) => count < 0 ? null :
+        master.GetTable<MasterBoost>("boosts", b => b.id).Rows.SingleOrDefault(b => b.costBoost == count && !b.isEventOnly);
+
     public MasterBoost BuildMasterBoost(int boostCount)
     {
         foreach (var boost in master.GetTable<MasterBoost>("boosts", b => b.id).Rows)

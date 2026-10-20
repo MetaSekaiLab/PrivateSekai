@@ -18,9 +18,11 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
 {
     public void Prepare(string liveId, MultiLiveRequest all, UserMultiLiveRequest request)
     {
-        if (request.privateRoomSettings?.liveRuleType != "normal" || request.boostCount != 0
+        if (request.privateRoomSettings?.liveRuleType != "normal"
             || request.customMusicScoreId != null || request.musicCategoryName != "image")
             throw new MultiLiveRequestException(501);
+        if (master.GetNormalLiveBoost(request.boostCount) == null) throw new MultiLiveRequestException(400);
+        if (request.boostCount > 0 && boosts.Preview().current < request.boostCount) throw new MultiLiveRequestException(409);
         var settings = request.privateRoomSettings;
         if (settings.scoreCalculateType != null || settings.musicSelectionType != null || settings.musicDifficultyTypes != null
             || settings.deckTotalPowerRangeLower.HasValue || settings.deckTotalPowerRangeUpper.HasValue)
@@ -75,8 +77,12 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
         var totalRank = master.GetMultiScoreRank(own.musicDifficultyId, request.totalScore, true);
         if (totalRank is not ("rank_d" or "rank_c") || rank != "rank_c" || played.Length != 2)
             throw new MultiLiveRequestException(501);
+        var boost = master.GetNormalLiveBoost(session.Start.boostCount) ?? throw new MultiLiveRequestException(400);
+        if (boost.expRate <= 0 || boost.rewardRate <= 0 || boost.livePointRate <= 0)
+            throw new InvalidOperationException("Invalid multiplayer boost rates.");
         var rewards = BuildScoreRewards(totalRank);
-        var addedExp = totalRank == "rank_c" ? 200 : 20;
+        foreach (var reward in rewards) reward.quantity = checked(reward.quantity * boost.rewardRate);
+        var addedExp = checked((totalRank == "rank_c" ? 200 : 20) * boost.expRate);
         var deck = user.Data.userDecks.Single(d => d.deckId == session.Start.deckId);
         var context = new UserLiveSessionData
         {
@@ -90,12 +96,14 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
         var fullCombo = own.goodCount == 0 && own.badCount == 0 && own.missCount == 0;
         var fullPerfect = fullCombo && own.greatCount == 0;
         var mvp = own.score == played.Max(s => s.score);
+        if (boost.costBoost > 0 && boosts.Preview().current < boost.costBoost) throw new MultiLiveRequestException(409);
         user.Private.MultiLiveSessions.Remove(liveId);
         boosts.Normalize();
+        boosts.Consume(boost.costBoost);
         user.MarkChanged(nameof(SuiteUser.userBoost));
         var experience = live.GainPlayerExperience(addedExp);
         var cardResults = new[] { deck.member1, deck.member2, deck.member3, deck.member4, deck.member5 }
-            .Select((id, index) => new DeckCardUpdateExpResult { index = index + 1, expResult = cards.GainExperience(id, addedExp * 3) }).ToArray();
+            .Select((id, index) => new DeckCardUpdateExpResult { index = index + 1, expResult = cards.GainExperience(id, checked(addedExp * 3)) }).ToArray();
         live.UpdateUserMusicResult(context, clear, fullCombo, fullPerfect, "multi", mvp);
         var achievements = live.GrantUserMusicAchievements(context, clear, rank);
         var achievementRewards = live.BuildMusicAchievementRewards(achievements);
@@ -103,7 +111,7 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
         resources.Grant(achievementRewards);
         missions.RecordCoinGain(rewards.Concat(achievementRewards).Concat(experience.Rewards)
             .Where(r => r.resourceType == "coin").Sum(r => r.quantity));
-        var points = livePoints.Build(master.BuildMasterBoost(0), true);
+        var points = livePoints.Build(boost, true);
         missions.UpdateLiveMissionProgress(points);
         missions.RecordLiveRecords(own.maxCombo, master.ResolveMusicPlayLevel(own.musicDifficultyId));
         missions.RecordLiveFinish(true);
@@ -126,7 +134,7 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
             deckCardExpResults = cardResults, unitExpResults = [], userDeck = deck, userMusicAchievements = achievements,
             scoreRankRewards = rewards, superFeverRewards = [], playerRankRewards = experience.Rewards, limitedTermScoreRankRewards = [],
             activeUserIds = played.Select(s => s.userId).ToList(), bondsUpdateExpResults = [], userEventDeviceTransferRestrict = new(),
-            boost = master.BuildMasterBoost(0), userLivePoint = points
+            boost = boost, userLivePoint = points
         };
     }
 
@@ -150,7 +158,11 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
             [(2, 2), (5, 1), (9, 1)],
             [(1, 2), (5, 1), (10, 1)],
             [(4, 2), (5, 1), (9, 1)],
-            [(1, 2), (3, 1), (10, 1)]
+            [(1, 2), (3, 1), (10, 1)],
+            [(3, 2), (5, 1), (9, 1)],
+            [(1, 2), (2, 1), (6, 1)],
+            [(4, 2), (5, 1), (10, 1), (11, 2)],
+            [(4, 2), (4, 1), (7, 1)]
         ];
         var boxes = new[] { master.GetMultiRewardBox("coin", 0, 200), master.GetMultiRewardBox("practice_ticket", 1, 2) }
             .Concat(materialsByResult[random.Next(materialsByResult.Length)].Select(m => master.GetMultiRewardBox("material", m.Id, m.Quantity)));
