@@ -54,8 +54,7 @@ public sealed class ShopService(
         var definition = master.GetMaterialExchange(id) ?? throw new ArgumentException("Unknown material exchange.");
         var summary = master.GetMaterialExchangeSummary(definition.materialExchangeSummaryId)
             ?? throw new InvalidOperationException("Missing material exchange summary.");
-        if (definition.refreshCycle is not ("none" or "monthly") ||
-            definition.materialExchangeRelationParents?.Count > 0 || summary.materialExchangeType != "normal" ||
+        if (definition.refreshCycle is not ("none" or "monthly") || summary.materialExchangeType != "normal" ||
             summary.materialExchangeFreebieGroupJson != null || summary.materialExchangeFreebies?.Length > 0)
             return 501;
         if (user.Now < definition.startAt || (definition.endAt > 0 && user.Now >= definition.endAt) ||
@@ -74,18 +73,20 @@ public sealed class ShopService(
         if (definition.exchangeLimit > 0 && nextCount > definition.exchangeLimit) return 409;
         var costs = (definition.costs ?? []).Where(c => c.costGroupId == costGroupId).ToArray();
         if (costs.Length == 0) throw new ArgumentException("Unknown material exchange cost group.");
-        if (costs.Any(c => c.resourceType != "material" || c.resourceId <= 0 || c.quantity <= 0)) return 501;
-        var amounts = costs.GroupBy(c => c.resourceId).ToDictionary(g => g.Key, g => checked(g.Sum(c => c.quantity) * count));
-        if (amounts.Any(c => ((user.Data.userMaterials ?? []).SingleOrDefault(m => m.materialId == c.Key)?.quantity ?? 0) < c.Value))
+        if (costs.Any(c => c.resourceType is not ("material" or "mysekai_material") || c.resourceId <= 0 || c.quantity <= 0)) return 501;
+        var amounts = costs.GroupBy(c => (c.resourceType, c.resourceId)).ToDictionary(g => g.Key, g => checked(g.Sum(c => c.quantity) * count));
+        if (amounts.Any(c => (c.Key.resourceType == "material"
+            ? user.Data.userMaterials?.SingleOrDefault(m => m.materialId == c.Key.resourceId)?.quantity ?? 0
+            : user.Data.userMysekaiMaterials?.SingleOrDefault(m => m.mysekaiMaterialId == c.Key.resourceId)?.quantity ?? 0) < c.Value))
             return 409;
         var rewards = resourceMaster.BuildResourcesFromBox("material_exchange", definition.resourceBoxId);
         if (rewards.Length == 0) throw new InvalidOperationException("Missing material exchange rewards.");
-        if (rewards.Any(r => r.resourceType is not ("practice_ticket" or "material" or "virtual_coin") || r.quantity <= 0)) return 501;
+        if (rewards.Any(r => r.resourceType is not ("practice_ticket" or "material" or "virtual_coin" or "mysekai_material") || r.quantity <= 0)) return 501;
         if (rewards.Any(r => r.resourceType != "virtual_coin" && r.resourceId <= 0) ||
             rewards.Any(r => r.resourceType == "virtual_coin") && user.Data.userGamedata == null)
             throw new InvalidOperationException("Invalid material exchange reward inventory.");
         foreach (var reward in rewards) reward.quantity = checked(reward.quantity * count);
-        foreach (var cost in amounts) resourceService.Consume("material", cost.Key, cost.Value);
+        foreach (var cost in amounts) resourceService.Consume(cost.Key.resourceType, cost.Key.resourceId, cost.Value);
         resourceService.Grant(rewards);
         if (record == null)
         {

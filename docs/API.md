@@ -2957,13 +2957,21 @@ Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 从请
 - 再兑换一次后，两种次数均从 2 增至 3，更新时间改变，状态仍为 `exchangeable`。材料不足时官方返回 HTTP 409；重新认证回读确认材料、练习券、兑换记录不变，错误正文尚未对齐。
 - 无上限样本省略 `exchangeRemaining`；未发生的 `lastExchangedAt`、`refreshedAt` 也省略，不发送零值。
 
-Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchange`，要求明确提供整数消耗组与正整数次数。Server 支持 normal 商店中 `refreshCycle=none/monthly`、无关联或附加奖励的材料消耗；奖励覆盖练习券、材料及虚拟货币。成本和完整资源箱奖励按次数倍乘，库存、次数和最后兑换时间同一事务提交。其他周期、关联、附加奖励及资源类型仍返回本地 501，不代表官方状态码。原无上限练习券的两份官方响应与状态增量对拍结论保留。
+Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchange`，要求明确提供整数消耗组与正整数次数。Server 支持 normal 商店中 `refreshCycle=none/monthly`、无附加奖励的普通材料或 Mysekai 材料消耗；奖励覆盖练习券、材料、虚拟货币及 Mysekai 材料。成本和完整资源箱奖励按次数倍乘，库存、次数和最后兑换时间同一事务提交。其他周期、附加奖励及资源类型仍返回本地 501，不代表官方状态码。原无上限练习券的两份官方响应与状态增量对拍结论保留。
 
 有限额项目按 `exchangeLimit` 限制本期数量，耗尽时 `exchangeRemaining=0`、`exchangeStatus=not_exchangeable`；超限及材料不足返回 409，保留全部用户状态。月度项目在日本时间每月 1 日零点恢复本期限额，保留 `totalExchangeCount` 和 `lastExchangedAt`，`refreshedAt` 保存下一次月初时间。正常 Suite／资源刷新会处理到期记录，直接兑换也能处理月切；跳过多月不叠加额度。一次性限量不随月份恢复。旧记录缺少截止时间时先保留已用次数并补齐下一截止时间，避免重发额度。
 
 证据：完整当前 master 的两个月度项目及 `material_exchange` 资源箱；`ExchangeShopCell.SetupRefreshAt` 调用 `TimeUtility.GetNextMonthFirst`（RVA `0x4dfa8cc`），后者以当前年月构造 1 日零点再加一月。官方独立读取确认两项初始剩余均为 15，`refreshedAt` 等于下一月日本零点；不是演出凌晨四点的日切。正常兑换扣发沿用已有资源处理器，本期归零及累计保留按周期和计数契约实现，尚无官方跨月成功样本。
 
 本地验证包含批量、最后次数、超限、全年月切／闰年／跨年、多月离线、并发、响应编码和后项奖励溢出回滚、SQLite 重启，以及独立认证后的加密 HTTP Suite 回读。新版真实 master 默认／示例配置各覆盖两项全部 1,024 组限额组合，其中 720 组成功并验证后续月切、304 组拒绝且无状态变化。测试账号当前材料不足，未取得官方月度兑换成功响应，未进行 Unity 验收。
+
+角色 Memoria 兑换支持七色材料及所选角色 Memoria 两条路径。`materialExchangeRelationParents`／`materialExchangeRelationChildren` 把替代消耗组织为展示组；请求仍提交具体成本的 `costGroupId`，父展示组 ID 不参与扣费或解锁。服务端严格选择当前兑换项的消耗组，只检查和扣除该组库存；同组成本按资源类型与编号合计，所选库存不足返回 409，不自动改用其他替代资源。
+
+Mysekai 材料通过所属资源 Handler 扣发。消耗保留源库存记录及 `lastObtainedAt`，发奖更新时间并累计目标库存；主表缺失、库存溢出或任一后项失败均回滚。角色 Memoria 的 `game_character` 分类沿用已有仓库规则，不增加普通材料占用；计入普通仓库的材料消耗同步减少 `userMysekaiMaterialPossession.quantity`，不一致时拒绝整笔操作。
+
+证据：`MaterialExchangeGroupingCostData.GetRelationCosts`（RVA `0x6353d0c`）按子项的成本组取得可选成本，选择弹窗按该资源库存判定可选；`ScreenLayerMasterLessonMaterialExchange.OnClickDialogOK`（`0x65d50e8`）提交所选成本的 `costGroupId` 和数量。`MysekaiUserDataUtility.GetMaterialCount`（`0x4ac25ec`）读取材料库存，`GetTotalMaterialPossession`（`0x4ac2774`）读取独立占用字段，容量例外函数（`0x4ac27d4`）区分角色材料等分类。库存与占用的服务端维护沿客户端行为及已有资源处理推导，尚无本用例官方扣发样本。
+
+当前完整 master 的角色 Memoria 目录包含26个目标、146个消耗选项，其中6个目标提供替代角色材料。默认／示例配置各以合成用户验证全部选项：1,752次首次及重复兑换、876次所选库存不足拒绝；包含实际资源、时间、计数和无副作用检查。隔离业务与加密 HTTP 另覆盖展示组误用、同号异类资源、并发、独立认证 Suite 回读、SQLite 重启、中途发奖和编码失败回滚。未执行官方 Memoria 兑换或 Unity 验收。
 
 ## POST `/api/user/{userId}/boost-item`
 

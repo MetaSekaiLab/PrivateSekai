@@ -15,6 +15,26 @@ public sealed class MysekaiResourceHandler(ResourceMasterQueries master) : IReso
 {
     public IReadOnlyCollection<string> ResourceTypes { get; } = ["mysekai_item", "mysekai_tool", "mysekai_material", "mysekai_fixture"];
 
+    public int Consume(UserSession user, string type, int id, int quantity, bool paidFirst)
+    {
+        if (type != "mysekai_material") throw new NotSupportedException($"Resource '{type}' cannot be consumed.");
+        var counted = master.IsMysekaiMaterialCounted(id);
+        var material = user.Data.userMysekaiMaterials?.SingleOrDefault(m => m.mysekaiMaterialId == id);
+        if (quantity <= 0 || material == null || material.quantity < quantity)
+            throw new ArgumentException("Insufficient Mysekai materials.");
+        if (counted)
+        {
+            var possession = user.Data.userMysekaiMaterialPossession;
+            if (possession == null || possession.quantity < quantity)
+                throw new InvalidOperationException("Invalid Mysekai material possession.");
+            possession.quantity -= quantity;
+            user.MarkChanged(nameof(SuiteUser.userMysekaiMaterialPossession));
+        }
+        material.quantity -= quantity;
+        user.MarkChanged(nameof(SuiteUser.userMysekaiMaterials));
+        return material.quantity;
+    }
+
     public void Grant(UserSession user, UserResource resource)
     {
         if (resource.resourceId <= 0)
