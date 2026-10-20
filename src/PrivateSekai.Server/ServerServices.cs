@@ -91,6 +91,7 @@ public static class ServerServices
         services.AddScoped<CostumeService>();
         services.AddScoped<CostumeMasterQueries>();
         services.AddScoped<ShopService>();
+        services.AddScoped<IUserRefreshHandler>(services => services.GetRequiredService<ShopService>());
         services.AddScoped<VirtualShopService>();
         services.AddScoped<StoryService>();
         services.AddScoped<StoryBookmarkService>();

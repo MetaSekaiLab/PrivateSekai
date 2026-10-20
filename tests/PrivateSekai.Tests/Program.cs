@@ -50,6 +50,7 @@ internal static class Program
         PenlightChecks.Run();
         CostumeFixChecks.Run();
         VirtualShopChecks.Run();
+        MaterialExchangeLimitChecks.Run();
         LoginStatusChecks.Run();
         FriendChecks.Run();
         FriendFavoriteChecks.Run();

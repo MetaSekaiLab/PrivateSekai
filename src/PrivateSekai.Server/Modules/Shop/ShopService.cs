@@ -15,7 +15,7 @@ public sealed class ShopService(
     ShopMasterQueries master,
     MissionService missions,
     ResourceMasterQueries resourceMaster,
-    ResourceService resourceService)
+    ResourceService resourceService) : IUserRefreshHandler
 {
     public (int Status, UserResource[] Rewards) ExchangeEvent(int id, int count)
     {
@@ -54,13 +54,24 @@ public sealed class ShopService(
         var definition = master.GetMaterialExchange(id) ?? throw new ArgumentException("Unknown material exchange.");
         var summary = master.GetMaterialExchangeSummary(definition.materialExchangeSummaryId)
             ?? throw new InvalidOperationException("Missing material exchange summary.");
-        if (definition.refreshCycle != "none" || definition.exchangeLimit != 0 ||
+        if (definition.refreshCycle is not ("none" or "monthly") ||
             definition.materialExchangeRelationParents?.Count > 0 || summary.materialExchangeType != "normal" ||
             summary.materialExchangeFreebieGroupJson != null || summary.materialExchangeFreebies?.Length > 0)
             return 501;
         if (user.Now < definition.startAt || (definition.endAt > 0 && user.Now >= definition.endAt) ||
             user.Now < summary.StartAt || (summary.EndAt > 0 && user.Now >= summary.EndAt))
             throw new ArgumentException("Material exchange is not available.");
+        var monthly = definition.refreshCycle == "monthly";
+        if (definition.exchangeLimit < 0 || monthly && definition.exchangeLimit == 0)
+            throw new InvalidOperationException("Invalid material exchange limit.");
+        var exchanges = (user.Data.userMaterialExchanges ?? []).ToList();
+        var record = exchanges.SingleOrDefault(e => e.materialExchangeId == id);
+        if (record is { exchangeCount: < 0 } or { totalExchangeCount: < 0 } or { refreshedAt: < 0 })
+            throw new InvalidOperationException("Invalid saved material exchange counts.");
+        var reset = monthly && record is { refreshedAt: > 0 } && record.refreshedAt <= user.Now;
+        var nextCount = checked((reset ? 0 : record?.exchangeCount ?? 0) + count);
+        var nextTotal = checked((record?.totalExchangeCount ?? 0) + count);
+        if (definition.exchangeLimit > 0 && nextCount > definition.exchangeLimit) return 409;
         var costs = (definition.costs ?? []).Where(c => c.costGroupId == costGroupId).ToArray();
         if (costs.Length == 0) throw new ArgumentException("Unknown material exchange cost group.");
         if (costs.Any(c => c.resourceType != "material" || c.resourceId <= 0 || c.quantity <= 0)) return 501;
@@ -69,13 +80,11 @@ public sealed class ShopService(
             return 409;
         var rewards = resourceMaster.BuildResourcesFromBox("material_exchange", definition.resourceBoxId);
         if (rewards.Length == 0) throw new InvalidOperationException("Missing material exchange rewards.");
-        // 先接入已核验的练习券兑换，不推定其他资源的附加联动。
-        if (rewards.Any(r => r.resourceType != "practice_ticket" || r.quantity <= 0)) return 501;
+        if (rewards.Any(r => r.resourceType is not ("practice_ticket" or "material" or "virtual_coin") || r.quantity <= 0)) return 501;
+        if (rewards.Any(r => r.resourceType != "virtual_coin" && r.resourceId <= 0) ||
+            rewards.Any(r => r.resourceType == "virtual_coin") && user.Data.userGamedata == null)
+            throw new InvalidOperationException("Invalid material exchange reward inventory.");
         foreach (var reward in rewards) reward.quantity = checked(reward.quantity * count);
-        var exchanges = (user.Data.userMaterialExchanges ?? []).ToList();
-        var record = exchanges.SingleOrDefault(e => e.materialExchangeId == id);
-        var nextCount = checked((record?.exchangeCount ?? 0) + count);
-        var nextTotal = checked((record?.totalExchangeCount ?? 0) + count);
         foreach (var cost in amounts) resourceService.Consume("material", cost.Key, cost.Value);
         resourceService.Grant(rewards);
         if (record == null)
@@ -86,10 +95,37 @@ public sealed class ShopService(
         record.exchangeCount = nextCount;
         record.totalExchangeCount = nextTotal;
         record.lastExchangedAt = user.Now;
-        record.exchangeStatus = "exchangeable";
+        record.exchangeStatus = definition.exchangeLimit > 0 && nextCount == definition.exchangeLimit ? "not_exchangeable" : "exchangeable";
+        if (definition.exchangeLimit > 0) record.exchangeRemaining = definition.exchangeLimit - nextCount;
+        if (monthly && record.refreshedAt <= user.Now) record.refreshedAt = NextMonthlyRefresh();
         user.Data.userMaterialExchanges = exchanges.OrderBy(e => e.materialExchangeId).ToArray();
         user.MarkChanged(nameof(SuiteUser.userMaterialExchanges));
         return 200;
+    }
+
+    public void PrepareRefresh()
+    {
+        foreach (var record in user.Data.userMaterialExchanges ?? [])
+        {
+            var definition = master.GetMaterialExchange(record.materialExchangeId);
+            if (definition?.refreshCycle != "monthly" || record.refreshedAt > user.Now ||
+                user.Now < definition.startAt || definition.endAt > 0 && user.Now >= definition.endAt) continue;
+            if (definition.exchangeLimit <= 0 || record.exchangeCount < 0 || record.totalExchangeCount < 0 || record.refreshedAt < 0)
+                throw new InvalidOperationException("Invalid monthly material exchange state.");
+            if (record.refreshedAt > 0) record.exchangeCount = 0;
+            record.exchangeRemaining = checked(definition.exchangeLimit - record.exchangeCount);
+            if (record.exchangeRemaining < 0) throw new InvalidOperationException("Material exchange count exceeds its limit.");
+            record.exchangeStatus = record.exchangeRemaining == 0 ? "not_exchangeable" : "exchangeable";
+            record.refreshedAt = NextMonthlyRefresh();
+            user.MarkChanged(nameof(SuiteUser.userMaterialExchanges));
+        }
+    }
+
+    private long NextMonthlyRefresh()
+    {
+        var offset = TimeSpan.FromHours(9);
+        var date = DateTimeOffset.FromUnixTimeMilliseconds(user.Now).ToOffset(offset);
+        return new DateTimeOffset(date.Year, date.Month, 1, 0, 0, 0, offset).AddMonths(1).ToUnixTimeMilliseconds();
     }
 
     public (int Status, UserCharacterMissionV2Status[] Achieved, bool ExcludeShop, string ErrorCode) PurchaseShopItem(int shopId, int shopItemId)
