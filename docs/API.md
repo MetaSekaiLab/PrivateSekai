@@ -1777,6 +1777,20 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 两份历史官方记录覆盖带服装单抽、十连中的首次与重复卡；服装奖励、制作入口、解锁记录、角色与称号任务的完整响应及相关状态增量均对拍通过。本地独立会话回读核对原记录后快照，未把历史后快照称为新发起的官方认证回读。
 
+### 抽卡限次、指定剩余抽数与日周刷新
+
+行为 `executeLimit` 按卡池、行为和 `userGachas.count` 限制执行次数；卡池 `spinLimit` 按各行为的 `spinCount × count` 合计已抽数量，两者不能混用。耗尽名额返回 `409`、空错误码；拒绝不扣款、不发卡、不修改计数或消费待刷新字段。普通一次性名额不随日切恢复。
+
+客户端在限量池剩余不足十连时，选择同消耗类型的单抽行为并传 `executeCount`。该参数为可选正整数；省略时保留原行为抽数。指定两次单抽扣两份费用、发两张卡，单抽行为计数增加二，积分和天井按实际两抽结算。保底占原名额，不因指定次数额外增加奖品。当前路径不将十连行为附带的指定次数解释为重复十连；非正数、计费整数溢出或不匹配的行为返回 `400`。参数编码与校验由 Client 同步支持。
+
+每日付费行为按 `configs.date_change_hour` 切换日期，当前 JP 为 UTC+9 的 04:00。刷新和 Suite 将有效卡池内旧每日计数归零，保留最后实际抽取时间；下一次成功抽取重新从一计数。无有效通行证时使用行为限额，有效 V2 通行证使用该等级的 `dailyPaidGachaSpinLimit`。有效期采用客户端的 `expiredAt >= now` 边界。
+
+通行证日次／周次免费抽取分别以 `userGachaFreeResources.gachaBehaviorType` 保存共用的最后使用时间，不能换卡池再次领取。日次需该等级 `dailyFreeGachaSpinLimit`，周次需 `weeklyColorfulPassGachaSpinLimit`；两者与每日付费名额独立。周次时间比较按客户端下一周一日切时间和严格小于关系实现，当前客户端为秒粒度；免费行为不加普通池 Bonus，不发天井。费用、卡牌、任务、行为计数与免费时间均在同一次用户事务内提交。
+
+依据为 `GachaUtility.CanExecute`、`CanExecuteColorfulPassDailyFreeSpinGacha`、`TryGetRemainExecuteCount`、`TryGetRemainSpinCount`、`ExecuteSpinAPI`，以及 `MasterGachaBehavior.IsAvailable`、`UserDataManager.GetGacha`、`TimeUtility.IsDateChangeInternal`、`GetNextChangeWeekDateTime` 和当前 master。已检查 270 个限量池的行为组合；需不足十连收尾的组合具有同消耗类型单抽入口。
+
+新分支由来源核验、本地业务和加密 HTTP 检查验证，覆盖一次性名额、整池上限、指定两抽、积分与保底联动、通行证等级、日切和周切边界、跨池免费限制、独立回读、编码回滚、数据库恢复及并发争用最后一次名额。既有官方记录仅回归原抽卡结算；本项目尚无上述新分支的官方成功及跨日响应，不将本地夹具视为官方结果。
+
 ## PUT `/api/user/{userId}/exchange/gacha-ceil-item`
 
 > 审计版本: jp-6.5.5

@@ -107,6 +107,7 @@ VirtualShopHttpChecks.WriteMaster(directory);
 StampUseHttpChecks.WriteMaster(directory);
 GachaTenHttpChecks.WriteMaster(directory);
 GachaBonusHttpChecks.WriteMaster(directory);
+GachaLimitHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -772,6 +773,7 @@ try
     await GachaHttpChecks.RunExchange(client, config, store, directory, Check);
     await GachaTenHttpChecks.Run(client, config, store, directory, Check);
     await GachaBonusHttpChecks.Run(client, config, store, directory, Check);
+    await GachaLimitHttpChecks.Run(client, config, store, directory, Check);
     await CardExchangeHttpChecks.Run(config, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);
     await HomeHttpChecks.Run(client, store, directory, Check);

@@ -14,7 +14,8 @@ namespace PrivateSekai.Client;
 
 public sealed record OperationDefinition(string Method, string Path, Type? RequestType, string? RequiredResponseField,
     bool Snapshot = true, string[]? BooleanQueries = null, bool OptionalBody = false,
-    string[]? RequiredIntegerListQueries = null, Dictionary<string, int>? RequiredIntegerQueries = null)
+    string[]? RequiredIntegerListQueries = null, Dictionary<string, int>? RequiredIntegerQueries = null,
+    Dictionary<string, int>? OptionalIntegerQueries = null)
 {
     public bool IsWrite => Method != "GET";
 }
@@ -63,7 +64,8 @@ public static class Operations
             RequiredIntegerQueries: new() { ["costGroupId"] = 0, ["count"] = 1 }),
         ["event-exchange"] = new("PUT", "/api/user/{userId}/event-exchange/{eventExchangeId}", null, "obtainUserResources",
             RequiredIntegerQueries: new() { ["count"] = 1 }),
-        ["gacha-draw"] = new("PUT", "/api/user/{userId}/gacha/{gachaId}/gachaBehaviorId/{gachaBehaviorId}", null, "obtainPrizes", BooleanQueries: ["isPriorityUsePaidJewel"]),
+        ["gacha-draw"] = new("PUT", "/api/user/{userId}/gacha/{gachaId}/gachaBehaviorId/{gachaBehaviorId}", null, "obtainPrizes",
+            BooleanQueries: ["isPriorityUsePaidJewel"], OptionalIntegerQueries: new() { ["executeCount"] = 1 }),
         ["gacha-exchange"] = new("PUT", "/api/user/{userId}/exchange/gacha-ceil-item", typeof(UserGachaCeilExchangeRequest), "obtainUserResources"),
         ["gacha-wish"] = new("PUT", "/api/user/{userId}/rate-choice-gacha-wish", typeof(UserRateChoiceGachaWishRequest), "updatedResources"),
         ["register"] = new("POST", "/api/user", typeof(UserAPIRequest), "userRegistration", false),
@@ -187,9 +189,14 @@ public static class Operations
             string encoded;
             if (definition.BooleanQueries?.Contains(name, StringComparer.Ordinal) == true && bool.TryParse(value, out var parsed))
                 encoded = parsed ? "true" : "false";
-            else if (definition.RequiredIntegerQueries?.TryGetValue(name, out var minimum) == true &&
-                     int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) && number >= minimum)
+            else if (definition.RequiredIntegerQueries?.ContainsKey(name) == true || definition.OptionalIntegerQueries?.ContainsKey(name) == true)
+            {
+                var minimum = definition.RequiredIntegerQueries?.TryGetValue(name, out var required) == true
+                    ? required : definition.OptionalIntegerQueries![name];
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) || number < minimum)
+                    throw new InvalidOperationException("整数查询参数不符合要求。");
                 encoded = number.ToString(CultureInfo.InvariantCulture);
+            }
             else throw new InvalidOperationException("查询参数未支持或值不符合要求。");
             path += (path.Contains('?') ? "&" : "?") + Uri.EscapeDataString(name) + "=" + encoded;
         }

@@ -22,9 +22,9 @@ public sealed class GachaService(
     ResourceService resources,
     MissionService missions,
     CostumeService costumes,
-    Random? random = null)
+    Random? random = null) : IUserRefreshHandler
 {
-    public UserGachaResponse ExecuteGacha(int gachaId, int gachaBehaviorId, bool isPriorityUsePaidJewel)
+    public UserGachaResponse ExecuteGacha(int gachaId, int gachaBehaviorId, bool isPriorityUsePaidJewel, int? executeCount = null)
     {
         var now = user.Now;
         var gacha = master.GetMasterGacha(gachaId) ?? throw new GachaRequestRejectedException(404);
@@ -35,12 +35,19 @@ public sealed class GachaService(
             (user.Data.userColorfulPassV2 == null || user.Data.userColorfulPassV2.expiredAt < (ulong)now))
             throw new GachaRequestRejectedException(409);
         var spinCount = GetGachaSpinCount(behavior);
+        // 指定抽数由客户端选择同消耗类型的单抽行为，用于限量池收尾。
+        if (executeCount is <= 0 || (executeCount.HasValue && spinCount != 1))
+            throw new GachaRequestRejectedException(400);
+        var executions = executeCount ?? 1;
+        if (executeCount.HasValue) spinCount = executions;
         var behaviorType = behavior.gachaBehaviorType;
+        PrepareRefresh();
+        ValidateGachaLimits(gacha, behavior, spinCount, executions);
 
         var paidBefore = user.Data.userChargedCurrency?.paid ?? 0;
-        var consumedCosts = ConsumeGachaCost(behavior, isPriorityUsePaidJewel);
+        var consumedCosts = ConsumeGachaCost(behavior, isPriorityUsePaidJewel, executions);
 
-        var bonusCardIds = ApplyGachaBonus(gacha, behavior, spinCount, paidBefore - (user.Data.userChargedCurrency?.paid ?? 0));
+        var bonusCardIds = ApplyGachaBonus(gacha, behavior, spinCount, paidBefore - (user.Data.userChargedCurrency?.paid ?? 0), executions);
         if (bonusCardIds.Length > spinCount) throw new InvalidOperationException("Gacha bonus exceeds the requested spin count.");
         var drawnCardIds = DrawGachaCards(gacha, behaviorType, spinCount - bonusCardIds.Length);
         var obtainPrizes = new List<UserGachaSpinObtainPrize>();
@@ -65,7 +72,20 @@ public sealed class GachaService(
             });
         }
 
-        var userGacha = UpsertUserGacha(gachaId, gachaBehaviorId, now);
+        var userGacha = UpsertUserGacha(gachaId, gachaBehaviorId, now, executions);
+        if (behavior.resourceCategory == "free_resource" && behavior.gachaBehaviorType is "once_a_day" or "once_a_week")
+        {
+            var free = (user.Data.userGachaFreeResources ?? []).ToList();
+            var saved = free.SingleOrDefault(f => f.gachaBehaviorType == behavior.gachaBehaviorType);
+            if (saved == null)
+            {
+                saved = new UserGachaFreeResource { userId = user.UserId, gachaBehaviorType = behavior.gachaBehaviorType };
+                free.Add(saved);
+            }
+            saved.lastSpinAt = checked((ulong)now);
+            user.Data.userGachaFreeResources = free.OrderBy(f => f.gachaBehaviorType, StringComparer.Ordinal).ToArray();
+            user.MarkChanged(nameof(SuiteUser.userGachaFreeResources));
+        }
         var obtainGachaCeilItems = behavior.resourceCategory == "free_resource" && behavior.gachaSpinnableType == "colorful_pass"
             ? [] : GrantGachaCeilItem(gacha, gachaId, spinCount);
         missions.RefreshGachaPanels();
@@ -152,7 +172,76 @@ public sealed class GachaService(
 
     private bool WithinPeriod(long start, long end) => start <= user.Now && (end == 0 ? start != 0 : user.Now < end);
 
-    private int[] ApplyGachaBonus(MasterGacha gacha, MasterGachaBehavior behavior, int spinCount, int paidConsumed)
+    public void PrepareRefresh()
+    {
+        foreach (var saved in user.Data.userGachas ?? [])
+        {
+            var gacha = master.GetMasterGacha(saved.gachaId);
+            var behavior = master.GetMasterGachaBehavior(gacha, saved.gachaBehaviorId);
+            if (gacha == null || !WithinPeriod(gacha.startAt, gacha.endAt) ||
+                behavior?.gachaBehaviorType != "once_a_day" || behavior.resourceCategory == "free_resource" ||
+                behavior.executeLimit <= 0 || saved.count == 0) continue;
+            if (saved.lastSpinAt < DayStart(user.Now))
+            {
+                saved.count = 0;
+                user.MarkChanged(nameof(SuiteUser.userGachas));
+            }
+        }
+    }
+
+    private long DayStart(long timestamp)
+    {
+        // 客户端 SaveSystemData 使用 UTC+9，日切小时来自 master。
+        var offset = TimeSpan.FromHours(9);
+        var date = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).ToOffset(offset);
+        var start = date.Date.AddHours(master.GetDayChangeHour());
+        if (date.DateTime < start) start = start.AddDays(-1);
+        return new DateTimeOffset(start, offset).ToUnixTimeMilliseconds();
+    }
+
+    private void ValidateGachaLimits(MasterGacha gacha, MasterGachaBehavior behavior, int spinCount, int executions)
+    {
+        var count = user.Data.userGachas?.SingleOrDefault(g => g.gachaId == gacha.id && g.gachaBehaviorId == behavior.id)?.count ?? 0;
+        if (count < 0 || behavior.executeLimit < 0 || gacha.spinLimit < 0)
+            throw new InvalidOperationException("Invalid gacha count or limit.");
+        var pass = user.Data.userColorfulPassV2;
+        var activePass = pass != null && pass.expiredAt >= checked((ulong)user.Now);
+        var limit = behavior.executeLimit;
+        if (limit > 0 && behavior.gachaBehaviorType == "once_a_day" && behavior.costResourceType == "paid_jewel" && activePass)
+            limit = master.GetColorfulPass(pass!.colorfulPassId).dailyPaidGachaSpinLimit;
+        if (behavior.resourceCategory == "free_resource" && behavior.gachaBehaviorType is "once_a_day" or "once_a_week")
+        {
+            if (!activePass) throw new GachaRequestRejectedException(409);
+            var definition = master.GetColorfulPass(pass!.colorfulPassId);
+            var allowed = behavior.gachaBehaviorType == "once_a_day" ? definition.dailyFreeGachaSpinLimit : definition.weeklyColorfulPassGachaSpinLimit;
+            if (allowed <= 0 || spinCount > allowed) throw new GachaRequestRejectedException(409);
+            var last = user.Data.userGachaFreeResources?.SingleOrDefault(f => f.gachaBehaviorType == behavior.gachaBehaviorType)?.lastSpinAt;
+            if (last.HasValue)
+            {
+                if (behavior.gachaBehaviorType == "once_a_week")
+                {
+                    var offset = TimeSpan.FromHours(9);
+                    var date = DateTimeOffset.FromUnixTimeMilliseconds(checked((long)last.Value)).ToOffset(offset);
+                    var hour = master.GetDayChangeHour();
+                    var days = (8 - (int)date.DayOfWeek) % 7;
+                    if (days == 0 && date.Hour >= hour) days = 7;
+                    var next = new DateTimeOffset(date.Date.AddDays(days).AddHours(hour), offset).ToUnixTimeMilliseconds();
+                    if (user.Now / 1000 * 1000 <= next) throw new GachaRequestRejectedException(409);
+                }
+                else if (checked((long)last.Value) >= DayStart(user.Now)) throw new GachaRequestRejectedException(409);
+            }
+        }
+        else if (limit > 0 && (long)count + executions > limit) throw new GachaRequestRejectedException(409);
+        if (gacha.spinLimit > 0)
+        {
+            var behaviors = gacha.gachaBehaviors.ToDictionary(b => b.id);
+            var used = (user.Data.userGachas ?? []).Where(g => g.gachaId == gacha.id)
+                .Sum(g => checked((long)behaviors[g.gachaBehaviorId].spinCount * g.count));
+            if (spinCount > gacha.spinLimit - used) throw new GachaRequestRejectedException(409);
+        }
+    }
+
+    private int[] ApplyGachaBonus(MasterGacha gacha, MasterGachaBehavior behavior, int spinCount, int paidConsumed, int executions)
     {
         if (gacha.gachaBonusId <= 0 || behavior.resourceCategory == "free_resource") return [];
         var bonus = master.GetGachaBonus(gacha.gachaBonusId);
@@ -160,7 +249,7 @@ public sealed class GachaService(
         var paidSpins = behavior.costResourceType == "paid_jewel" ? spinCount : 0;
         if (behavior.costResourceType == "jewel")
         {
-            var quantity = behavior.costResourceQuantity ?? 0;
+            var quantity = checked((behavior.costResourceQuantity ?? 0) * executions);
             if (quantity <= 0 || quantity % spinCount != 0)
                 throw new InvalidOperationException("Invalid per-spin gacha jewel cost.");
             paidSpins = Math.Min(spinCount, paidConsumed / (quantity / spinCount));
@@ -206,7 +295,7 @@ public sealed class GachaService(
         throw new InvalidOperationException("Missing gacha spin count.");
     }
 
-    private UserResource[] ConsumeGachaCost(MasterGachaBehavior? behavior, bool isPriorityUsePaidJewel)
+    private UserResource[] ConsumeGachaCost(MasterGachaBehavior? behavior, bool isPriorityUsePaidJewel, int executions)
     {
         if (string.Equals(behavior?.resourceCategory, "free_resource", StringComparison.Ordinal))
             return [];
@@ -216,6 +305,8 @@ public sealed class GachaService(
         var costQuantity = behavior?.costResourceQuantity ?? 0;
         if (costQuantity <= 0 || string.IsNullOrEmpty(costResourceType))
             throw new InvalidOperationException("Missing gacha cost.");
+        if (executions > int.MaxValue / costQuantity) throw new GachaRequestRejectedException(400);
+        costQuantity *= executions;
 
         var currency = user.Data.userChargedCurrency;
         var available = costResourceType switch
@@ -393,7 +484,7 @@ public sealed class GachaService(
             _ => 0
         };
 
-    private UserGacha UpsertUserGacha(int gachaId, int gachaBehaviorId, long now)
+    private UserGacha UpsertUserGacha(int gachaId, int gachaBehaviorId, long now, int executions)
     {
         user.Data.userGachas ??= [];
         var gachas = user.Data.userGachas.ToList();
@@ -412,7 +503,7 @@ public sealed class GachaService(
             gachas.Add(userGacha);
         }
 
-        userGacha.count++;
+        userGacha.count = checked(userGacha.count + executions);
         userGacha.lastSpinAt = now;
         user.Data.userGachas = gachas.OrderBy(g => g.gachaId).ThenBy(g => g.gachaBehaviorId).ToArray();
         user.MarkChanged(nameof(SuiteUser.userGachas));

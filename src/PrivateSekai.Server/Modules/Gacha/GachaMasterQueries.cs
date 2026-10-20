@@ -16,6 +16,17 @@ public sealed class GachaMasterQueries(MasterData master)
     public MasterGachaBehavior? GetMasterGachaBehavior(MasterGacha? gacha, int gachaBehaviorId) =>
         gacha?.gachaBehaviors?.FirstOrDefault(b => b.id == gachaBehaviorId);
 
+    public MasterColorfulPassV2 GetColorfulPass(int id) =>
+        master.GetTable<MasterColorfulPassV2>("colorfulPassV2s", p => p.id).FindById(id)
+        ?? throw new InvalidOperationException("Missing colorful pass definition.");
+
+    public int GetDayChangeHour()
+    {
+        var hour = int.Parse(master.GetTable<MasterConfig>("configs").Rows.Single(c => c.configKey == "date_change_hour").value,
+            CultureInfo.InvariantCulture);
+        return hour is >= 0 and <= 23 ? hour : throw new InvalidOperationException("Invalid day change hour.");
+    }
+
     public MasterGachaBonus GetGachaBonus(int id) =>
         master.GetTable<MasterGachaBonus>("gachaBonuses", b => b.id).FindById(id)
         ?? throw new InvalidOperationException("Missing gacha bonus definition.");

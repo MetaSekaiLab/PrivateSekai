@@ -31,6 +31,17 @@ internal static class GachaHttpChecks
 
     public static async Task Run(ProtocolClient client, TargetConfiguration config, MemoryUserStore store, string directory, Action<bool, string> check)
     {
+        var query = new ScenarioStep { Operation = "gacha-draw", Args = new() { ["gachaId"] = "1", ["gachaBehaviorId"] = "1" },
+            Query = new() { ["isPriorityUsePaidJewel"] = "True", ["executeCount"] = "2" } };
+        check(Operations.Path(Operations.All["gacha-draw"], query, 1) ==
+            "/api/user/1/gacha/1/gachaBehaviorId/1?isPriorityUsePaidJewel=true&executeCount=2", "指定抽数沿用同一路由，正整数查询值与布尔值规范编码");
+        foreach (var count in new[] { "0", "-1", "1.5", "2147483648" })
+        {
+            query.Query["executeCount"] = count;
+            var rejected = false;
+            try { Operations.Path(Operations.All["gacha-draw"], query, 1); } catch (InvalidOperationException) { rejected = true; }
+            check(rejected, "非法指定抽数在客户端发送前拒绝");
+        }
         var state = store.Read(1)!;
         state.Data.userCards = [new() { cardId = 1, level = 1 }];
         state.Data.userChargedCurrency = new() { paid = 400, free = 400 };

@@ -75,6 +75,7 @@ public static class ServerServices
         services.AddScoped<ChallengeLiveService>();
         services.AddScoped<MissionService>();
         services.AddScoped<IUserRefreshHandler>(services => services.GetRequiredService<MissionService>());
+        services.AddScoped<IUserRefreshHandler>(services => services.GetRequiredService<GachaService>());
         services.AddScoped<PresentService>();
         services.AddScoped<ProfileService>();
         services.AddScoped<ProfileHonorService>();

@@ -44,6 +44,7 @@ internal static class GachaBonusChecks
         Table("gachas", gachas.ToJsonString());
         Table("gachaBonuses", """[{"id":1,"switchFixedBonusWeight":false},{"id":2,"switchFixedBonusWeight":true}]""");
         Table("clientConfigs", """[{"id":113,"type":"Float","value":"0.5"},{"id":114,"type":"Float","value":"1.0"}]""");
+        Table("colorfulPassV2s", """[{"id":3,"dailyFreeGachaSpinLimit":1,"dailyPaidGachaSpinLimit":2,"weeklyColorfulPassGachaSpinLimit":1}]""");
         Table("cards", """[{"id":2,"characterId":1,"cardRarityType":"rarity_2"},{"id":3,"characterId":1,"cardRarityType":"rarity_3"},{"id":4,"characterId":1,"cardRarityType":"rarity_4"},{"id":5,"characterId":1,"cardRarityType":"rarity_4"}]""");
         Table("cardEpisodes", """[{"id":50,"cardId":5},{"id":51,"cardId":5}]""");
         Table("cardCostume3ds", """[{"cardId":5,"costume3dId":10},{"cardId":5,"costume3dId":11},{"cardId":5,"costume3dId":12},{"cardId":5,"costume3dId":13},{"cardId":5,"costume3dId":14,"isInitialObtainHair":true}]""");
@@ -71,7 +72,7 @@ internal static class GachaBonusChecks
             var state = TestUsers.Create(1);
             state.Data.userChargedCurrency = new() { free = free, paid = paid };
             state.Data.userGachaTickets = [new() { gachaTicketId = 1, quantity = 1 }];
-            state.Data.userColorfulPassV2 = new() { expiredAt = ulong.MaxValue };
+            state.Data.userColorfulPassV2 = new() { colorfulPassId = 3, expiredAt = ulong.MaxValue };
             state.Data.userGachaBonusPoints = existing ? [new() { userId = 1, gachaId = pool, gachaBonusPoint = point, totalGachaBonusPoint = total }] : [];
             state.Data.userCostume3dStatuses = [new() { costume3dId = 10, status = "forbidden" }, new() { costume3dId = 11, status = "forbidden" },
                 new() { costume3dId = 12, status = "forbidden" }, new() { costume3dId = 13, status = "forbidden" }, new() { costume3dId = 20, status = "available", obtainedAt = 7 }];
@@ -80,10 +81,10 @@ internal static class GachaBonusChecks
             store.Save(1, state);
             random.PickupIndex = 0;
         }
-        UserGachaResponse Draw(int behavior = 1, bool paidFirst = false, int pool = 1) =>
+        UserGachaResponse Draw(int behavior = 1, bool paidFirst = false, int pool = 1, int? executions = null) =>
             DumpSerializer.Deserialize<UserGachaResponse>(operation.Execute(1, () =>
             {
-                var response = gacha.ExecuteGacha(pool, behavior, paidFirst);
+                var response = gacha.ExecuteGacha(pool, behavior, paidFirst, executions);
                 response.updatedResources = user.BuildRefresh(prepareRefresh: false);
                 return response;
             }));
@@ -106,6 +107,12 @@ internal static class GachaBonusChecks
         Reset(free: 1350, paid: 1650);
         Draw(4);
         Check.That(Points() == 7.5f, "混合十连仅完整付费的五抽计一点，其余五抽各半点");
+        Reset(free: 150, paid: 450, point: 49, total: 149);
+        var specified = Draw(executions: 2);
+        Check.That(Points() == 50.5f && specified.obtainPrizes.Length == 2 && specified.obtainPrizes[0].gachaLotteryType == "fixed_gacha_bonus" &&
+            specified.userGacha.count == 2 && specified.obtainGachaCeilItems.Single().quantity == 2 &&
+            store.Read(1)!.Data.userChargedCurrency.free == 0 && store.Read(1)!.Data.userChargedCurrency.paid == 0,
+            "指定两抽按总费用识别一抽混合与一抽纯付费，累计一点五分并在原两张名额中完成保底");
         Reset(free: 0, point: 49.5f, total: 149.5f);
         var free = Draw(5);
         Check.That(Points() == 49.5f && free.obtainPrizes.Length == 1 && free.obtainGachaCeilItems.Length == 0 &&

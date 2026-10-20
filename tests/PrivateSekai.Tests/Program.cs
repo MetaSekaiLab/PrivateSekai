@@ -30,6 +30,7 @@ internal static class Program
         GachaChecks.Run();
         GachaTenChecks.Run();
         GachaBonusChecks.Run();
+        GachaLimitChecks.Run();
         CardExchangeChecks.Run();
         GachaExchangeChecks.Run();
         CollectionHonorChecks.Run();
