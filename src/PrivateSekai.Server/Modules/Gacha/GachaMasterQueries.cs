@@ -31,6 +31,22 @@ public sealed class GachaMasterQueries(MasterData master)
         master.GetTable<MasterGachaBonus>("gachaBonuses", b => b.id).FindById(id)
         ?? throw new InvalidOperationException("Missing gacha bonus definition.");
 
+    public MasterGiftGachaExchange? GetGiftExchange(int gachaId, int exchangeId) =>
+        master.GetTable<MasterGiftGachaExchange>("giftGachaExchanges", e => e.id).FindById(exchangeId) is { } exchange
+            && exchange.gachaId == gachaId ? exchange : null;
+
+    public MasterResourceBox GetGiftResourceBox(int id)
+    {
+        var box = master.GetTable<MasterResourceBox>("resourceBoxes", b => b.id).Rows
+            .SingleOrDefault(b => b.resourceBoxPurpose == "gift_gacha_extra" && b.id == id)
+            ?? throw new InvalidOperationException("Missing gift gacha resource box.");
+        if (box.resourceBoxType is not ("expand" or "list") || box.details == null || box.details.Length == 0
+            || box.details.Any(d => d.resourceQuantity <= 0 || string.IsNullOrEmpty(d.resourceType)
+                || d.resourceId <= 0 && d.resourceType != "coin"))
+            throw new InvalidOperationException("Invalid gift gacha resource box.");
+        return box;
+    }
+
     public MasterGachaFreebieGroup[] GetFreebieGroups(int groupId)
     {
         var groups = master.GetTable<MasterGachaFreebieGroup>("gachaFreebieGroups", g => g.id).Rows

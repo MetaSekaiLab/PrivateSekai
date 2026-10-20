@@ -1940,7 +1940,7 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 验证使用本地合成用户与真实master：95种行为全部执行成功，核对11,041项材料、服装、avatar搭配及名片收藏；同时验证默认和示例配置、实际请求缓存作用域。该请求表集的缓存估算峰值为554,000,272字节，旧128MiB预算连当前gachas表都无法载入；默认与示例上限改为1GiB，按需加载并保留既有回收规则。已有部署若显式配置旧上限，需要相应调整。
 
-隔离加密HTTP验证连续抽取、指定两次单抽、十连、资源刷新、服装任务提示、独立Suite及配置失败回滚；业务检查另覆盖部分奖励后失败、编码回滚、数量溢出和SQLite重启全部持久字段。本用例依据客户端及master实现，未消费官方付费抽卡取得新样本，未验证Unity展示。随机附赠见下一节，gift池另行核验。
+隔离加密HTTP验证连续抽取、指定两次单抽、十连、资源刷新、服装任务提示、独立Suite及配置失败回滚；业务检查另覆盖部分奖励后失败、编码回滚、数量溢出和SQLite重启全部持久字段。本用例依据客户端及master实现，未消费官方付费抽卡取得新样本，未验证Unity展示。随机附赠和gift池见下文。
 
 ### 抽卡的随机附赠
 
@@ -1967,6 +1967,36 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 依据为 `GachaUtility.CanExecute`、`CanExecuteColorfulPassDailyFreeSpinGacha`、`TryGetRemainExecuteCount`、`TryGetRemainSpinCount`、`ExecuteSpinAPI`，以及 `MasterGachaBehavior.IsAvailable`、`UserDataManager.GetGacha`、`TimeUtility.IsDateChangeInternal`、`GetNextChangeWeekDateTime` 和当前 master。已检查 270 个限量池的行为组合；需不足十连收尾的组合具有同消耗类型单抽入口。
 
 新分支由来源核验、本地业务和加密 HTTP 检查验证，覆盖一次性名额、整池上限、指定两抽、积分与保底联动、通行证等级、日切和周切边界、跨池免费限制、独立回读、编码回滚、数据库恢复及并发争用最后一次名额。既有官方记录仅回归原抽卡结算；本项目尚无上述新分支的官方成功及跨日响应，不将本地夹具视为官方结果。
+
+### gift 池赠品结算
+
+`gachaType=gift` 的卡池必须先通过 `gift-gacha-wish` 保存赠品选择，再使用普通抽卡接口。服务端以该池的 `userGiftGachaWishes.giftGachaExchangeId` 查询 `giftGachaExchanges`，要求交换项确实属于当前卡池，再读取purpose为 `gift_gacha_extra` 的资源箱；不能把交换项ID直接当作箱ID，也不能串用普通固定附赠的同编号箱。
+
+`expand` 与 `list` 箱均发放全部details。一套赠品对应一次行为执行，十连不会把配置数量再乘十；卡牌数、保底、费用、天井和限次沿用原流程。赠品的完整资源列表按箱内顺序返回到 `obtainGachaExtras`，持有量变化通过 `updatedResources` 返回；独立固定附赠与随机附赠仍使用各自原有规则。
+
+材料、练习券、技能券、体力道具、金币和Mysekai材料走资源服务。Mysekai材料保存到 `userMysekaiMaterials`，累计数量并更新 `lastObtainedAt`；普通种类同时增加 `userMysekaiMaterialPossession.quantity`，角色和生日材料按客户端超限可接收分类不增加该占用。库存及占用均检查整数溢出。这部分占用规则属于客户端读取和接收限制的实现推导，未作为官方赠品前后快照对拍结论。
+
+未选择赠品或名额耗尽时拒绝抽取；错误的已存选择、资源箱、未知资源、库存溢出或响应编码失败均回滚整次费用、卡牌、赠品、次数及任务。选择本身不扣费、不发奖，尚有次数时可改选，改选只影响后续抽取。
+
+依据包括 `ScreenGacha.ShowGiftSelectConfirmationDialog` 将整个箱的details用于赠品确认，`ScreenGacha` 的抽卡入口在缺少选择时引导选择，以及 `MSG_GIFT_NOT_SELECT_CONFIRM`／`MSG_GIFT_SELECT_CONFIRM` 的剩余次数规则。`ScreenLayerGachaResult.CreateGifts`（RVA `0x6563bb4`）只在gift池使用响应的 `obtainGachaExtras`。Mysekai字段来自dump及 `MysekaiUserDataUtility.GetMaterialCount`（`0x4ac25ec`）、`GetTotalMaterialPossession`（`0x4ac2774`）和 `IsMaterialReceivableOverPossessionLimit`（`0x4ac27d4`）。
+
+真实master覆盖使用历史开放时段与本地合成用户：18池、153个选择项、实际引用的45个资源箱全部通过，完成221次抽取和622项赠品核对；包含两个三次池的改选、连续发奖与名额耗尽拒绝，默认和示例配置均通过。另有隔离业务及加密HTTP验证选择、六类资源、卡牌保底、独立Suite、部分发奖／编码／溢出回滚、跨账号隔离及SQLite重启。当前所审计gift池均已过期；本轮未消费官方付费抽卡，未取得官方gift成功响应，也未验证Unity动画。
+
+## PUT `/api/user/{userId}/gift-gacha-wish`
+
+> 审计版本: jp-6.5.5，master覆盖包含后续gift配置
+> 关键词：抽卡，赠品，愿望，gift
+
+保存gift卡池的赠品选择。客户端在赠品列表确认整套资源后请求，成功合并用户资源，再允许确认抽卡。
+
+- Path `userId`: 当前已验证用户。
+- Body `gachaId`: gift卡池ID。
+- Body `giftGachaExchangeId`: 该池的交换项ID，来自 `giftGachaExchanges.id`。
+- Response `updatedResources.userGiftGachaWishes`: 完整选择列表，每池保留一项，改选保留 `createdAt` 并更新 `updatedAt`，不覆盖其他池。
+
+服务端检查卡池类型、开放期、剩余行为次数、交换项所属池及资源箱配置。错误输入、关闭卡池或耗尽次数不会改变原选择；响应编码失败也不保存。旧dump的 `UserGiftGachaWish.userId` 为Int32，当前不向该字段截断写入64位账号编号；归属由已验证的用户会话和独立存档确定，旧字段保留默认值，不宣称与尚未取得的官方响应逐字段一致。
+
+协议依据为 `PutUserGiftGachaWishAPI` 构造函数（RVA `0x619acc0`）、`Execute`（`0x619ad88`）及 `OnCallBack`（`0x619af3c`）：PUT路径为 `user/{userId}/gift-gacha-wish`，body只有上述两个Int32字段，响应为 `SuiteUserCommonResponse`。Client操作 `gacha-gift-wish` 使用原dump模型编码，并可与 `gacha-draw` 在现有场景执行器中连续使用。
 
 ## PUT `/api/user/{userId}/exchange/gacha-ceil-item`
 

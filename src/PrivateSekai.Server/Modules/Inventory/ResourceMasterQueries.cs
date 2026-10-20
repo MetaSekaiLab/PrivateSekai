@@ -26,6 +26,18 @@ public sealed class ResourceMasterQueries(MasterData master)
         master.GetTable<MasterMysekaiTool>("mysekaiTools", t => t.id)
             .FindById(mysekaiToolId)?.maxDurability ?? 0;
 
+    public bool IsMysekaiMaterialCounted(int id)
+    {
+        var material = master.GetTable<MasterMysekaiMaterial>("mysekaiMaterials", m => m.id).FindById(id)
+            ?? throw new InvalidOperationException("Missing Mysekai material definition.");
+        return material.mysekaiMaterialType switch
+        {
+            "wood" or "mineral" or "plant" or "junk" or "other" or "tone" => true,
+            "game_character" or "birthday_party" => false,
+            _ => throw new InvalidOperationException("Invalid Mysekai material type.")
+        };
+    }
+
     public UserResource[] BuildResourcesFromBox(string purpose, int resourceBoxId)
     {
         if (resourceBoxId <= 0)

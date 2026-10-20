@@ -13,7 +13,7 @@ namespace PrivateSekai.Modules.Mysekai;
 
 public sealed class MysekaiResourceHandler(ResourceMasterQueries master) : IResourceHandler
 {
-    public IReadOnlyCollection<string> ResourceTypes { get; } = ["mysekai_item", "mysekai_tool"];
+    public IReadOnlyCollection<string> ResourceTypes { get; } = ["mysekai_item", "mysekai_tool", "mysekai_material"];
 
     public void Grant(UserSession user, UserResource resource)
     {
@@ -22,6 +22,26 @@ public sealed class MysekaiResourceHandler(ResourceMasterQueries master) : IReso
 
         switch (resource.resourceType)
         {
+            case "mysekai_material":
+                var counted = master.IsMysekaiMaterialCounted(resource.resourceId);
+                var materials = (user.Data.userMysekaiMaterials ?? []).ToList();
+                var material = materials.SingleOrDefault(m => m.mysekaiMaterialId == resource.resourceId);
+                if (material == null)
+                {
+                    material = new UserMysekaiMaterial { mysekaiMaterialId = resource.resourceId };
+                    materials.Add(material);
+                }
+                material.quantity = checked(material.quantity + resource.quantity);
+                material.lastObtainedAt = user.Now;
+                user.Data.userMysekaiMaterials = materials.OrderBy(m => m.mysekaiMaterialId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userMysekaiMaterials));
+                if (counted)
+                {
+                    user.Data.userMysekaiMaterialPossession ??= new UserMysekaiMaterialPossession();
+                    user.Data.userMysekaiMaterialPossession.quantity = checked(user.Data.userMysekaiMaterialPossession.quantity + resource.quantity);
+                    user.MarkChanged(nameof(SuiteUser.userMysekaiMaterialPossession));
+                }
+                break;
             case "mysekai_item":
                 var items = (user.Data.userMysekaiItems ?? []).ToList();
                 var item = items.FirstOrDefault(i => i.mysekaiItemId == resource.resourceId);

@@ -43,6 +43,7 @@ public sealed class GachaService(
         var behaviorType = behavior.gachaBehaviorType;
         PrepareRefresh();
         ValidateGachaLimits(gacha, behavior, spinCount, executions);
+        var gifts = GetGiftResources(gacha);
 
         var paidBefore = user.Data.userChargedCurrency?.paid ?? 0;
         var consumedCosts = ConsumeGachaCost(behavior, isPriorityUsePaidJewel, executions);
@@ -90,6 +91,11 @@ public sealed class GachaService(
             ? [] : GrantGachaCeilItem(gacha, gachaId, spinCount);
         GrantExtra(behavior.gachaExtraId, executions);
         var obtainGachaFreebies = GrantFreebies(gacha.gachaFreebieGroupId, spinCount);
+        foreach (var gift in gifts)
+        {
+            gift.quantity = checked(gift.quantity * executions);
+            resources.Grant(gift);
+        }
         missions.RefreshGachaPanels();
 
         return new UserGachaResponse
@@ -98,7 +104,7 @@ public sealed class GachaService(
             obtainPrizes = obtainPrizes.ToArray(),
             obtainGachaCeilItems = obtainGachaCeilItems,
             obtainGachaBonusItems = [],
-            obtainGachaExtras = [],
+            obtainGachaExtras = gifts,
             obtainGachaFreebies = obtainGachaFreebies,
             userGacha = userGacha,
             obtainCharacterAllBonuses = [],
@@ -142,6 +148,45 @@ public sealed class GachaService(
             freebies[i] = new UserGachaFreebie { rarity = candidate.rarity, obtainedResources = obtained };
         }
         return freebies;
+    }
+
+    private UserResource[] GetGiftResources(MasterGacha gacha)
+    {
+        if (gacha.gachaType != "gift") return [];
+        var wish = user.Data.userGiftGachaWishes?.SingleOrDefault(w => w.gachaId == gacha.id)
+            ?? throw new GachaRequestRejectedException(409);
+        var exchange = master.GetGiftExchange(gacha.id, wish.giftGachaExchangeId)
+            ?? throw new InvalidOperationException("Invalid saved gift gacha wish.");
+        var box = master.GetGiftResourceBox(exchange.resourceBoxId);
+        return resourceMaster.BuildResourcesFromBox("gift_gacha_extra", box.id);
+    }
+
+    public void SaveGiftGachaWish(UserGiftGachaWishRequest request)
+    {
+        var gacha = master.GetMasterGacha(request.gachaId) ?? throw new GachaRequestRejectedException(404);
+        if (gacha.gachaType != "gift") throw new GachaRequestRejectedException(400);
+        if (gacha.startAt > user.Now || (gacha.endAt == 0 ? gacha.startAt == 0 : user.Now >= gacha.endAt))
+            throw new GachaRequestRejectedException(409, "invalid_term");
+        if (gacha.spinLimit < 0) throw new InvalidOperationException("Invalid gacha spin limit.");
+        var remainingSpins = gacha.spinLimit > 0 ? gacha.spinLimit - GetUsedGachaSpins(gacha) : long.MaxValue;
+        if (!(gacha.gachaBehaviors ?? []).Any(b => GetGachaSpinCount(b) <= remainingSpins && (b.executeLimit == 0 || b.executeLimit >
+            (user.Data.userGachas?.SingleOrDefault(g => g.gachaId == gacha.id && g.gachaBehaviorId == b.id)?.count ?? 0))))
+            throw new GachaRequestRejectedException(409);
+        var exchange = master.GetGiftExchange(gacha.id, request.giftGachaExchangeId)
+            ?? throw new GachaRequestRejectedException(400);
+        master.GetGiftResourceBox(exchange.resourceBoxId);
+        var wishes = (user.Data.userGiftGachaWishes ?? []).ToList();
+        var wish = wishes.SingleOrDefault(w => w.gachaId == gacha.id);
+        if (wish == null)
+        {
+            // 旧模型的userId为Int32，归属由隔离用户会话确定，不截断账号编号。
+            wish = new UserGiftGachaWish { gachaId = gacha.id, createdAt = user.Now };
+            wishes.Add(wish);
+        }
+        wish.giftGachaExchangeId = exchange.id;
+        wish.updatedAt = user.Now;
+        user.Data.userGiftGachaWishes = wishes.OrderBy(w => w.gachaId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userGiftGachaWishes));
     }
 
     public void SaveRateChoiceGachaWish(UserRateChoiceGachaWishRequest request)
@@ -274,11 +319,16 @@ public sealed class GachaService(
         else if (limit > 0 && (long)count + executions > limit) throw new GachaRequestRejectedException(409);
         if (gacha.spinLimit > 0)
         {
-            var behaviors = gacha.gachaBehaviors.ToDictionary(b => b.id);
-            var used = (user.Data.userGachas ?? []).Where(g => g.gachaId == gacha.id)
-                .Sum(g => checked((long)behaviors[g.gachaBehaviorId].spinCount * g.count));
+            var used = GetUsedGachaSpins(gacha);
             if (spinCount > gacha.spinLimit - used) throw new GachaRequestRejectedException(409);
         }
+    }
+
+    private long GetUsedGachaSpins(MasterGacha gacha)
+    {
+        var behaviors = gacha.gachaBehaviors.ToDictionary(b => b.id);
+        return (user.Data.userGachas ?? []).Where(g => g.gachaId == gacha.id)
+            .Sum(g => checked((long)behaviors[g.gachaBehaviorId].spinCount * g.count));
     }
 
     private int[] ApplyGachaBonus(MasterGacha gacha, MasterGachaBehavior behavior, int spinCount, int paidConsumed, int executions)
