@@ -104,6 +104,11 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
         var experience = live.GainPlayerExperience(addedExp);
         var cardResults = new[] { deck.member1, deck.member2, deck.member3, deck.member4, deck.member5 }
             .Select((id, index) => new DeckCardUpdateExpResult { index = index + 1, expResult = cards.GainExperience(id, checked(addedExp * 3)) }).ToArray();
+        if (fullCombo)
+        {
+            live.RecordFirstFullCombo(context);
+            missions.RecordFullComboLevel(master.ResolveMusicPlayLevel(own.musicDifficultyId));
+        }
         live.UpdateUserMusicResult(context, clear, fullCombo, fullPerfect, "multi", mvp);
         var achievements = live.GrantUserMusicAchievements(context, clear, rank);
         var achievementRewards = live.BuildMusicAchievementRewards(achievements);

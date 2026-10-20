@@ -26,6 +26,8 @@ public static class RealtimeProbe
             throw new InvalidOperationException("演出开始流程需要双账号私房。");
         if (performance != null && song == null)
             throw new InvalidOperationException("演出结算需要歌曲及双账号私房。");
+        var guestSong = song != null && performance?.GuestDifficulty is { } guestDifficulty
+            ? MultiLiveSong.Read(masterDirectory!, song.MusicId, guestDifficulty, song.VocalId) : song;
         var roomTtl = clientConfigsPath == null ? (int?)null : MultiLiveReservation.ReadRoomTtl(
             JsonNode.Parse(File.ReadAllText(clientConfigsPath))!.AsArray(), LiveRuleType.normal);
         var configuration = JsonFiles.Read<ClientConfiguration>(configurationPath);
@@ -228,7 +230,7 @@ public static class RealtimeProbe
                             var guestReport = new JsonObject();
                             report["guest"] = guestReport;
                             await MultiLiveGuest.Run(guestConfigurationPath, targetName, masterDirectory!, Path.Combine(output, "guest"),
-                                realtime, room, lobbyId.Value, guestReport, timeout.Token, http, ownerUser, song, performance);
+                                realtime, room, lobbyId.Value, guestReport, timeout.Token, http, ownerUser, song, performance, guestSong);
                         }
                         report["phase"] = "leave-private-room";
                         await Leave(timeout.Token);

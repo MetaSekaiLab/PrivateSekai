@@ -21,7 +21,8 @@ public sealed record MultiLiveSong(int MusicId, int DifficultyId, int VocalId, s
             File.ReadAllText(Path.Combine(directory, "musicDifficulties.json")), DumpJson.Options)!;
         var vocals = JsonSerializer.Deserialize<MasterMusicVocal[]>(
             File.ReadAllText(Path.Combine(directory, "musicVocals.json")), DumpJson.Options)!;
-        var score = difficulties.Single(d => d.musicId == musicId && d.musicDifficulty == difficulty);
+        var score = difficulties.SingleOrDefault(d => d.musicId == musicId && d.musicDifficulty == difficulty)
+            ?? throw new InvalidDataException("所选歌曲没有该难度。");
         if (!vocals.Any(v => v.id == vocalId && v.musicId == musicId))
             throw new InvalidDataException("演唱版本与歌曲不一致。");
         return new(musicId, score.id, vocalId, difficulty);
@@ -101,15 +102,19 @@ public static class MultiLiveFlow
     public static async Task<bool> Run(DiarkisUdpClient owner, DiarkisUdpClient guest, ProtocolClient ownerHttp,
         ProtocolClient guestHttp, SuiteUser ownerUser, SuiteUser guestUser, MultiLiveRoomSyncData room,
         MultiLiveRoomSyncData joined, RoomSyncPlayer guestSeen, int lobbyId, MultiLiveSong song, string output,
-        JsonObject report, CancellationToken token, MultiLivePerformance? performance = null)
+        JsonObject report, CancellationToken token, MultiLivePerformance? performance = null, MultiLiveSong? guestSong = null)
     {
+        guestSong ??= performance?.GuestDifficulty == null ? song : throw new InvalidDataException("未解析成员选择的难度。");
+        if (guestSong.MusicId != song.MusicId || guestSong.VocalId != song.VocalId
+            || performance?.GuestDifficulty != null && performance.GuestDifficulty != guestSong.Difficulty)
+            throw new InvalidDataException("成员谱面与本次歌曲、版本或难度选择不一致。");
         var ownerId = room.userId;
         var guestId = joined.userId;
         var ownerBoost = performance?.OwnerBoostCount ?? 0;
         var guestBoost = performance?.GuestBoostCount ?? 0;
         if (ownerBoost < 0 || guestBoost < 0) throw new InvalidDataException("体力消耗不能为负数。");
         var ownerScore = performance == null ? null : MultiLivePerformance.Score(performance.OwnerScore, ownerHttp.UserId, song.DifficultyId);
-        var guestScore = performance == null ? null : MultiLivePerformance.Score(performance.GuestScore, guestHttp.UserId, song.DifficultyId);
+        var guestScore = performance == null ? null : MultiLivePerformance.Score(performance.GuestScore, guestHttp.UserId, guestSong.DifficultyId);
         var ownerPlayers = new Dictionary<string, RoomSyncPlayer>
         {
             [ownerId] = new() { userId = ownerId, index = room.index, playerProperty = room.playerProperty },
@@ -187,7 +192,7 @@ public static class MultiLiveFlow
             (11, SyncPropertyEncoding.String(selectedPlayer)), (1, SyncPropertyEncoding.Int32(2))), "shuffle");
         await Room(Property((2, SyncPropertyEncoding.Int32(4))), "ready-final");
         await Both(Status(PlayerStatus.SelectDifficulty), "select-difficulty");
-        await Both(Ready(song.Difficulty), "ready-to-live");
+        await Both(Ready(song.Difficulty), "ready-to-live", Ready(guestSong.Difficulty));
         await Room(Property((2, SyncPropertyEncoding.Int32(5))), "loading");
         await Both(Status(PlayerStatus.Loading), "players-loading");
         await Both(Status(PlayerStatus.LoadComplete), "load-complete");
@@ -201,7 +206,8 @@ public static class MultiLiveFlow
         {
             ["phase"] = "master-prepare-attempted", ["ownerUserId"] = ownerHttp.UserId, ["guestUserId"] = guestHttp.UserId,
             ["roomId"] = room.roomId, ["musicId"] = song.MusicId, ["difficultyId"] = song.DifficultyId,
-            ["vocalId"] = song.VocalId, ["ownerBoostCount"] = ownerBoost, ["guestBoostCount"] = guestBoost
+            ["vocalId"] = song.VocalId, ["ownerBoostCount"] = ownerBoost, ["guestBoostCount"] = guestBoost,
+            ["guestDifficultyId"] = guestSong.DifficultyId
         };
         JsonFiles.Write(journalPath, journal);
         var prepare = await Http(ownerHttp.Send(new ScenarioStep
@@ -222,7 +228,7 @@ public static class MultiLiveFlow
         await Http(guestHttp.Send(new ScenarioStep
         {
             Operation = "multi-live-member-start", Args = new() { ["liveId"] = liveId },
-            Body = Body(MemberRequest(guestUser, room.roomId, lobbyId, song, guestBoost))
+            Body = Body(MemberRequest(guestUser, room.roomId, lobbyId, guestSong, guestBoost))
         }));
         report["memberPrepared"] = true;
         journal["phase"] = "member-prepared";

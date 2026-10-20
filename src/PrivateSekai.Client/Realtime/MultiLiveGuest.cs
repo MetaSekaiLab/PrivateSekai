@@ -15,7 +15,8 @@ public static class MultiLiveGuest
 {
     public static async Task<bool> Run(string configurationPath, string targetName, string masterDirectory, string output,
         DiarkisUdpClient owner, MultiLiveRoomSyncData room, int lobbyId, JsonObject report, CancellationToken cancellationToken,
-        ProtocolClient? ownerHttp = null, SuiteUser? ownerUser = null, MultiLiveSong? song = null, MultiLivePerformance? performance = null)
+        ProtocolClient? ownerHttp = null, SuiteUser? ownerUser = null, MultiLiveSong? song = null, MultiLivePerformance? performance = null,
+        MultiLiveSong? guestSong = null)
     {
         if (song != null && (ownerHttp == null || ownerUser == null))
             throw new InvalidOperationException("开始演出需要房主的当前HTTP会话及用户快照。");
@@ -231,7 +232,7 @@ public static class MultiLiveGuest
                 var flow = new JsonObject();
                 report["live"] = flow;
                 await MultiLiveFlow.Run(owner, guest, ownerHttp!, http, ownerUser!, guestUser!, room, joined,
-                    guestSeen, lobbyId, song, output, flow, cancellationToken, performance);
+                    guestSeen, lobbyId, song, output, flow, cancellationToken, performance, guestSong);
             }
             report["phase"] = "guest-leave";
             await owner.MaintainConnectionAsync(Leave(cancellationToken), cancellationToken);

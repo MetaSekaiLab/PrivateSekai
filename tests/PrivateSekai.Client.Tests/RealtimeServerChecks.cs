@@ -42,8 +42,10 @@ internal static class RealtimeServerChecks
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":21,"s":1000000,"a":800000,"b":400000,"c":80000},{"liveType":"multi_open","playLevel":21,"s":1000000,"a":800000,"b":400000,"c":50000}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = """[{"id":11,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":11},{"id":12,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":34}]""",
-            ["musicAchievements"] = """[{"id":9,"musicAchievementType":"combo","musicAchievementTypeValue":"0.25","musicDifficultyType":"normal","resourceBoxId":9},{"id":10,"musicAchievementType":"combo","musicAchievementTypeValue":"0.5","musicDifficultyType":"normal","resourceBoxId":10},{"id":11,"musicAchievementType":"combo","musicAchievementTypeValue":"0.75","musicDifficultyType":"normal","resourceBoxId":11}]""",
-            ["beginnerMissionV2s"] = "[]", ["honorMissions"] = "[]", ["characterMissionV2s"] = "[]",
+            ["musicAchievements"] = """[{"id":8,"musicAchievementType":"combo","musicAchievementTypeValue":"1","musicDifficultyType":"easy","resourceBoxId":8},{"id":9,"musicAchievementType":"combo","musicAchievementTypeValue":"0.25","musicDifficultyType":"normal","resourceBoxId":9},{"id":10,"musicAchievementType":"combo","musicAchievementTypeValue":"0.5","musicDifficultyType":"normal","resourceBoxId":10},{"id":11,"musicAchievementType":"combo","musicAchievementTypeValue":"0.75","musicDifficultyType":"normal","resourceBoxId":11},{"id":12,"musicAchievementType":"combo","musicAchievementTypeValue":"1","musicDifficultyType":"normal","resourceBoxId":12}]""",
+            ["beginnerMissionV2s"] = "[]",
+            ["honorMissions"] = """[{"id":777,"honorMissionType":"normal_full_combo","requirement":1}]""",
+            ["characterMissionV2s"] = "[]",
             ["playerRankRewards"] = """[{"playerRank":2,"seq":1,"resourceBoxId":1}]""",
             ["releaseConditions"] = """[{"id":501,"releaseConditionType":"user_rank","releaseConditionTypeLevel":2}]"""
         };
@@ -61,8 +63,8 @@ internal static class RealtimeServerChecks
             details = [new() { resourceType = "material", resourceId = 11, resourceQuantity = 2 }] });
         boxes.AddRange(new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 12 }.Select(id => new MasterResourceBox
             { id = id + 10, resourceBoxPurpose = "score_rank_reward_detail", resourceBoxType = "expand", details = [new() { resourceType = "material", resourceId = id, resourceQuantity = 1 }] }));
-        boxes.AddRange(Enumerable.Range(9, 3).Select(id => new MasterResourceBox
-            { id = id, resourceBoxPurpose = "music_achievement", resourceBoxType = "expand", details = [new() { resourceType = "jewel", resourceQuantity = 5 }] }));
+        boxes.AddRange(Enumerable.Range(8, 5).Select(id => new MasterResourceBox
+            { id = id, resourceBoxPurpose = "music_achievement", resourceBoxType = "expand", details = [new() { resourceType = id is 8 or 12 ? "coin" : "jewel", resourceQuantity = 5 }] }));
         File.WriteAllText(Path.Combine(masterPath, "resourceBoxes.json"), JsonSerializer.Serialize(boxes, DumpJson.Options));
         File.WriteAllText(Path.Combine(masterPath, "multiLiveLobbies.json"),
             """[{"id":1,"totalPower":0,"multiLiveLobbyType":"normal"}]""");
@@ -230,6 +232,7 @@ internal static class RealtimeServerChecks
         await PlayLive();
         await PlayRankC();
         await PlayLifeZero();
+        await PlayMixedDifficulty();
         await PlayBoost();
         CheckDailyBoundary();
 
@@ -714,6 +717,185 @@ internal static class RealtimeServerChecks
                     check(reopened.Read(id)!.Data.userMusicResults.Single(r => r.playType == "multi" && r.musicDifficultyType == "normal").playResult == "clear"
                         && reopened.Read(id)!.Private.DailyLivePoint.BonusCount == 3 && reopened.Read(id)!.Private.MultiLiveSessions.Count == 0,
                         "SQLite重启保留生命归零的多人通关记录和已消费的每日次数及会话");
+        }
+
+        async Task PlayMixedDifficulty()
+        {
+            foreach (var id in new[] { 11, 12 })
+            {
+                var state = store.Read(id)!;
+                state.Data.userMusicResults =
+                [
+                    new() { musicId = 7, musicDifficultyType = "easy", playType = "solo", highScore = 900000,
+                        playResult = id == 11 ? "full_perfect" : "clear", fullComboFlg = id == 11, fullPerfectFlg = id == 11 },
+                    new() { musicId = 7, musicDifficultyType = "normal", playType = "solo", highScore = 800000, playResult = "clear" }
+                ];
+                state.Data.userMusicAchievements = id == 11 ? [new() { musicId = 7, musicAchievementId = 8 }] : [];
+                state.Data.userHonorMissions = state.Data.userHonorMissions.Where(m => m.honorMissionType is not ("easy_full_combo" or "normal_full_combo")).ToArray();
+                if (id == 11) state.Data.userHonorMissions = [.. state.Data.userHonorMissions, new() { honorMissionType = "easy_full_combo", progress = 1, achievedMissionIds = [] }];
+                if (id == 11) state.Data.userHonorMissions = [.. state.Data.userHonorMissions, new() { honorMissionType = "play_level_full_combo_clear", progress = 5, achievedMissionIds = [] }];
+                foreach (var card in state.Data.userCards) { card.totalExp = card.exp = 0; card.level = 1; }
+                state.Private.DailyLivePoint.BonusCount = 0;
+                store.Save(id, state);
+            }
+            var rejected = false;
+            try { MultiLiveSong.Read(masterPath, 7, "hard", 1); }
+            catch (InvalidDataException) { rejected = true; }
+            check(rejected, "master中不存在的难度在业务请求前明确拒绝");
+            for (var round = 0; round < 4; round++)
+            {
+                var ownerSong = MultiLiveSong.Read(masterPath, 7, round % 2 == 0 ? "easy" : "normal", 1);
+                var guestSong = MultiLiveSong.Read(masterPath, 7, round % 2 == 0 ? "normal" : "easy", 1);
+                var ownerScore = MixedScore(ownerSong, 100000, round == 3, round == 3);
+                var guestScore = MixedScore(guestSong, 150000, true, round >= 2);
+                var performance = new MultiLivePerformance { DurationMilliseconds = 1, GuestDifficulty = guestSong.Difficulty,
+                    OwnerBoostCount = round == 3 ? 1 : 0, GuestBoostCount = round == 3 ? 2 : 0, OwnerScore = ownerScore, GuestScore = guestScore };
+                var result = MultiLivePerformance.Result([11, 12], new Dictionary<long, UserMultiLiveClearScoreRequest>
+                    { [11] = MultiLivePerformance.Score(ownerScore, 11, ownerSong.DifficultyId), [12] = MultiLivePerformance.Score(guestScore, 12, guestSong.DifficultyId) });
+                rewardRandom.Choice = 0;
+                using var member = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true);
+                await Connect(member);
+                var room = await Open(member);
+                using var ownerHttp = Client(11);
+                using var guestHttp = Client(12);
+                var before = new[] { store.Read(11)!, store.Read(12)! };
+                var output = Path.Combine(masterPath, "mixed-" + round);
+                Directory.CreateDirectory(output);
+                if (round == 0)
+                {
+                    foreach (var wrong in new[] { guestSong with { MusicId = 8 }, guestSong with { VocalId = 2 } })
+                    {
+                        rejected = false;
+                        try { await MultiLiveFlow.Run(owner, member, ownerHttp, guestHttp, before[0].Data, before[1].Data,
+                            room.Owner, room.Guest, room.Seen, 1, ownerSong, output, new(), cancel, performance, wrong); }
+                        catch (InvalidDataException) { rejected = true; }
+                        check(rejected && store.Read(11)!.Private.MultiLiveSessions.Count == 0 && store.Read(12)!.Private.MultiLiveSessions.Count == 0,
+                            "不同歌曲或版本在同步及HTTP准备前拒绝，不占用本场会话");
+                    }
+                    guestScore.musicDifficultyId = ownerSong.DifficultyId;
+                    rejected = false;
+                    try { await MultiLiveFlow.Run(owner, member, ownerHttp, guestHttp, before[0].Data, before[1].Data,
+                        room.Owner, room.Guest, room.Seen, 1, ownerSong, output, new(), cancel, performance, guestSong); }
+                    catch (InvalidDataException) { rejected = true; }
+                    check(rejected, "成员成绩模板不能冒用房主谱面ID");
+                    guestScore.musicDifficultyId = 0;
+                }
+                var report = new JsonObject();
+                check(await MultiLiveFlow.Run(owner, member, ownerHttp, guestHttp, before[0].Data, before[1].Data,
+                    room.Owner, room.Guest, room.Seen, 1, ownerSong, output, report, cancel, performance, guestSong)
+                    && report["phase"]!.GetValue<string>() == "cleared", "双方不同难度贯通实际Server准备、成绩同步及双边结算");
+                var journal = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "live-state.local.json")))!;
+                var liveId = journal["liveId"]!.GetValue<string>();
+                check(journal["difficultyId"]!.GetValue<int>() == ownerSong.DifficultyId && journal["guestDifficultyId"]!.GetValue<int>() == guestSong.DifficultyId,
+                    "恢复记录分别保留双方实际谱面ID");
+                await Leave(member, "12");
+                await Response(owner, 1, 102, 255);
+                await Leave(owner, "11");
+                await Lookup(numbered.roomNo, 404);
+                foreach (var (id, prior, song, score, response) in new[] { (11, before[0], ownerSong, ownerScore, ownerHttp.LastResponse!), (12, before[1], guestSong, guestScore, guestHttp.LastResponse!) })
+                {
+                    var rate = round == 3 ? (id == 11 ? 5 : 10) : 1;
+                    var fullCombo = score.goodCount == 0;
+                    var fullPerfect = fullCombo && score.greatCount == 0;
+                    check(response["user1"]!["musicDifficultyId"]!.GetValue<int>() == ownerSong.DifficultyId
+                        && response["user2"]!["musicDifficultyId"]!.GetValue<int>() == guestSong.DifficultyId
+                        && response["user" + (id == 11 ? 1 : 2)]!["fullComboFlg"]?.GetValue<bool>() == fullCombo
+                        && response["user" + (id == 11 ? 1 : 2)]!["fullPerfectFlg"]?.GetValue<bool>() == fullPerfect
+                        && response["scoreRank"]!.GetValue<string>() == "rank_c" && response["multiScoreRank"]!.GetValue<string>() == "rank_c",
+                        "每槽返回各自谱面和FC/AP判定，评分使用同曲的多人参考谱面");
+                    using var independent = Client(id);
+                    var suite = JsonSerializer.Deserialize<SuiteUser>((await independent.Suite()).ToJsonString(), DumpJson.Options)!;
+                    var record = suite.userMusicResults.Single(r => r.playType == "multi" && r.musicDifficultyType == song.Difficulty);
+                    var previousRecord = prior.Data.userMusicResults.SingleOrDefault(r => r.playType == "multi" && r.musicDifficultyType == song.Difficulty);
+                    check(record.highScore == Math.Max(previousRecord?.highScore ?? 0, score.score)
+                        && record.fullComboFlg == (fullCombo || previousRecord?.fullComboFlg == true)
+                        && record.fullPerfectFlg == (fullPerfect || previousRecord?.fullPerfectFlg == true)
+                        && record.playResult == (record.fullPerfectFlg ? "full_perfect" : record.fullComboFlg ? "full_combo" : "clear"),
+                        "多人各难度分别保存最高分和FC/AP，不继承单人更高分或判定");
+                    foreach (var old in prior.Data.userMusicResults.Where(r => r.playType == "solo" || r.musicDifficultyType != song.Difficulty))
+                        check(DumpSerializer.Serialize(old).AsSpan().SequenceEqual(DumpSerializer.Serialize(suite.userMusicResults.Single(r => r.playType == old.playType && r.musicDifficultyType == old.musicDifficultyType))),
+                            "本次不改变其他难度及单人记录");
+                    var candidates = song.Difficulty == "normal" ? (fullCombo ? new[] { 9, 10, 11, 12 } : [9, 10, 11]) : (fullCombo ? [8] : Array.Empty<int>());
+                    var newly = candidates.Except(prior.Data.userMusicAchievements.Select(a => a.musicAchievementId)).Order().ToArray();
+                    var coinBonus = newly.Count(a => a is 8 or 12) * 5;
+                    check(response["userMusicAchievements"]!.AsArray().Select(a => a!["musicAchievementId"]!.GetValue<int>()).Order().SequenceEqual(newly)
+                        && suite.userChargedCurrency.free - prior.Data.userChargedCurrency.free == newly.Length * 5 - coinBonus
+                        && suite.userChargedCurrency.paid == prior.Data.userChargedCurrency.paid,
+                        "按本人谱面音符数解锁连击成就，新成就只发一次且不乘体力倍率");
+                    var firstFc = fullCombo && !prior.Data.userMusicResults.Any(r => r.musicDifficultyType == song.Difficulty && r.fullComboFlg);
+                    var type = song.Difficulty + "_full_combo";
+                    check(Honor(suite, type) - Honor(prior.Data, type) == (firstFc ? 1 : 0)
+                        && Honor(suite, (song.Difficulty == "normal" ? "easy" : "normal") + "_full_combo")
+                            == Honor(prior.Data, (song.Difficulty == "normal" ? "easy" : "normal") + "_full_combo"),
+                        "首次全连只增加对应难度曲数，重复全连或已有单人全连不重复计数");
+                    check(Honor(suite, "play_level_full_combo_clear") == Math.Max(Honor(prior.Data, "play_level_full_combo_clear"), fullCombo ? (song.Difficulty == "normal" ? 10 : 5) : 0),
+                        "最高全连等级只取本人谱面，简单难度全连不会降低已有最高等级");
+                    var hints = response["updatedResources"]!["userHonorMissions"]!.AsArray()
+                        .Where(m => m!["honorMissionType"]!.GetValue<string>() == "normal_full_combo")
+                        .SelectMany(m => m!["achievedMissionIds"]!.AsArray()).Select(v => v!.GetValue<int>()).ToArray();
+                    check(hints.SequenceEqual(firstFc && song.Difficulty == "normal" ? [777] : Array.Empty<int>())
+                        && suite.userHonorMissions.All(m => m.achievedMissionIds == null || m.achievedMissionIds.Length == 0),
+                        "首次Normal全连返回本次达成提示，提示不持久化且重复演出不再返回");
+                    check(suite.userGamedata.totalExp - prior.Data.userGamedata.totalExp == 200 * rate
+                        && suite.userGamedata.coin - prior.Data.userGamedata.coin == 200 * rate + coinBonus
+                        && suite.userCards.All(c => c.totalExp == Math.Min(1000, prior.Data.userCards.Single(p => p.cardId == c.cardId).totalExp + 600 * rate))
+                        && suite.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress
+                            - prior.Data.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress == rate + (round < 3 ? 10 : 0),
+                        "不同难度与个人体力组合仍正确结算经验、卡牌、金币及每日P");
+                    check(Honor(suite, "collect_coin_total") - Honor(prior.Data, "collect_coin_total") == 200 * rate + coinBonus
+                        && Honor(suite, "clear_multi_live_full_combo_all") == Honor(prior.Data, "clear_multi_live_full_combo_all"),
+                        "成就金币不乘倍率且计入金币任务，本不同难度双人用例不增加全员全连任务");
+                    var snapshot = DumpSerializer.Serialize(store.Read(id)!.Data);
+                    await Request(id, HttpMethod.Put, $"/api/user/{id}/multi-live/{liveId}", DumpSerializer.Serialize(result), 404);
+                    check(DumpSerializer.Serialize(store.Read(id)!.Data).AsSpan().SequenceEqual(snapshot), "不同难度场次重复结算不再改变任何状态");
+                }
+                if (round == 0)
+                {
+                    var settled = store.Read(12)!;
+                    var pending = before[1].DeepClone();
+                    pending.Private.MultiLiveSessions.Add(liveId, new()
+                    {
+                        Master = MultiLiveFlow.PrepareRequest(before[0].Data, roomId, 1, ownerSong, [11, 12]),
+                        Start = MultiLiveFlow.MemberRequest(pending.Data, roomId, 1, guestSong), CreatedAt = clock.GetUtcNow().ToUnixTimeMilliseconds()
+                    });
+                    store.Save(12, pending);
+                    var snapshot = DumpSerializer.Serialize(pending.Data);
+                    result.score2.musicDifficultyId = ownerSong.DifficultyId;
+                    await Request(12, HttpMethod.Put, $"/api/user/12/multi-live/{liveId}", DumpSerializer.Serialize(result), 400);
+                    result.score2.musicDifficultyId = guestSong.DifficultyId;
+                    using var scope = app.Services.CreateScope();
+                    var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
+                    var service = scope.ServiceProvider.GetRequiredService<MultiLiveService>();
+                    var failed = false;
+                    try { operations.Execute(12, () => { service.Clear(liveId, result); return new BrokenResponse(); }); }
+                    catch (MessagePack.MessagePackSerializationException) { failed = true; }
+                    check(failed && DumpSerializer.Serialize(store.Read(12)!.Data).AsSpan().SequenceEqual(snapshot)
+                        && store.Read(12)!.Private.MultiLiveSessions.ContainsKey(liveId) && store.Read(12)!.Private.DailyLivePoint.BonusCount == 0,
+                        "成员错谱拒绝或编码失败不留下首次全连、成就、奖励或每日次数，也不删除会话");
+                    store.Save(12, settled);
+                }
+            }
+            var database = Path.Combine(masterPath, "mixed.db");
+            using (var saved = new SqliteUserStore(database))
+                foreach (var id in new[] { 11, 12 }) saved.Save(id, store.Read(id)!);
+            using (var reopened = new SqliteUserStore(database))
+                foreach (var id in new[] { 11, 12 })
+                {
+                    var restored = reopened.Read(id)!;
+                    var expected = store.Read(id)!.Data;
+                    expected.now = restored.Data.now;
+                    expected.refreshableTypes = restored.Data.refreshableTypes;
+                    check(DumpSerializer.Serialize(restored.Data).AsSpan().SequenceEqual(DumpSerializer.Serialize(expected))
+                        && restored.Private.MultiLiveSessions.Count == 0 && restored.Private.DailyLivePoint.BonusCount == 3,
+                        "SQLite重启保留双方分难度的完整成绩、成就和首次全连任务");
+                }
+            static int Honor(SuiteUser data, string type) => data.userHonorMissions.SingleOrDefault(m => m.honorMissionType == type)?.progress ?? 0;
+            static UserMultiLiveClearScoreRequest MixedScore(MultiLiveSong song, int score, bool fc, bool ap)
+            {
+                var notes = song.Difficulty == "normal" ? 492 : 220;
+                return new() { score = score, perfectCount = ap ? notes : notes - 10, greatCount = fc && !ap ? 10 : 0,
+                    goodCount = fc ? 0 : 10, maxCombo = fc ? notes : notes - 10, tapCount = notes, life = 1000 };
+            }
         }
 
         async Task PlayBoost()

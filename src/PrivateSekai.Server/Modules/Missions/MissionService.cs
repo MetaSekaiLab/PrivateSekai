@@ -191,6 +191,8 @@ public sealed class MissionService(
 
     public void RecordNormalFullCombo() => UpdateHonorProgress("normal_full_combo");
 
+    public void RecordFullComboLevel(int level) => UpdateHonorProgress("play_level_full_combo_clear", level);
+
     public void RecordMultiLiveMvp() => UpdateHonorProgress("multi_live_mvp");
 
     public void RecordCoinGain(int quantity)

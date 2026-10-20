@@ -311,9 +311,9 @@ HTTP记录隐藏五槽账号、房间名和Live ID；写入前保存本机恢复
 
 ### 双账号完整结算
 
-Client 命令 `realtime-play <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room` 接续上述开始流程。配置包含 `durationMilliseconds`、`ownerScore`、`guestScore`，可选 `ownerBoostCount`／`guestBoostCount` 分别指定体力，省略时均为0，负数在请求前拒绝；成绩使用原 UserMultiLiveClearScoreRequest，`userId`／`musicDifficultyId` 为0时填入本次真实值，非0必须匹配。时长和成绩由调用者明确提供，不从曲名或音符数猜测。双方体力选择先写入本机恢复记录，任一方耗体力时在准备后额外读取双方Suite，报告只保留体力数值以核对扣除时机。
+Client 命令 `realtime-play <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room` 接续上述开始流程。配置包含 `durationMilliseconds`、`ownerScore`、`guestScore`，可选 `ownerBoostCount`／`guestBoostCount` 分别指定体力，省略时均为0，负数在请求前拒绝；`guestDifficulty` 可独立选择成员难度，省略时沿用房主的difficulty参数，所选谱面须在同一歌曲及演唱版本的master中存在，认证前完成读取校验。成绩使用原 UserMultiLiveClearScoreRequest，`userId`／`musicDifficultyId` 为0时分别填入该玩家的真实值，非0必须匹配本人选择。时长和成绩由调用者明确提供，不从曲名或音符数猜测。双方谱面ID及体力选择先写入本机恢复记录，任一方耗体力时在准备后额外读取双方Suite，报告只保留体力数值以核对扣除时机。
 
-当前用例为同曲同难度、image、非镜像、无Fever、无断连的双人普通私房。等待期间双方持续处理UDP；结束后双方STATUS12，再可靠发送玩家RESULT键10和STATUS13。双方核对实际成绩推送后，房主广播MESSAGE4／STEP7，双方转STATUS14，然后各提交一次自己的结算HTTP。任一同步期间收到成员退出或请求失败，停止后续业务并沿用退出和独立回读清理；不自动重试结算。
+当前用例为同曲、可各自选择难度、image、非镜像、无Fever、无断连的双人普通私房。玩家READY键7、个人准备及RESULT成绩分别使用各自谱面；等待期间双方持续处理UDP；结束后双方STATUS12，再可靠发送玩家RESULT键10和STATUS13。双方核对实际成绩推送后，房主广播MESSAGE4／STEP7，双方转STATUS14，然后各提交一次自己的结算HTTP。任一同步期间收到成员退出或请求失败，停止后续业务并沿用退出和独立回读清理；不自动重试结算。
 
 #### PUT `/api/user/{userId}/multi-live/{liveId}`
 
@@ -340,6 +340,10 @@ Server共用的 `UpdateLiveMissionProgress` 把普通P与每日额外P一起计�
 官方全场C耗体力验证完成两场：双方各耗1／2，分别获得1000／2000玩家经验、3000／6000未满级卡牌经验、1000／2000金币和练习券10／20，普通P为5／10。第一场21次HTTP均200，等待184.307秒；第二场额外两次准备后Suite，23次HTTP均200，等待209.939秒，准备后体力仍为30／30，结算分别29／38（后者升级恢复10），每日加成均固定10P。含布料11的奖励数量也按rewardRate增加。另一次全场D耗1／2体力，23次HTTP均200、等待201.286秒，体力18／28到17／26，各获得100／200玩家经验及金币、材料10／20；加入方未满级卡牌+600，没有练习券。三场均退出并独立回读，体力、经验、卡牌、库存及任务吻合。此证据为受控协议验证，会员权益及Unity游戏内表现仍未验证。
 
 个人评分和全场评分分别计算。`MultiLiveBootData`完整构造（RVA `0x6316af0`）固定向`MultiLiveScoreData`传5；后者构造（`0x6316d38`）把选曲参考难度的四档门槛逐项乘5，不按实际房内人数缩放。`MasterDataManager.GetMasterPlayLevelScore`（`0x629caf0`）优先读取当前类型，缺失时在multi_private和multi_open之间互查。个人评分使用未乘五的多人门槛；单人仍保留solo表。
+
+不同难度的成员仍使用同曲评分参考；音乐记录按multi／musicId／musicDifficultyType分别保存，连击成就按本人谱面音符数判定。首次Easy／Normal全连曲数与最高全连等级在结算事务中更新，等级取本人谱面，低难度全连不会降低已有最大值；同曲同难度已有单人或多人全连时不重复增加首次曲数。首次曲数检查先于本次音乐记录更新，任务达成提示只出现在当前响应，不写入存档。
+
+官方不同难度验证完成三场，零体力、双方100000／150000分，个人及全场均C；每场21次HTTP全200，等待183.636／184.265／184.056秒，均退出并独立回读。先为房主Easy非FC／成员Normal FC，再互换为房主Normal非FC／成员Easy FC，最后房主Easy FC／成员Normal AP。Normal首次全连解锁9～12，Easy首次全连解锁8，任务曲数和最高全连等级按各自谱面增加；Normal再次升级AP时playResult为full_perfect，曲数仍1，已有成就不重复发放。按真实master资源箱逐项对账，包含首次全连金币及collect_coin_total；单人与其他难度记录保持不变，每张未满级卡牌600经验及上限吻合。最后一场双方均FC，但本双人不同难度样本未增加clear_multi_live_full_combo_all，未据此推断人数或其他条件。本地检查另覆盖独立体力与不同难度组合、首次提示不入库、已有单人FC去重、错谱拒绝、重复结算、编码失败回滚及SQLite重启。此证据为协议验证，Unity内表现未验收。
 
 `LivePointService`在私有DailyLivePoint中保存游戏日及已领奖次数。多人成功结算当日前三次各加10P，第四次仅普通P；同一用户事务消费次数和会话，重放或失败不重复发放。单人结算读取相同剩余次数，不领取或消耗每日加成。日期按UTC+9及master的date_change_hour计算，当前为4点；日期归属使用结算时刻。日切、编码／溢出回滚和SQLite重启恢复已有本地检查，跨4点的真实开局／结算仍未采样。
 

@@ -123,14 +123,7 @@ public sealed class LiveService(
             {
                 if (request.life > 0)
                     missions.RecordLiveRecords(request.maxCombo, master.ResolveMusicPlayLevel(session.MusicDifficultyId));
-                var difficultyType = master.ResolveMusicDifficultyType(session.MusicDifficultyId);
-                if (request.life > 0 && fullCombo && difficultyType is "easy" or "normal" &&
-                    !(user.Data.userMusicResults ?? []).Any(r => r.musicId == session.MusicId &&
-                        r.musicDifficultyType == difficultyType && r.fullComboFlg))
-                {
-                    if (difficultyType == "easy") missions.RecordEasyFullCombo();
-                    else missions.RecordNormalFullCombo();
-                }
+                if (request.life > 0 && fullCombo) RecordFirstFullCombo(session);
                 highScoreFlg = UpdateUserMusicResult(session, request, fullCombo, fullPerfect);
             }
             deckCardExpResults = BuildDeckCardExpResults(session.DeckId);
@@ -250,6 +243,15 @@ public sealed class LiveService(
             .ThenBy(c => c.characterLiveUsageType, StringComparer.Ordinal).ToArray();
         user.MarkChanged(nameof(SuiteUser.userCharacterLiveUsageCounts));
         missions.RecordCharacterLiveClear(characterId);
+    }
+
+    internal void RecordFirstFullCombo(UserLiveSessionData session)
+    {
+        var difficulty = master.ResolveMusicDifficultyType(session.MusicDifficultyId);
+        if (difficulty is not ("easy" or "normal") || (user.Data.userMusicResults ?? []).Any(r =>
+            r.musicId == session.MusicId && r.musicDifficultyType == difficulty && r.fullComboFlg)) return;
+        if (difficulty == "easy") missions.RecordEasyFullCombo();
+        else missions.RecordNormalFullCombo();
     }
 
     internal bool UpdateUserMusicResult(

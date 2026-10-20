@@ -13,6 +13,7 @@ public sealed class MultiLivePerformance
     public int DurationMilliseconds { get; init; }
     public int OwnerBoostCount { get; init; }
     public int GuestBoostCount { get; init; }
+    public string? GuestDifficulty { get; init; }
     public UserMultiLiveClearScoreRequest OwnerScore { get; init; } = null!;
     public UserMultiLiveClearScoreRequest GuestScore { get; init; } = null!;
 
