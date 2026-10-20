@@ -28,7 +28,8 @@ internal static class DeckMissionChecks
             File.WriteAllText(Path.Combine(directory, "liveMissions.json"), """
                 [{"id":1,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":25,"rewards":[{"resourceBoxId":1}]},
                  {"id":2,"liveMissionPeriodId":1,"liveMissionType":"premium","requirement":25,"rewards":[{"resourceBoxId":1}]},
-                 {"id":3,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":50,"rewards":[{"resourceBoxId":1}]}]
+                 {"id":3,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":50,"rewards":[{"resourceBoxId":1}]},
+                 {"id":4,"liveMissionPeriodId":2,"liveMissionType":"free","requirement":11,"rewards":[{"resourceBoxId":1}]}]
                 """);
             File.WriteAllText(Path.Combine(directory, "resourceBoxes.json"),
                 """[{"id":1,"resourceBoxPurpose":"mission_reward","details":[{"resourceType":"material","resourceId":10,"resourceQuantity":5}]}]""");
@@ -140,6 +141,42 @@ internal static class DeckMissionChecks
             }), "新手演出任务创建进度后编码失败整体回滚");
             Check.That(!(store.Read(1)!.Data.userBeginnerMissionV2s ?? []).Any(m => m.beginnerMissionV2Id == 1),
                 "失败结算不保留新手演出进度");
+            var bonus = DumpSerializer.Deserialize<SuiteUser>(operations.Execute(1, () =>
+            {
+                missions.UpdateLiveMissionProgress(new() { liveMissionPeriodId = 1, addNormalProgress = 1, addDailyBonusProgress = 10 });
+                return user.BuildRefresh();
+            }));
+            Check.That(bonus.userLiveMissions.Single().progress == 62 && bonus.userLiveMissions.Single().paidProgress == 0
+                && store.Read(1)!.Data.userLiveMissions.Single().progress == 62,
+                "普通1点加每日10点均计入免费Live任务进度，刷新与存档一致，不计入付费进度");
+            operations.Execute(1, () =>
+            {
+                missions.UpdateLiveMissionProgress(new() { liveMissionPeriodId = 2, addDailyBonusProgress = 10 });
+                return user.BuildRefresh();
+            });
+            Check.That(store.Read(1)!.Data.userLiveMissions.Single(m => m.liveMissionPeriodId == 2).progress == 10
+                && !store.Read(1)!.Data.userMissionStatuses.Any(s => s.missionId == 4),
+                "只有每日额外点也创建并增加当期免费进度，不提前达成门槛");
+            var bonusAchievement = DumpSerializer.Deserialize<SuiteUser>(operations.Execute(1, () =>
+            {
+                missions.UpdateLiveMissionProgress(new() { liveMissionPeriodId = 2, addNormalProgress = 1 });
+                return user.BuildRefresh();
+            }));
+            Check.That(bonusAchievement.userMissionStatuses.Single(s => s.missionId == 4).missionStatus == "achieved"
+                && store.Read(1)!.Data.userLiveMissions.Single(m => m.liveMissionPeriodId == 2).progress == 11,
+                "每日额外点参与累计门槛，后续普通点触发对应免费任务达成");
+            Check.Throws<MessagePackSerializationException>(() => operations.Execute(1, () =>
+            {
+                missions.UpdateLiveMissionProgress(new() { liveMissionPeriodId = 2, addNormalProgress = 1, addDailyBonusProgress = 10 });
+                return new BrokenResponse();
+            }), "普通与每日额外Live P在响应编码失败时一起回滚");
+            Check.That(store.Read(1)!.Data.userLiveMissions.Single(m => m.liveMissionPeriodId == 2).progress == 11,
+                "失败响应不留下每日额外Live P");
+            Check.Throws<OverflowException>(() => operations.Execute(1, () =>
+            {
+                missions.UpdateLiveMissionProgress(new() { liveMissionPeriodId = 2, addNormalProgress = int.MaxValue, addDailyBonusProgress = 1 });
+                return user.BuildRefresh();
+            }), "普通与每日点数合计溢出时不提交用户状态");
             Console.WriteLine("编队与任务：保存、主编队切换、任务达成、领奖条件及回滚检查通过。");
         }
         finally

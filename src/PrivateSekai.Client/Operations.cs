@@ -35,6 +35,7 @@ public static class Operations
         ["private-room-lookup"] = new("GET", "/api/user/{userId}/diarkis-room-type/{privateRoomType}/no/{roomNo}", null, "roomId", false),
         ["multi-live-prepare"] = new("POST", "/api/multi-live", typeof(MultiLiveRequest), "liveId", false),
         ["multi-live-member-start"] = new("POST", "/api/user/{userId}/multi-live/{liveId}", typeof(UserMultiLiveRequest), "updatedResources", false),
+        ["multi-live-clear"] = new("PUT", "/api/user/{userId}/multi-live/{liveId}", typeof(UserMultiLiveClearRequest), "totalScore", false),
         ["login-status-save"] = new("PUT", "/api/user/{userId}/login-status", typeof(PutUserLoginStatusRequest), null, false),
         ["friend-request"] = new("POST", "/api/user/{userId}/friend/{opponentUserId}", typeof(PostUserFriendRequest), "updatedResources"),
         ["friend-approve"] = new("PUT", "/api/user/{userId}/friend/{opponentUserId}", null, "updatedResources"),

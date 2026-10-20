@@ -99,10 +99,12 @@ public static class MultiLiveFlow
     public static async Task<bool> Run(DiarkisUdpClient owner, DiarkisUdpClient guest, ProtocolClient ownerHttp,
         ProtocolClient guestHttp, SuiteUser ownerUser, SuiteUser guestUser, MultiLiveRoomSyncData room,
         MultiLiveRoomSyncData joined, RoomSyncPlayer guestSeen, int lobbyId, MultiLiveSong song, string output,
-        JsonObject report, CancellationToken token)
+        JsonObject report, CancellationToken token, MultiLivePerformance? performance = null)
     {
         var ownerId = room.userId;
         var guestId = joined.userId;
+        var ownerScore = performance == null ? null : MultiLivePerformance.Score(performance.OwnerScore, ownerHttp.UserId, song.DifficultyId);
+        var guestScore = performance == null ? null : MultiLivePerformance.Score(performance.GuestScore, guestHttp.UserId, song.DifficultyId);
         var ownerPlayers = new Dictionary<string, RoomSyncPlayer>
         {
             [ownerId] = new() { userId = ownerId, index = room.index, playerProperty = room.playerProperty },
@@ -127,6 +129,9 @@ public static class MultiLiveFlow
             while (true)
             {
                 var response = await connection.ReceiveAsync(token);
+                if (response.Version == 1 && response.Command == MultiLiveRoom.LeaveCommand && response.IsPush
+                    && MultiLiveRoom.ReadMemberLeaves(response, room.roomId).Length > 0)
+                    throw new InvalidDataException("演出同步期间有成员离开房间。");
                 if (response.Version == 2 && !response.IsPush && response.Status != 1)
                     throw new InvalidDataException("演出流程的实时请求被拒绝。");
                 if (response.Version != 2 || !response.IsPush) continue;
@@ -142,15 +147,16 @@ public static class MultiLiveFlow
                 if (playerId == null ? Matches(properties, expected) : Matches(players[playerId].playerProperty, expected)) return true;
             }
         }
-        async Task Both(DynamicPropertyPayload property, string stage)
+        async Task Both(DynamicPropertyPayload property, string stage, DynamicPropertyPayload? otherProperty = null)
         {
+            var other = otherProperty ?? property;
             report["phase"] = stage;
             await owner.SendReliableAsync(2, PlayerPropertyCommand, DumpSerializer.Serialize(property), token);
-            await guest.SendReliableAsync(2, PlayerPropertyCommand, DumpSerializer.Serialize(property), token);
+            await guest.SendReliableAsync(2, PlayerPropertyCommand, DumpSerializer.Serialize(other), token);
             await owner.MaintainConnectionAsync(Wait(guest, ownerId, property), token);
-            await guest.MaintainConnectionAsync(Wait(owner, guestId, property), token);
+            await guest.MaintainConnectionAsync(Wait(owner, guestId, other), token);
             Merge(ownerPlayers[ownerId].playerProperty, property);
-            Merge(guestPlayers[guestId].playerProperty, property);
+            Merge(guestPlayers[guestId].playerProperty, other);
             stages.Add(stage);
         }
         async Task Room(DynamicPropertyPayload property, string stage)
@@ -183,6 +189,7 @@ public static class MultiLiveFlow
 
         report["phase"] = "master-prepare-api";
         var order = PartyOrder(ownerPlayers.Values);
+        var guestOrder = PartyOrder(guestPlayers.Values);
         // 本机恢复记录先于业务写入落盘，不进入脱敏报告。
         var journalPath = Path.Combine(output, "live-state.local.json");
         var journal = new JsonObject
@@ -242,10 +249,59 @@ public static class MultiLiveFlow
         var timestamp = serverTime + (long)Stopwatch.GetElapsedTime(measured).TotalMilliseconds;
         await Room(Property((1, SyncPropertyEncoding.Int32(3)), (7, SyncPropertyEncoding.Int64(timestamp)),
             (2, SyncPropertyEncoding.Int32(6))), "start-live");
-        report["complete"] = true;
         report["phase"] = "started";
         journal["phase"] = "started";
         JsonFiles.Write(journalPath, journal);
+        if (performance != null)
+        {
+            report["phase"] = "performing";
+            report["durationMilliseconds"] = performance.DurationMilliseconds;
+            journal["phase"] = "performing";
+            JsonFiles.Write(journalPath, journal);
+            async Task<bool> WaitDuration()
+            {
+                await Task.Delay(performance.DurationMilliseconds, token);
+                return true;
+            }
+            await Http(WaitDuration());
+            await Both(Status(PlayerStatus.LiveFinished), "live-finished");
+            await Both(MultiLivePerformance.Ready(ownerScore!), "scores-shared", MultiLivePerformance.Ready(guestScore!));
+            var fromOwner = ownerPlayers.Values.ToDictionary(p => long.Parse(p.userId, CultureInfo.InvariantCulture),
+                p => SyncPropertyEncoding.ReadObject<UserMultiLiveClearScoreRequest>(p.playerProperty.values[10]));
+            var fromGuest = guestPlayers.Values.ToDictionary(p => long.Parse(p.userId, CultureInfo.InvariantCulture),
+                p => SyncPropertyEncoding.ReadObject<UserMultiLiveClearScoreRequest>(p.playerProperty.values[10]));
+            var ownerResult = MultiLivePerformance.Result(order, fromOwner);
+            var guestResult = MultiLivePerformance.Result(guestOrder, fromGuest);
+            await Room(Property((1, SyncPropertyEncoding.Int32(4)), (2, SyncPropertyEncoding.Int32(7))), "start-result");
+            await Both(Status(PlayerStatus.Result), "players-result");
+            async Task<bool> Clear(ProtocolClient http, UserMultiLiveClearRequest request, string side)
+            {
+                report["phase"] = side + "-clear";
+                journal["phase"] = side + "-clear-attempted";
+                JsonFiles.Write(journalPath, journal);
+                var response = await Http(http.Send(new ScenarioStep
+                {
+                    Operation = "multi-live-clear", Args = new() { ["liveId"] = liveId }, Body = Body(request)
+                }));
+                if (response["totalScore"]?.GetValue<int>() != request.totalScore)
+                    throw new InvalidDataException("结算总分与实际同步成绩不一致。");
+                report[side + "Result"] = new JsonObject
+                {
+                    ["totalScore"] = response["totalScore"]!.DeepClone(), ["scoreRank"] = response["scoreRank"]?.DeepClone(),
+                    ["multiScoreRank"] = response["multiScoreRank"]?.DeepClone(), ["userLivePoint"] = response["userLivePoint"]?.DeepClone()
+                };
+                report[side + "Cleared"] = true;
+                journal["phase"] = side + "-cleared";
+                JsonFiles.Write(journalPath, journal);
+                return true;
+            }
+            await Clear(ownerHttp, ownerResult, "owner");
+            await Clear(guestHttp, guestResult, "guest");
+            report["phase"] = "cleared";
+            journal["phase"] = "cleared";
+            JsonFiles.Write(journalPath, journal);
+        }
+        report["complete"] = true;
         return true;
     }
 }

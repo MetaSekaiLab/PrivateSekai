@@ -530,8 +530,10 @@ public sealed class MissionService(
 
     public void UpdateLiveMissionProgress(UserLivePoint livePoint)
     {
-        if (livePoint.liveMissionPeriodId <= 0 || livePoint.addNormalProgress <= 0)
+        if (livePoint.liveMissionPeriodId <= 0)
             return;
+        var progress = checked(livePoint.addNormalProgress + livePoint.addDailyBonusProgress);
+        if (progress <= 0) return;
 
         user.Data.userLiveMissions ??= [];
         var missions = user.Data.userLiveMissions.ToList();
@@ -551,7 +553,7 @@ public sealed class MissionService(
             missions.Add(mission);
         }
 
-        mission.progress = checked(mission.progress + livePoint.addNormalProgress);
+        mission.progress = checked(mission.progress + progress);
         mission.achievedMissionIds ??= [];
         user.Data.userLiveMissions = missions.ToArray();
         user.MarkChanged(nameof(SuiteUser.userLiveMissions));

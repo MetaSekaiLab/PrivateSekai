@@ -27,7 +27,8 @@ public sealed class Redactor
             return result;
         }
         if (node is JsonArray array)
-            return new JsonArray(array.Select(n => Clean(n, field == "favoriteUserIds" ? "targetUserId" : "")).ToArray());
+            return new JsonArray(array.Select(n => Clean(n, field is "favoriteUserIds" or "disconnectUserIds" or "activeUserIds"
+                ? "targetUserId" : "")).ToArray());
         if (node is JsonValue value)
         {
             if (value.TryGetValue<string>(out var text))

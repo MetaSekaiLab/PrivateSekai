@@ -232,7 +232,7 @@ public sealed class ProtocolClient : IDisposable
             if (step.Operation is "private-room-number" or "private-room-update")
                 Redactor.AddSecret(step.Args["roomId"]);
             if (step.Operation == "private-room-lookup") Redactor.AddSecret("/no/" + step.Args["roomNo"]);
-            if (step.Operation == "multi-live-member-start") Redactor.AddSecret(step.Args["liveId"]);
+            if (step.Operation is "multi-live-member-start" or "multi-live-clear") Redactor.AddSecret(step.Args["liveId"]);
             using var request = new HttpRequestMessage(new HttpMethod(definition.Method), path);
             foreach (var pair in headers)
                 if (!pair.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))

@@ -248,7 +248,7 @@ Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 m
 
 连接切换：版本0／命令2的成功响应或推送携带 `BE EF FE ED` 加 UTF8 `host:port`。Client 按该控制消息发送旧节点 FIN，保留 SID、clientKey 和加密材料，重建 UDP 并清空旧序号、重传和分片状态。直接推送与 Echo 内附通知使用同一处理；仅按明确的服务端切换指令重连，不自行重发3080。来源为 `ReconnectCommand_`（`0x60b7ee4`）、`ParseReconnectPayload`、`Reconnect`、`Connect_`、`SendFin_` 和 `MultiplayCore.OnProtocolConnected`；重连回调跳过普通首次连接的业务入口。两节点回环测试核对旧 FIN、新 SYN、相同凭证、序号归零，以及入房响应继续交付且3080不重复发送。非法地址和端口本地拒绝，不代表官方错误语义。
 
-本节实现范围为 Client 普通私人建房、加入、选曲、演出开始和退出；Server 实时房间及多人演出业务、Client 多人结算不在已实现范围内。
+本节实现范围为 Client 普通私人建房、加入、选曲、演出开始、无断连双人成绩结算和退出；Server 实时房间及多人演出业务不在已实现范围内。
 
 2026-10-20 官方测试账号验证通过：预留、POST 房号和 PATCH 大厅成功；3070 后收到3001/status1，房间与本玩家的二十项资料一致。房号通过10010/status255实际推送确认，随后102/status1退出，释放旧会话后独立认证及 Suite 回读成功。UDP 收发各38个数据报，重传0；这证明上述 Client 私人建房流程可用，不证明官方会重新计算提交的总力，也不代表 Server 多人服务已实现。
 
@@ -288,6 +288,24 @@ Client 命令 `realtime-start <ownerConfig> <guestConfig> <target> <master> <lob
 2026-10-20官方双账号验证：上述完整开始流程成功，两个演出HTTP请求及全部19次HTTP均200；双方实际收到准备与开始同步，时钟同步有效，随后各自102/status1退出，房主确认成员退出，双方独立认证及Suite成功。请求boostCount均0，回读体力未减少，水晶、金币、经验和卡牌不变；Suite时间、区域和体力恢复字段有变化。此用例未结算，尚不能证明多人奖励、每日Live P或Server多人实现。
 
 HTTP记录隐藏五槽账号、房间名和Live ID；写入前保存本机恢复记录，保留业务阶段和实际Live ID供人工核对，该记录不进入可提交文件。脱敏报告只保存阶段与验证结果，不含原始UDP。
+
+### 双账号完整结算
+
+Client 命令 `realtime-play <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room` 接续上述开始流程。配置包含 `durationMilliseconds`、`ownerScore`、`guestScore`；成绩使用原 UserMultiLiveClearScoreRequest，`userId`／`musicDifficultyId` 为0时填入本次真实值，非0必须匹配。时长和成绩由调用者明确提供，不从曲名或音符数猜测。
+
+当前用例为同曲同难度、image、非镜像、无Fever、无断连的双人普通私房。等待期间双方持续处理UDP；结束后双方STATUS12，再可靠发送玩家RESULT键10和STATUS13。双方核对实际成绩推送后，房主广播MESSAGE4／STEP7，双方转STATUS14，然后各提交一次自己的结算HTTP。任一同步期间收到成员退出或请求失败，停止后续业务并沿用退出和独立回读清理；不自动重试结算。
+
+#### PUT `/api/user/{userId}/multi-live/{liveId}`
+
+- path为当前账号与本场liveId，无query；Client操作 `multi-live-clear`，使用dump UserMultiLiveClearRequest。
+- `score1`～`score5`对应本场准备时成员槽位，空槽为空；每项包含userId、musicDifficultyId、score、perfectCount、greatCount、goodCount、badCount、missCount、maxCombo、life、tapCount。fastCount／lateCount／flickCount为IgnoreMember，不发送。
+- `totalScore`是实际成员成绩之和；另含superFeverFlg、disconnectUserIds、musicCategoryName、isMirrored、可空ingameCutinCharacterArchiveVoiceGroupIds、privateRoomSettings。当前受控用例没有断连或播放语音，断连列表为空，未读语音列表为空时按原逻辑保留null。
+- 响应UserMultiLiveClearResponse包括updatedResources、scoreRank、multiScoreRank、totalScore、五槽user结果、userExpResult、deckCardExpResults、奖励、boost、userLivePoint及活动字段。Client核对汇总总分，并在退出后通过新HTTP会话读取Suite。
+- 来源：完整FinishedLive（`0x5cb88a8`）、ReadyResult（`0x5cb87b4`）、OnReceiveInvokeMessageCommand（`0x5cb90b0`）、CreateRoomResult（`0x5cb9270`）；ScreenLayerMultiLiveResult.OnAllPlayerFinishedLive（`0x4f3d804`）、OnStartResult（`0x4f40064`）；完整PutUserMultiLiveClearAPI构造／Execute／OnCallBack（`0x619c5a0`／`0x619c63c`／`0x619c7ec`）。路径字符串与成员登记相同，HTTP method为PUT。
+
+2026-10-20受控官方协议验证：沿用现有培养成绩模板，双方各100000分，演出体力0，等待180秒；从成员开始请求到首次结算实际间隔183.48秒。全部21次HTTP为200，双方汇总200000，个人rank_c、多人rank_d；每人经验+20，userLivePoint为普通1、每日额外10、剩余2，独立Suite确认免费Live任务进度+11、付费进度不变。卡牌经验及返回库存与回读一致，体力未减少，双方退出及独立认证成功。这是受控协议成绩用例，不是游戏内真实游玩或评分公式对拍，也未验证断连、Fever、不同难度及跨日。
+
+Server共用的 `UpdateLiveMissionProgress` 已修正为把普通P与每日额外P一起计入当期free进度，只有额外P时也记账，并复用任务门槛判断和用户操作回滚；不计入paidProgress。检查覆盖11点入账、纯额外点、门槛达成、编码失败及溢出。此修正不代表Server多人HTTP／实时服务或每日次数生成已经实现。
 
 ## PUT `/api/user/{userId}/profile-honor`
 
@@ -2319,7 +2337,7 @@ Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通�
 
 每日加成适用范围已从[官方 FAQ](https://pjsekai.sega.jp/faq/index.html)确认（2026-10-09查阅）：多人 Live 或 Cheerful Live 通关时，当日前三次获得额外 Live P，次数每日凌晨4点重置。master 的 `wordings.MSG_ABOUT_LIVE_POINT_DAILY_BONUS_CONTENT` 另明确每日最多三次、每次10 Live P。普通单人演出不属于该触发范围，因此上述单人样本无法验证次数扣减；不能为单人结算按游玩次数新增每日奖励。显示文案不能证明网络存档字段或通行证倍率如何叠加，这些仍需匹配版本的多人样本。
 
-`UserMultiLiveClearResponse` 同样返回 `UserLivePoint`，是后续取证入口。其请求 `UserMultiLiveClearRequest` 包含五个玩家成绩槽、总分、Super Fever、断线玩家及私人房间设置，不能将单人结算请求直接换路由发送。当前Server与协议Client未接入完整多人房间和结算流程；下一步需取得测试账号私人房间的开局、成功结算、随后单人结算及跨日回读，验证共享次数。`colorfulPassV2s.livePointRate` 提供通行证倍率，但本次查阅未证明每日加成以购买通行证为前提。
+`UserMultiLiveClearResponse` 同样返回 `UserLivePoint`。其请求 `UserMultiLiveClearRequest` 包含五个玩家成绩槽、总分、Super Fever、断线玩家及私人房间设置，不能将单人结算请求直接换路由发送。Client已接通受控双人普通私房的完整开局、成绩同步和结算：首次零体力多人结算双方各得普通1／额外10／剩余2，独立回读免费进度各+11。Server多人服务仍未接入，连续次数边界、随后单人结算及跨日回读仍需验证。`colorfulPassV2s.livePointRate` 提供通行证倍率，但现有证据不证明每日加成以购买通行证为前提。
 
 私人房间前置链路：`MultiRoomMatchingOrganizer.PublishReserveRoomRequest` 调用 `MultiLiveRoomMatchingController.ReserveRoom`，先准备实时连接，再预留空房间；成功后以返回的房间标识 POST 申请房号，再 PATCH 设置大厅。Client 普通私人创建、入房、房号同步及退出已实测通过，见上文“私人房间实时创建与入房”；加入已有房间、选曲和多人结算仍未接通。
 

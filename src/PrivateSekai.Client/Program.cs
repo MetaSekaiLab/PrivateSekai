@@ -8,6 +8,14 @@ internal static class Program
     {
         try
         {
+            if (args is ["realtime-play", var playOwner, var playGuest, var playTarget, var playMaster, var playLobby,
+                var playMusic, var playDifficulty, var playVocal, var performancePath, "--official-write",
+                "auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room"])
+                return await Realtime.RealtimeProbe.Run(playOwner, playTarget, Path.Combine(playMaster, "clientConfigs.json"),
+                    int.Parse(playLobby, System.Globalization.CultureInfo.InvariantCulture), playMaster, playGuest,
+                    Realtime.MultiLiveSong.Read(playMaster, int.Parse(playMusic, System.Globalization.CultureInfo.InvariantCulture),
+                        playDifficulty, int.Parse(playVocal, System.Globalization.CultureInfo.InvariantCulture)),
+                    Realtime.MultiLivePerformance.Read(performancePath)) ? 0 : 2;
             if (args is ["realtime-start", var liveOwner, var liveGuest, var liveTarget, var liveMaster, var liveLobby,
                 var music, var difficulty, var vocal, "--official-write",
                 "auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,leave-room"])
@@ -52,6 +60,7 @@ internal static class Program
             }
             if (args.Length < 4 || args[0] is not ("plan" or "run"))
             {
+                Console.WriteLine("realtime-play <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room");
                 Console.WriteLine("realtime-start <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,leave-room");
                 Console.WriteLine("realtime-party <ownerConfig> <guestConfig> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,leave-room");
                 Console.WriteLine("realtime-create <config> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,leave-room");

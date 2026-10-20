@@ -55,6 +55,7 @@ LiveAreaPowerChecks.Run(Check);
 MultiLivePlayerChecks.Run(Check);
 MultiLiveRoomChecks.Run(Check);
 MultiLiveFlowChecks.Run(Check);
+MultiLivePerformanceChecks.Run(Check);
 await DiarkisUdpChecks.Run(Check);
 await DiarkisRedirectChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
@@ -424,6 +425,17 @@ app.MapPost("/api/user/1/multi-live/fixture-multi-live", async (HttpContext cont
     Check(request.photonRoomName == "fixture-room" && request.musicId == 37 && request.boostCount == 0
         && request.musicCategoryName == "image" && !context.Request.Query.Any(), "成员登记HTTP保留房间、歌曲和类别，无额外查询");
     return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new UserMultiLiveResponse { updatedResources = new() })));
+}).WithMetadata(new PrskDecryptRequestAttribute());
+app.MapPut("/api/user/1/multi-live/fixture-multi-live", async (HttpContext context) =>
+{
+    using var body = new MemoryStream();
+    await context.Request.Body.CopyToAsync(body);
+    var request = DumpSerializer.Deserialize<UserMultiLiveClearRequest>(body.ToArray());
+    Check(request.score1.userId == 2 && request.score2.userId == 1 && request.score3 == null
+        && request.totalScore == 300 && !request.superFeverFlg && !context.Request.Query.Any(),
+        "结算HTTP读取真实嵌套成绩和汇总，无额外查询或空槽玩家");
+    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new UserMultiLiveClearResponse
+        { updatedResources = new(), totalScore = request.totalScore, activeUserIds = [1, 2] })));
 }).WithMetadata(new PrskDecryptRequestAttribute());
 app.MapControllers();
 await app.StartAsync();
@@ -899,6 +911,18 @@ try
             PrivateSekai.Client.Realtime.MultiLiveFlow.MemberRequest(liveUser, "fixture-room", 7, liveSong), DumpJson.Options)!.AsObject()
     });
     Check(client.LastHttpStatus == 200, "成员登记沿用准备后的轮换会话");
+    var scoreOwner = new UserMultiLiveClearScoreRequest { userId = 1, musicDifficultyId = 372, score = 100 };
+    var scoreGuest = new UserMultiLiveClearScoreRequest { userId = 2, musicDifficultyId = 372, score = 200 };
+    var multiClear = await client.Send(new()
+    {
+        Operation = "multi-live-clear", Args = new() { ["liveId"] = "fixture-multi-live" },
+        Body = System.Text.Json.JsonSerializer.SerializeToNode(PrivateSekai.Client.Realtime.MultiLivePerformance.Result(
+            [2, 1], new Dictionary<long, UserMultiLiveClearScoreRequest> { [1] = scoreOwner, [2] = scoreGuest }), DumpJson.Options)!.AsObject()
+    });
+    Check(multiClear["totalScore"]!.GetValue<int>() == 300 && client.LastHttpStatus == 200,
+        "结算继续使用轮换会话并保留服务端汇总结果");
+    Check(client.LastResponse!["activeUserIds"]!.AsArray().All(id => id!.GetValue<string>() == "<redacted>"),
+        "实际HTTP回包中的活动成员列表脱敏");
     Check(Directory.GetFiles(liveCaptures).All(f => !Path.GetFileName(f).Contains("fixture-multi-live")
         && !File.ReadAllText(f).Contains("fixture-multi-live") && !File.ReadAllText(f).Contains("fixture-room")),
         "演出HTTP记录与文件名隐藏Live ID和房间名");

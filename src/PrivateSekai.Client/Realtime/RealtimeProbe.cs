@@ -13,7 +13,8 @@ namespace PrivateSekai.Client.Realtime;
 public static class RealtimeProbe
 {
     public static async Task<bool> Run(string configurationPath, string targetName, string? clientConfigsPath = null,
-        int? lobbyId = null, string? masterDirectory = null, string? guestConfigurationPath = null, MultiLiveSong? song = null)
+        int? lobbyId = null, string? masterDirectory = null, string? guestConfigurationPath = null, MultiLiveSong? song = null,
+        MultiLivePerformance? performance = null)
     {
         if (lobbyId.HasValue && (lobbyId <= 0 || clientConfigsPath == null))
             throw new InvalidOperationException("房间设置需要客户端配置和有效大厅 ID。");
@@ -23,6 +24,8 @@ public static class RealtimeProbe
             throw new InvalidOperationException("双账号私房需要完整 master 数据。");
         if (song != null && guestConfigurationPath == null)
             throw new InvalidOperationException("演出开始流程需要双账号私房。");
+        if (performance != null && song == null)
+            throw new InvalidOperationException("演出结算需要歌曲及双账号私房。");
         var roomTtl = clientConfigsPath == null ? (int?)null : MultiLiveReservation.ReadRoomTtl(
             JsonNode.Parse(File.ReadAllText(clientConfigsPath))!.AsArray(), LiveRuleType.normal);
         var configuration = JsonFiles.Read<ClientConfiguration>(configurationPath);
@@ -113,7 +116,8 @@ public static class RealtimeProbe
             report["httpAuthSucceeded"] = true;
             // 连接凭证仅使用本次响应原对象，报告不保存地址、密钥或原始报文。
             realtime = new DiarkisUdpClient(authentication, true);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(guestConfigurationPath == null ? 60 : 120));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(
+                (long)(performance?.DurationMilliseconds ?? 0) + (guestConfigurationPath == null ? 60000 : 120000)));
             report["phase"] = "udp-handshake";
             await realtime.ConnectAsync(timeout.Token);
             report["udpHandshakeSucceeded"] = true;
@@ -224,7 +228,7 @@ public static class RealtimeProbe
                             var guestReport = new JsonObject();
                             report["guest"] = guestReport;
                             await MultiLiveGuest.Run(guestConfigurationPath, targetName, masterDirectory!, Path.Combine(output, "guest"),
-                                realtime, room, lobbyId.Value, guestReport, timeout.Token, http, ownerUser, song);
+                                realtime, room, lobbyId.Value, guestReport, timeout.Token, http, ownerUser, song, performance);
                         }
                         report["phase"] = "leave-private-room";
                         await Leave(timeout.Token);
