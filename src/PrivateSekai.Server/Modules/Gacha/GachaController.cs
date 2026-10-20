@@ -124,6 +124,26 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
         }
     }
 
+    /// <summary>一次注册分类Wish的固定、特别和普通成员，后续按完整名单抽取。</summary>
+    [HttpPut("api/user/{userId:long}/categorized-gacha-wish")]
+    public IActionResult HandleCategorizedGachaWish(long userId, [FromBody] UserCategorizedGachaWishRequest request)
+    {
+        try
+        {
+            return Encoded(operations.Execute(userId, () =>
+            {
+                gacha.SaveCategorizedGachaWish(request);
+                return new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() };
+            }));
+        }
+        catch (GachaRequestRejectedException error)
+        {
+            Response.StatusCode = error.Status;
+            return Encoded(operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = (uint)error.Status, ErrorCode = error.Code, ErrorMessage = "" }));
+        }
+    }
+
     /// <summary>
     /// 保存 Rate Choice 抽卡的愿望选择。客户端在卡牌选择页确认选择后提交当前选择列表，成功后合并用户资源差异并继续选择完成流程。
     /// </summary>

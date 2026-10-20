@@ -227,6 +227,25 @@ public sealed class GachaService(
         user.MarkChanged(nameof(SuiteUser.userGachaWishes));
     }
 
+    public void SaveCategorizedGachaWish(UserCategorizedGachaWishRequest request)
+    {
+        var gacha = master.GetMasterGacha(request.gachaId) ?? throw new GachaRequestRejectedException(404);
+        if (!IsCategorizedWishGacha(gacha)) throw new GachaRequestRejectedException(400);
+        if (!WithinPeriod(gacha.startAt, gacha.endAt)) throw new GachaRequestRejectedException(409, "invalid_term");
+        if (user.Data.userCategorizedGachaWishes?.Any(w => w.gachaId == gacha.id) == true)
+            throw new GachaRequestRejectedException(409);
+        ValidateSelectionRemaining(gacha);
+        var selected = (request.gachaDetailFixedIds ?? []).Select(id => (Type: "fixed", DetailId: id))
+            .Concat((request.gachaDetailLimitedIds ?? []).Select(id => (Type: "limited", DetailId: id)))
+            .Concat((request.gachaDetailNormalIds ?? []).Select(id => (Type: "normal", DetailId: id))).ToArray();
+        if (ValidateCategorizedSelection(gacha, selected) == null) throw new GachaRequestRejectedException(400);
+        user.Data.userCategorizedGachaWishes = (user.Data.userCategorizedGachaWishes ?? [])
+            .Concat(selected.Select(s => new UserCategorizedGachaWish
+                { gachaId = gacha.id, gachaDetailId = s.DetailId, categorizedWishType = s.Type }))
+            .OrderBy(w => w.gachaId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userCategorizedGachaWishes));
+    }
+
     private void ValidateSelectionRemaining(MasterGacha gacha)
     {
         if (gacha.spinLimit < 0 || (gacha.gachaBehaviors ?? []).Any(b => b.executeLimit < 0)
@@ -241,6 +260,9 @@ public sealed class GachaService(
     private static bool IsSelectListGacha(MasterGacha? gacha) => gacha is
         { wishSelectCount: > 0, wishFixedSelectCount: 0, wishLimitedSelectCount: 0, rateChoiceGachaWishGroupId: 0 };
 
+    private static bool IsCategorizedWishGacha(MasterGacha gacha) => gacha.wishSelectCount > 0
+        && (gacha.wishFixedSelectCount > 0 || gacha.wishLimitedSelectCount > 0) && gacha.rateChoiceGachaWishGroupId == 0;
+
     private Dictionary<int, string>? GetGachaSelection(MasterGacha gacha)
     {
         if (gacha.rateChoiceGachaWishGroupId > 0)
@@ -250,6 +272,14 @@ public sealed class GachaService(
             if (selected.Length == 0) throw new GachaRequestRejectedException(409);
             return ValidateRateChoiceSelection(gacha, selected)
                 ?? throw new InvalidOperationException("Invalid saved rate choice gacha selection.");
+        }
+        if (IsCategorizedWishGacha(gacha))
+        {
+            var selected = (user.Data.userCategorizedGachaWishes ?? []).Where(w => w.gachaId == gacha.id)
+                .Select(w => (w.categorizedWishType, w.gachaDetailId)).ToArray();
+            if (selected.Length == 0) throw new GachaRequestRejectedException(409);
+            return ValidateCategorizedSelection(gacha, selected)
+                ?? throw new InvalidOperationException("Invalid saved categorized gacha selection.");
         }
         if (!IsSelectListGacha(gacha)) return null;
         var wishes = (user.Data.userGachaWishes ?? []).Where(w => w.gachaId == gacha.id).Select(w => w.gachaDetailId).ToArray();
@@ -276,6 +306,44 @@ public sealed class GachaService(
         foreach (var rate in rates.Where(r => r.rate > 0))
             if (!HasGachaCardInRarity(gacha, rate.cardRarityType, null, choices))
                 throw new InvalidOperationException("Empty gacha wish lottery pool.");
+        return choices;
+    }
+
+    private Dictionary<int, string>? ValidateCategorizedSelection(MasterGacha gacha, (string Type, int DetailId)[] selected)
+    {
+        var normalCount = (long)gacha.wishSelectCount - gacha.wishFixedSelectCount - gacha.wishLimitedSelectCount;
+        if (gacha.wishFixedSelectCount < 0 || gacha.wishLimitedSelectCount < 0 || normalCount < 0)
+            throw new InvalidOperationException("Invalid categorized gacha selection counts.");
+        var details = gacha.gachaDetails ?? throw new InvalidOperationException("Missing categorized gacha details.");
+        var rates = gacha.gachaCardRarityRates ?? throw new InvalidOperationException("Missing categorized gacha rates.");
+        if (!float.IsFinite(rates.Sum(r => r.rate)) || rates.Any(r => !float.IsFinite(r.rate) || r.rate < 0
+                || string.IsNullOrEmpty(r.cardRarityType) || r.lotteryType != "normal"
+                && (r.lotteryType != "categorized_wish" || r.cardRarityType != "rarity_4"))
+            || !rates.Any(r => r.lotteryType == "categorized_wish" && r.rate > 0))
+            throw new InvalidOperationException("Invalid categorized gacha rates.");
+        if (details.Count(d => d.isWish && d.gachaDetailWishType == "fixed" && cards.GetCardRarityType(d.cardId) == "rarity_4")
+            != gacha.wishFixedSelectCount)
+            throw new InvalidOperationException("Invalid categorized gacha fixed members.");
+        if (selected.Length != gacha.wishSelectCount || selected.Select(s => s.DetailId).Distinct().Count() != selected.Length)
+            return null;
+        foreach (var group in new[] { (Type: "fixed", Count: (long)gacha.wishFixedSelectCount),
+            (Type: "limited", Count: (long)gacha.wishLimitedSelectCount), (Type: "normal", Count: normalCount) })
+        {
+            var entries = selected.Where(s => string.Equals(s.Type, group.Type, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (entries.Length != group.Count) return null;
+            foreach (var entry in entries)
+            {
+                var detail = details.SingleOrDefault(d => d.id == entry.DetailId);
+                if (detail?.isWish != true || cards.GetCardRarityType(detail.cardId) != "rarity_4"
+                    || detail.gachaDetailWishType != group.Type && !(group.Type == "limited" && detail.gachaDetailWishType == "normal"))
+                    return null;
+            }
+        }
+        var chosen = selected.Select(s => s.DetailId).ToHashSet();
+        var choices = details.ToDictionary(d => d.id, d => chosen.Contains(d.id) ? "categorized_wish" : "normal");
+        foreach (var rate in rates.Where(r => r.rate > 0))
+            if (!HasGachaCardInRarity(gacha, rate.cardRarityType, null, choices, rate.lotteryType))
+                throw new InvalidOperationException("Empty categorized gacha lottery pool.");
         return choices;
     }
 

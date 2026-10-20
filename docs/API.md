@@ -2081,6 +2081,32 @@ Client操作 `gacha-select-wish` 使用上述原模型，并可直接接 `gacha-
 
 本地验证包含加密HTTP、独立认证Suite、SQLite重启后继续抽取、2／3／10人名单、抽后改选、两种保底、次数耗尽、并发最后一次、账号隔离和编码失败回滚。真实master按合成用户及历史开放时间覆盖28池28行为、84个概率段检查和全部5,831名可选成员；默认与示例配置均通过1,063次保存、1,063次抽取及10,630张结果。27池使用付费水晶且限一次，1池使用普通水晶且限三次。该验证强制选择分支，不验证官方随机分布；当前所审计卡池均已过期，未消费官方资源，尚无普通Wish官方成功响应或Unity界面验证。
 
+## PUT `/api/user/{userId}/categorized-gacha-wish`
+
+> 审计版本: jp-6.5.5
+> 关键词：抽卡，Dream Pick，分类Wish，固定成员，特别名额
+
+一次注册分类Wish的完整名单。客户端在分类选择页自动填入固定成员，手动或随机设置其他名额，经确认弹窗后提交；成功时合并 `updatedResources`，回到抽卡页。
+
+- Path `userId`: 当前用户ID。
+- Body `gachaId`: 分类Wish卡池ID。
+- Body `gachaDetailFixedIds`: 固定名额的详情ID数组，必须包含该池全部固定成员。
+- Body `gachaDetailLimitedIds`: 特别名额的详情ID数组，可选择master类别为 `limited` 或 `normal` 的成员。
+- Body `gachaDetailNormalIds`: 普通名额的详情ID数组，只能选择master类别为 `normal` 的成员；配额为零时允许空数组或null。
+- Response `updatedResources.userCategorizedGachaWishes`: 完整分类名单；每项为 `gachaId`、`gachaDetailId`、`categorizedWishType`。类型按所占名额保存为 `fixed`、`limited`、`normal`；普通成员放入特别名额时保存为 `limited`。
+
+请求中的ID均为当前池的 `gachaDetails.id`，不是 `cardId`。`wishSelectCount` 是总人数，固定人数为 `wishFixedSelectCount`，特别人数为 `wishLimitedSelectCount`，普通人数为三者相减；不能把总人数当成额外的普通名额。当前master有10／6／1、8／6／2、8／5／3三种配置。所选详情必须为本池 `isWish=true` 的普通四星，三类之间也不能重复。服务端检查卡池类型、开放期、剩余次数、完整人数、资格、全部固定成员及概率配置，不接受部分名单。
+
+保存不收费、不发卡，只注册一次；保存后即使尚未抽取，也不能改选或再次提交相同名单。其他卡池可独立注册。该规则由七池当前说明的“设置后不能变更”、`ScreenLayerColorfulWishList.ShowColorfulSelectMemberConfirmDialog`（RVA `0x650bfa8`）及 `ColorfulSelectMemberConfirmDialog.Setup`（`0x4c31300`）实际使用的 `MSG_WISH_LIST_SELECT_MEMBER_NOT_CHANGE_ALERT` 确认；不使用另一个未进入该确认分支的旧wording推断可改选。
+
+抽取按master的稀有度和lottery分段进行。`categorized_wish` 四星在完整固定、特别、普通名单中等权抽取；`normal` 四星排除上述所选详情，按剩余详情原权重抽取，低稀有度保留普通池。当前十人池Wish总概率4%，八人池3.2%，每个所选成员均为0.4%；实现读取master人数和概率，不固定这些值。十连不足三星时仅重抽末位，条件概率同时包含普通三星、普通四星和Wish四星；已有三星以上时不补抽。响应 `obtainPrizes[].gachaLotteryType` 保持普通奖品的 `normal`，不把master档位直接用作新响应值。费用、票券、免费通行证次数、天井、卡牌、服装及任务沿用共同结算。
+
+没有名单拒绝抽取；已存名单残缺、重复、失效或类别错误，以及master人数非法、固定成员不匹配、负／非有限概率、空正概率段，均不退回普通池。注册和抽取保留用户隔离与响应编码成功后提交的边界，失败整体回滚。
+
+协议依据为 `PutUserCategorizedGachaWishAPI` 的构造函数（`0x617a6e0`）、`Execute`（`0x617a768`）、回调（`0x617a8fc`）：PUT路径为 `user/{userId}/categorized-gacha-wish`，request为 `UserCategorizedGachaWishRequest`，response为 `SuiteUserCommonResponse`。`ScreenLayerColorfulWishList.OnInitComponent`（`0x650ac48`）自动填固定成员并计算三类人数；`RandomSelect`（`0x650c8e4`）允许普通候选填特别名额；`ExecuteAPI`（`0x650c15c`）分别发送三组详情。`GachaMemberContent.GetTargetListCaseColorfulSelectGacha`（`0x638d808`）构造固定及所选成员；其 `Create` 状态机的普通四星分支排除该名单；`GachaMemberRateTopCell.Setup`（`0x6399458`、`0x6399c28`）分别展示Wish等权和排除后的普通权重。
+
+Client操作 `gacha-categorized-wish` 使用原dump模型，可连续接 `gacha-draw`。本地业务、加密HTTP、独立认证Suite与SQLite重启验证包含三种实际人数形态、普通成员占特别名额、同池不可改、跨池独立、分段及权重边界、十连保底、票券多抽、并发注册、坏配置、坏名单和编码失败回滚。真实master以合成用户及历史开放时段覆盖7池54行为、216个概率段、2,467个分类候选位置和2,395名普通档候选，共5,078次注册／抽取、5,942张结果；默认与示例配置均通过。该方式验证实际分支，不证明官方随机分布；当前所审计池均已过期，未消费官方资源，尚无官方分类Wish成功响应或Unity界面验证。
+
 ## PUT `/api/user/{userId}/rate-choice-gacha-wish`
 
 > 审计版本: jp-6.5.5

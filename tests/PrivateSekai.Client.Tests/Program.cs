@@ -118,6 +118,7 @@ GachaFreebieHttpChecks.WriteMaster(directory);
 GiftGachaHttpChecks.WriteMaster(directory);
 RateChoiceGachaHttpChecks.WriteMaster(directory);
 SelectListGachaHttpChecks.WriteMaster(directory);
+CategorizedGachaHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -828,6 +829,7 @@ try
     await GiftGachaHttpChecks.Run(client, config, store, directory, Check);
     await RateChoiceGachaHttpChecks.Run(client, config, store, directory, Check);
     await SelectListGachaHttpChecks.Run(client, config, store, directory, Check);
+    await CategorizedGachaHttpChecks.Run(client, config, store, directory, Check);
     await GachaLimitHttpChecks.Run(client, config, store, directory, Check);
     await CardExchangeHttpChecks.Run(config, store, directory, Check);
     await LiveHttpChecks.Run(client, config, store, directory, Check);

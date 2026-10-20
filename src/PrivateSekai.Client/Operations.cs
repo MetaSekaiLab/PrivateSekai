@@ -73,6 +73,7 @@ public static class Operations
         ["gacha-exchange"] = new("PUT", "/api/user/{userId}/exchange/gacha-ceil-item", typeof(UserGachaCeilExchangeRequest), "obtainUserResources"),
         ["gacha-wish"] = new("PUT", "/api/user/{userId}/rate-choice-gacha-wish", typeof(UserRateChoiceGachaWishRequest), "updatedResources"),
         ["gacha-select-wish"] = new("PUT", "/api/user/{userId}/gacha-wish", typeof(UserGachaWishRequest), "updatedResources"),
+        ["gacha-categorized-wish"] = new("PUT", "/api/user/{userId}/categorized-gacha-wish", typeof(UserCategorizedGachaWishRequest), "updatedResources"),
         ["gacha-gift-wish"] = new("PUT", "/api/user/{userId}/gift-gacha-wish", typeof(UserGiftGachaWishRequest), "updatedResources"),
         ["register"] = new("POST", "/api/user", typeof(UserAPIRequest), "userRegistration", false),
         ["auth"] = new("PUT", "/api/user/{userId}/auth?refreshUpdatedResources=False", typeof(UserAuthRequest), "sessionToken", false),
