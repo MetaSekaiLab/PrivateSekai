@@ -27,10 +27,11 @@ public sealed class LiveClearResponseFormatter : IMessagePackFormatter<LiveClear
         foreach (var member in members)
         {
             writer.Write((string)member.Key);
-            if ((string)member.Key == "musicAchievementRewards")
+            if ((string)member.Key is "musicAchievementRewards" or "playerRankRewards")
             {
-                writer.WriteArrayHeader(value.musicAchievementRewards.Length);
-                foreach (var resource in value.musicAchievementRewards)
+                var rewards = (UserResource[])member.Get(value)!;
+                writer.WriteArrayHeader(rewards.Length);
+                foreach (var resource in rewards)
                 {
                     var fields = DumpContract.For(typeof(UserResource)).Members.Where(m => m.Get(resource) != null &&
                         !((string)m.Key == "resourceId" && resource.resourceId == 0) &&

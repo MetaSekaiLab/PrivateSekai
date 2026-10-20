@@ -118,6 +118,7 @@ public sealed class LiveService(
         {
             boosts.Normalize();
             boosts.Consume(session.BoostCount);
+            user.MarkChanged(nameof(SuiteUser.userBoost));
             if (!session.IsAuto)
             {
                 if (request.life > 0)
@@ -133,11 +134,12 @@ public sealed class LiveService(
                 highScoreFlg = UpdateUserMusicResult(session, request, fullCombo, fullPerfect);
             }
             deckCardExpResults = BuildDeckCardExpResults(session.DeckId);
-            // 非 Auto 的 D 档及普通/Auto 的 C 档已有官方经验样本。
+            // 基础经验来自已核验的普通演出结算，倍率使用 master boost。
             var baseExp = scoreRank switch
             {
                 "rank_d" when !session.IsAuto => 20,
                 "rank_c" => 200,
+                "rank_b" => 240,
                 _ => 0
             };
             if (baseExp > 0 && boost.expRate > 0)

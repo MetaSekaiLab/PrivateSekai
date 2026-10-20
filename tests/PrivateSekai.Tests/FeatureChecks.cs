@@ -67,6 +67,7 @@ internal static class FeatureChecks
             SeasonalLive(provider, store);
             GachaDraw(provider, store);
             MusicAchievementTiers(Path.Combine(directory, "achievement-tiers"));
+            LiveBExperience(Path.Combine(directory, "live-b-experience"));
             Console.WriteLine("业务：正式 DI 注册、商店、卡牌与任务联动、Live 结算、确定性抽卡检查通过。");
         }
         finally
@@ -470,6 +471,94 @@ internal static class FeatureChecks
             "失败演出不计数，成功 Auto 累计成员次数和角色任务且不重复累计");
         Check.That(store.Read(3)!.Data.userAutoLive.count == 1 && store.Read(3)!.Data.userGamedata.totalExp == 600 &&
             store.Read(3)!.Data.userBoost.current == 10, "重复 Auto 结算不重复计数、发经验或扣体力");
+    }
+
+    private static void LiveBExperience(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        WriteMaster(directory);
+        File.WriteAllText(Path.Combine(directory, "boosts.json"), """
+            [{"id":0,"costBoost":0,"expRate":1}, {"id":1,"costBoost":1,"expRate":5},
+             {"id":3,"costBoost":3,"expRate":15}, {"id":5,"costBoost":5,"expRate":25},
+             {"id":10,"costBoost":10,"expRate":30}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "cards.json"), """
+            [{"id":1,"characterId":1,"cardRarityType":"rarity_1"},
+             {"id":2,"characterId":2,"cardRarityType":"rarity_3"},
+             {"id":3,"characterId":3,"cardRarityType":"rarity_3"}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "cardRarities.json"), """
+            [{"cardRarityType":"rarity_1","maxLevel":3}, {"cardRarityType":"rarity_3","maxLevel":4}]
+            """);
+        File.WriteAllText(Path.Combine(directory, "levels.json"), """
+            [{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},
+             {"levelType":"card","level":3,"totalExp":300},{"levelType":"card","level":4,"totalExp":1000000},
+             {"levelType":"user","level":1,"totalExp":0},{"levelType":"user","level":2,"totalExp":100},
+             {"levelType":"user","level":3,"totalExp":1000},{"levelType":"user","level":4,"totalExp":5000},
+             {"levelType":"user","level":5,"totalExp":1000000}]
+            """);
+        var store = new MemoryUserStore();
+        using var provider = new ServiceCollection().AddPrivateSekai()
+            .AddSingleton(_ => new CustomProfileThumbnailStore())
+            .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory))
+            .AddSingleton<IUserStore>(store).BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        foreach (var (boost, rate) in new[] { (0, 1), (1, 5), (3, 15), (5, 25), (10, 30) })
+        foreach (var auto in new[] { false, true }.Where(auto => !auto || boost > 0))
+        {
+            var state = TestUsers.Create(21);
+            state.Data.userGamedata.rank = 1;
+            state.Data.userGamedata.exp = state.Data.userGamedata.totalExp = 90;
+            state.Data.userCards = [new() { cardId = 1, level = 3, totalExp = 300 },
+                new() { cardId = 2, level = 1, exp = 50, totalExp = 50 }, new() { cardId = 3, level = 1 }];
+            state.Data.userDecks = [new() { deckId = 1, leader = 1, member1 = 1, member3 = 2 }];
+            state.Data.userBoost = new() { current = 50, recoveryAt = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
+            state.Data.userMusics = [new() { musicId = 7 }];
+            state.Data.userMusicVocals = [new() { musicVocalId = 1 }];
+            store.Save(21, state);
+            using var scope = provider.CreateScope();
+            var operation = scope.ServiceProvider.GetRequiredService<UserOperation>();
+            var user = scope.ServiceProvider.GetRequiredService<UserSession>();
+            var live = scope.ServiceProvider.GetRequiredService<LiveService>();
+            var started = operation.Execute(21, () => live.StartUserLive(new UserLiveRequest
+            {
+                musicId = 7, musicVocalId = 1, musicDifficultyId = 71, musicCategoryName = "original",
+                deckId = 1, boostCount = boost, isAuto = auto
+            }).Response);
+            var id = DumpSerializer.Deserialize<UserLive>(started).userLiveId;
+            var request = new UserLiveClearRequest { score = 300, life = 1000, missCount = 1 };
+            var before = DumpSerializer.Serialize(store.Read(21)!.Data);
+            Check.Throws<MessagePackSerializationException>(() => operation.Execute(21, () =>
+            {
+                live.ClearUserLive(id, request);
+                return new BrokenResponse();
+            }), "B 档经验结算编码失败");
+            Check.That(before.SequenceEqual(DumpSerializer.Serialize(store.Read(21)!.Data)) &&
+                store.Read(21)!.Private.UserLiveSessions.ContainsKey(id), "B 档编码失败回滚经验、等级奖励、解锁、体力与会话");
+            var response = DumpSerializer.Deserialize<UserLiveClearResponse>(operation.Execute(21, () =>
+            {
+                var result = live.ClearUserLive(id, request);
+                result.updatedResources = user.BuildRefresh();
+                return result;
+            }));
+            var total = 90 + 240 * rate;
+            var level = total >= 5000 ? 4 : total >= 1000 ? 3 : 2;
+            Check.That(response.userExpResult.beforeTotalExp == 90 &&
+                response.userExpResult.afterTotalExp == total && response.userExpResult.afterLevel == level &&
+                store.Read(21)!.Data.userGamedata.totalExp == total, "B 档按 master 倍率累计玩家经验并跨级保存");
+            Check.That(response.deckCardExpResults.Select(r => r.index).SequenceEqual([1, 3]) &&
+                response.deckCardExpResults[0].expResult.afterTotalExp == 300 &&
+                response.deckCardExpResults[1].expResult.afterTotalExp == 50 + 720 * rate &&
+                store.Read(21)!.Data.userCards.Single(c => c.cardId == 3).totalExp == 0,
+                "B 档队伍成员按三倍经验结算，保留槽位、满级上限且不发给队外卡牌");
+            Check.That(response.playerRankRewards.Single().quantity == 50 && response.updatedResources.userChargedCurrency.free == 50 &&
+                response.updatedResources.userBoost.current == 50 - boost + (level - 1) * 10 &&
+                response.updatedResources.userReleaseConditions.Any(c => c.releaseConditionId == 92002),
+                "B 档升级复用等级奖励、体力恢复与等级解锁，等级奖励不乘演出倍率");
+            var saved = DumpSerializer.Serialize(store.Read(21)!.Data);
+            operation.Execute(21, () => live.ClearUserLive(id, request));
+            Check.That(saved.SequenceEqual(DumpSerializer.Serialize(store.Read(21)!.Data)),
+                "B 档已结束会话重复结算不重复发经验、等级奖励或消耗体力");
+        }
     }
 
     private static void NormalFullCombo(ServiceProvider provider, IUserStore store)

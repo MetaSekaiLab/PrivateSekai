@@ -177,7 +177,8 @@ internal static class LiveReplay
                     {
                         ["userExpResult"] = response?["userExpResult"]?.DeepClone(),
                         ["deckCardExpResults"] = response?["deckCardExpResults"]?.DeepClone(),
-                        ["updatedResources"] = SelectExperience(response?["updatedResources"])
+                        ["playerRankRewards"] = response?["playerRankRewards"]?.DeepClone(),
+                        ["updatedResources"] = SelectExperienceRefresh(response?["updatedResources"], record["before"])
                     };
                 }
                 var experienceReport = ScenarioRunner.Compare(official, local);
@@ -195,7 +196,7 @@ internal static class LiveReplay
                         new[] { "httpStatusDifferences", "baselineDifferences", "responseDifferences", "deltaDifferences", "readbackDifferences" }
                             .Any(k => experienceReport[k]!.AsArray().Count != 0))
                         throw new InvalidOperationException("玩家、卡牌经验或等级的响应、状态及独立回读与官方不同。");
-                    Console.WriteLine("玩家和卡牌经验、等级及独立回读 HTTP 对拍通过；不包含随机掉落和升级奖励核验。");
+                    Console.WriteLine("玩家和卡牌经验、等级、等级奖励、体力和等级解锁及独立回读 HTTP 对拍通过；不包含随机掉落核验。");
                 }
             }
         }
@@ -324,8 +325,23 @@ internal static class LiveReplay
         ["userGamedata"] = Select(source?["userGamedata"], ["rank", "exp", "totalExp"]),
         ["userCards"] = source?["userCards"] is JsonArray cards
             ? new JsonArray(cards.Select(card => (JsonNode?)Select(card, ["cardId", "level", "exp", "totalExp"])).ToArray())
-            : null
+            : null,
+        ["userChargedCurrency"] = Select(source?["userChargedCurrency"], ["paid", "free"]),
+        ["userBoost"] = Select(source?["userBoost"], ["current"]),
+        ["userReleaseConditions"] = SelectRankReleases(source)?["userReleaseConditions"]?.DeepClone()
     };
+
+    private static JsonObject SelectExperienceRefresh(JsonNode? source, JsonNode? before)
+    {
+        var result = SelectExperience(source);
+        var previous = (before?["userReleaseConditions"] as JsonArray ?? [])
+            .Select(c => c!["releaseConditionId"]!.GetValue<int>()).ToHashSet();
+        // 其他业务也可能刷新完整解锁数组；响应比较本次新增等级解锁，存档与回读仍比较完整等级解锁。
+        result["userReleaseConditions"] = new JsonArray((result["userReleaseConditions"] as JsonArray ?? [])
+            .Where(c => !previous.Contains(c!["releaseConditionId"]!.GetValue<int>()))
+            .Select(c => c!.DeepClone()).ToArray());
+        return result;
+    }
 
     private static JsonObject? Select(JsonNode? source, string[] fields) => source == null ? null :
         new(fields.Where(field => source.AsObject().ContainsKey(field))
