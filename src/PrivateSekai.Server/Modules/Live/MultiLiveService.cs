@@ -22,7 +22,6 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
             || request.customMusicScoreId != null || request.musicCategoryName != "image")
             throw new MultiLiveRequestException(501);
         if (master.GetNormalLiveBoost(request.boostCount) == null) throw new MultiLiveRequestException(400);
-        if (request.boostCount > 0 && boosts.Preview().current < request.boostCount) throw new MultiLiveRequestException(409);
         var settings = request.privateRoomSettings;
         if (settings.scoreCalculateType != null || settings.musicSelectionType != null || settings.musicDifficultyTypes != null
             || settings.deckTotalPowerRangeLower.HasValue || settings.deckTotalPowerRangeUpper.HasValue)
@@ -41,7 +40,10 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
             || cards.Distinct().Count() != 5 || !cards.Contains(deck.leader))
             throw new MultiLiveRequestException(409);
         user.Private.MultiLiveSessions.Clear();
-        user.Private.MultiLiveSessions.Add(liveId, new() { Master = all, Start = request, CreatedAt = user.Now });
+        user.Private.MultiLiveSessions.Add(liveId, new()
+        {
+            Master = all, Start = request, BoostCount = Math.Min(request.boostCount, boosts.Preview().current), CreatedAt = user.Now
+        });
         user.NormalizeEventBreakTime();
         user.MarkChanged(nameof(SuiteUser.userEventBreakTime));
     }
@@ -77,7 +79,7 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
         var totalRank = master.GetMultiScoreRank(own.musicDifficultyId, request.totalScore, true);
         if (totalRank is not ("rank_d" or "rank_c") || rank != "rank_c" || played.Length != 2)
             throw new MultiLiveRequestException(501);
-        var boost = master.GetNormalLiveBoost(session.Start.boostCount) ?? throw new MultiLiveRequestException(400);
+        var boost = master.GetNormalLiveBoost(session.BoostCount ?? session.Start.boostCount) ?? throw new MultiLiveRequestException(400);
         if (boost.expRate <= 0 || boost.rewardRate <= 0 || boost.livePointRate <= 0)
             throw new InvalidOperationException("Invalid multiplayer boost rates.");
         var rewards = BuildScoreRewards(totalRank);
@@ -96,7 +98,6 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
         var fullCombo = own.goodCount == 0 && own.badCount == 0 && own.missCount == 0;
         var fullPerfect = fullCombo && own.greatCount == 0;
         var mvp = own.score == played.Max(s => s.score);
-        if (boost.costBoost > 0 && boosts.Preview().current < boost.costBoost) throw new MultiLiveRequestException(409);
         user.Private.MultiLiveSessions.Remove(liveId);
         boosts.Normalize();
         boosts.Consume(boost.costBoost);

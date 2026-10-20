@@ -37,6 +37,7 @@ public sealed class UserMultiLiveSessionData
 {
     public MultiLiveRequest Master { get; set; } = new();
     public UserMultiLiveRequest Start { get; set; } = new();
+    public int? BoostCount { get; set; }
     public long CreatedAt { get; set; }
 }
 

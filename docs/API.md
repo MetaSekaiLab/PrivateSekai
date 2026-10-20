@@ -311,7 +311,9 @@ HTTP记录隐藏五槽账号、房间名和Live ID；写入前保存本机恢复
 
 ### 双账号完整结算
 
-Client 命令 `realtime-play <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room` 接续上述开始流程。配置包含 `durationMilliseconds`、`ownerScore`、`guestScore`，可选 `ownerBoostCount`／`guestBoostCount` 分别指定体力，省略时均为0，负数在请求前拒绝；`guestDifficulty` 可独立选择成员难度，省略时沿用房主的difficulty参数，所选谱面须在同一歌曲及演唱版本的master中存在，认证前完成读取校验。成绩使用原 UserMultiLiveClearScoreRequest，`userId`／`musicDifficultyId` 为0时分别填入该玩家的真实值，非0必须匹配本人选择。时长和成绩由调用者明确提供，不从曲名或音符数猜测。双方谱面ID及体力选择先写入本机恢复记录，任一方耗体力时在准备后额外读取双方Suite，报告只保留体力数值以核对扣除时机。
+Client 命令 `realtime-play <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room` 接续上述开始流程。配置包含 `durationMilliseconds`、`ownerScore`、`guestScore`，可选 `ownerBoostCount`／`guestBoostCount` 分别指定期望体力档位，省略时均为0，负数在请求前拒绝；实际请求分别取配置值与本人Suite体力余额的较小值，余额为0时仍可继续演出。`guestDifficulty` 可独立选择成员难度，省略时沿用房主的difficulty参数，所选谱面须在同一歌曲及演唱版本的master中存在，认证前完成读取校验。成绩使用原 UserMultiLiveClearScoreRequest，`userId`／`musicDifficultyId` 为0时分别填入该玩家的真实值，非0必须匹配本人选择。时长和成绩由调用者明确提供，不从曲名或音符数猜测。双方谱面ID及实际请求档位先写入本机恢复记录，任一方耗体力时在准备后额外读取双方Suite，报告只保留体力数值以核对扣除时机。
+
+客户端降档来源：完整 `PostMultiLiveAPI`／`PostUserMultiLiveAPI` 构造（RVA `0x6188c7c`／`0x618e144`）均以本机设置的EventBoostConsumeCount和UserDataManager.currentBoost调用整数ClampMax（`0x669da14`），完整函数确认取两值较小者。底层 `PrepareRequest`／`MemberRequest` 仍按显式参数构造原始请求，可用于核验超额请求，不在构造层隐藏改写。
 
 当前用例为同曲、可各自选择难度、image、非镜像、无Fever、无断连的双人普通私房。玩家READY键7、个人准备及RESULT成绩分别使用各自谱面；等待期间双方持续处理UDP；结束后双方STATUS12，再可靠发送玩家RESULT键10和STATUS13。双方核对实际成绩推送后，房主广播MESSAGE4／STEP7，双方转STATUS14，然后各提交一次自己的结算HTTP。任一同步期间收到成员退出或请求失败，停止后续业务并沿用退出和独立回读清理；不自动重试结算。
 
@@ -335,7 +337,11 @@ Server共用的 `UpdateLiveMissionProgress` 把普通P与每日额外P一起计�
 
 零体力全场C档每人200经验、每张未满级卡牌600经验、200金币和练习券1×2。当前本地策略均匀选择已验证材料组合，具体组合见 `MultiLiveService.BuildScoreRewards`；包含已观察到的额外服装材料11／12，以及同一材料分两项发放2+1的结果。资源箱要求expand及精确内容匹配，不写死箱号。现有样本不能证明官方候选全集、组合关系或权重，本地抽选不代表官方概率。升级沿用共用等级奖励、解锁和体力恢复逻辑。
 
-非零体力使用个人准备记录的boostCount，不共用房主档位；经验按expRate、评分奖励按rewardRate、普通P按livePointRate。每日额外10P及等级／首次音乐成就奖励不乘该倍率。准备时校验已恢复的有效余额，成功准备不扣除；完整结算时再次核对余额，先扣体力再结算升级恢复，体力与全部奖励、每日次数、会话消费在同一事务中保存。负数、未知或活动专用档位返回本地400，准备或结算余额不足返回本地409并保留原状态；这些拒绝状态是本地校验策略，尚未对拍官方不足体力的错误码。倍率只取真实master行，不使用缺失档位的线性回退。
+体力档位使用个人准备记录，不共用房主档位。准备接受合法普通请求，即使余额不足也不拒绝、不扣除；实际档位在准备时取请求值与自然恢复后余额的较小值，单独保存在私有会话中，原始请求保留。结算按已保存的实际档位查询master倍率并扣体力，准备时为0则按零体力结算，演出中恢复的体力留到下一场，不提高本场档位。经验按expRate、评分奖励按rewardRate、普通P按livePointRate，每日额外10P及等级／首次音乐成就奖励不乘该倍率。扣体力后才结算升级恢复，不预支本次升级补充的体力；体力、全部奖励、每日次数和会话消费在同一事务中保存。旧版没有实际档位字段的会话沿用原准备请求档位。负数、未知或活动专用请求档位仍返回本地400，这些非法档位尚未逐项核验官方拒绝。倍率只取真实master行，不使用缺失档位的线性回退。
+
+官方不足体力验证：房主准备时仅有1体力，原始请求10仍返回200且不提前扣除；结算实际boost.costBoost为1、倍率5，经验及金币各100、材料10，余额降为0。交换角色后，成员在0体力时原始请求10也成功，实际档位0、倍率1，经验及金币各20、材料2。第三场成员准备时仍为0，演出期间自然恢复1；结算仍为0档、经验20、普通P1，独立Suite保留新恢复的1体力。三场各23次HTTP均200，等待201.294／203.728／201.717秒，均完成退出和独立回读；按master倍率逐项核对体力、经验、卡牌、库存及任务。这确认降档发生在准备时，不在结算时重新使用恢复后的余额。此前将不足请求返回409的本地策略已移除。
+
+修正后Client另完成一场新房间演出：配置仍为10，余额1时实际请求1，结算经验及金币各100、普通P5、体力降至0；23次HTTP均200，等待202.707秒，双方退出与独立回读一致。本地连续检查覆盖不足时分别使用1／2档、用尽后零体力继续，以及准备期间自然恢复、明确保存零档位、编码失败回滚和SQLite重启。以上为协议验证，未启动Unity。
 
 官方全场C耗体力验证完成两场：双方各耗1／2，分别获得1000／2000玩家经验、3000／6000未满级卡牌经验、1000／2000金币和练习券10／20，普通P为5／10。第一场21次HTTP均200，等待184.307秒；第二场额外两次准备后Suite，23次HTTP均200，等待209.939秒，准备后体力仍为30／30，结算分别29／38（后者升级恢复10），每日加成均固定10P。含布料11的奖励数量也按rewardRate增加。另一次全场D耗1／2体力，23次HTTP均200、等待201.286秒，体力18／28到17／26，各获得100／200玩家经验及金币、材料10／20；加入方未满级卡牌+600，没有练习券。三场均退出并独立回读，体力、经验、卡牌、库存及任务吻合。此证据为受控协议验证，会员权益及Unity游戏内表现仍未验证。
 

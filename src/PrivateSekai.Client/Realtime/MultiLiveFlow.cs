@@ -113,6 +113,9 @@ public static class MultiLiveFlow
         var ownerBoost = performance?.OwnerBoostCount ?? 0;
         var guestBoost = performance?.GuestBoostCount ?? 0;
         if (ownerBoost < 0 || guestBoost < 0) throw new InvalidDataException("体力消耗不能为负数。");
+        if (ownerBoost > 0) ownerBoost = Math.Min(ownerBoost, ownerUser.userBoost?.current ?? throw new InvalidDataException("房主体力数据缺失。"));
+        if (guestBoost > 0) guestBoost = Math.Min(guestBoost, guestUser.userBoost?.current ?? throw new InvalidDataException("成员体力数据缺失。"));
+        if (ownerBoost < 0 || guestBoost < 0) throw new InvalidDataException("体力余额不能为负数。");
         var ownerScore = performance == null ? null : MultiLivePerformance.Score(performance.OwnerScore, ownerHttp.UserId, song.DifficultyId);
         var guestScore = performance == null ? null : MultiLivePerformance.Score(performance.GuestScore, guestHttp.UserId, guestSong.DifficultyId);
         var ownerPlayers = new Dictionary<string, RoomSyncPlayer>
