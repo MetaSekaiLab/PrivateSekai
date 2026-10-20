@@ -1,0 +1,302 @@
+extern alias game;
+
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using game::CP.Realtime;
+using game::Sekai;
+using RoomUserBasicInfo = game::Sekai.MultiLive.RoomUserBasicInfo;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using PrivateSekai;
+using PrivateSekai.Client.Realtime;
+using PrivateSekai.Config;
+using PrivateSekai.Modules.Live;
+using PrivateSekai.Protocol;
+using PrivateSekai.Shared.Master;
+using PrivateSekai.Shared.Users;
+using PrivateSekai.Storage;
+using PrivateSekai.Transport;
+
+internal static class RealtimeServerChecks
+{
+    public static async Task Run(string directory, Action<bool, string> check)
+    {
+        var masterPath = Path.Combine(directory, "realtime");
+        Directory.CreateDirectory(masterPath);
+        File.WriteAllText(Path.Combine(masterPath, "multiLiveLobbies.json"),
+            """[{"id":1,"totalPower":0,"multiLiveLobbyType":"normal"}]""");
+        var store = new MemoryUserStore();
+        for (var id = 11; id <= 13; id++)
+            store.Save(id, new UserState { Data = new SuiteUser
+            {
+                userRegistration = new() { userId = id }, userGamedata = new() { userId = id, name = "测试用户" + id },
+                userCards = [], userMaterials = [], userChargedCurrency = new() { free = 123, paid = 45 }
+            } });
+        var clock = new Clock();
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Loopback, 0));
+        builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
+            .AddSingleton<TimeProvider>(clock)
+            .AddSingleton(new RealtimeConfig { Enabled = true, Port = 0, IdleTimeoutSeconds = 60 })
+            .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, masterPath));
+        builder.Services.AddControllers().AddApplicationPart(typeof(DiarkisController).Assembly);
+        await using var app = builder.Build();
+        app.UseRouting();
+        app.UseMiddleware<PrskCryptoMiddleware>();
+        app.MapControllers();
+        await app.StartAsync();
+        using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+        var cancel = timeout.Token;
+        var info = new RoomUserBasicInfo
+        {
+            CardId = 41, CardLevel = 1, TotalPowerIncludeBuff = 100,
+            SubCardIds = [42, 43, 44, 45], SubCardSkillLv = [1, 1, 1, 1], SubCardImages = ["a", "b", "c", "d"],
+            MemberCharacterRank = [], SubHonors = [], UserPlayerFramePartsLayout = []
+        };
+        var before11 = DumpSerializer.Serialize(store.Read(11)!.Data.userChargedCurrency);
+        var before12 = DumpSerializer.Serialize(store.Read(12)!.Data.userChargedCurrency);
+        var ownerAuth = await Auth(11);
+        var guestAuth = await Auth(12);
+        check(ownerAuth.sid != guestAuth.sid && ownerAuth.encryptionKey != guestAuth.encryptionKey
+            && ownerAuth.udpPort == app.Services.GetRequiredService<PrivateSekai.Transport.Realtime.DiarkisServer>().BoundPort,
+            "真实服务端为不同已存在用户签发独立实时凭证和实际监听端口");
+        await Request(12, HttpMethod.Get, "/api/user/11/diarkis-auth?diarkisServerType=multi", null, 401);
+        await Request(99, HttpMethod.Get, "/api/user/99/diarkis-auth?diarkisServerType=multi", null, 404);
+        check(store.Read(99) == null, "实时认证拒绝越权和未知账号，不创建用户");
+        using var owner = new DiarkisUdpClient(JsonSerializer.SerializeToNode(ownerAuth, DumpJson.Options)!.AsObject(), true);
+        using var reservation = new DiarkisUdpClient(JsonSerializer.SerializeToNode(ownerAuth, DumpJson.Options)!.AsObject(), true);
+        using var guest = new DiarkisUdpClient(JsonSerializer.SerializeToNode(guestAuth, DumpJson.Options)!.AsObject(), true);
+        await Connect(reservation);
+        await Connect(guest);
+        var room = await Reserve(reservation);
+        var roomId = room.roomId;
+        await Request(12, HttpMethod.Post, $"/api/user/12/diarkis-room/{roomId}/no", NumberBody(), 403);
+        var numbered = await Number(roomId);
+        check(numbered.roomNo is >= 10000 and <= 99999 && numbered.roomId == roomId && numbered.createdAt == clock.GetUtcNow().ToUnixTimeMilliseconds(),
+            "真实HTTP分配有效房号并保留预留房间及毫秒创建时间");
+        check((await Number(roomId)).roomNo == numbered.roomNo, "重复申请同一预留房间房号保持一致");
+        await Request(12, HttpMethod.Patch, $"/api/user/12/diarkis-room/{roomId}", PatchBody(1), 403);
+        await Request(11, HttpMethod.Patch, $"/api/user/11/diarkis-room/{roomId}", PatchBody(999), 501);
+        await Request(11, HttpMethod.Patch, $"/api/user/11/diarkis-room/{roomId}", PatchBody(1), 200);
+        await Lookup(numbered.roomNo, 404);
+        await Connect(owner);
+        check(owner.ClientKeyAcknowledged, "预留连接与入房连接可使用同一凭证重新握手，不丢失预留房间");
+        await owner.SendReliableAsync(2, 3070, MultiLiveRoom.CreateRequest(roomId, numbered.roomNo, "房主", info), cancel);
+        var created = MultiLiveRoom.ParseCreated(await Response(owner, 2, 3001), roomId, numbered.roomNo, "11", "房主", info);
+        check(created.players.Length == 1 && created.index > 0, "真实UDP创建完成后才登记房主和完整原始玩家属性");
+        await SyncNumber(owner, numbered.roomNo);
+        var looked = DumpSerializer.Deserialize<PrivateRoomNumberPayload>(await Lookup(numbered.roomNo, 200));
+        check(looked.roomId == roomId && looked.multiLiveLobbyId == 1, "另一账号经真实HTTP按房号查到同一大厅和房间");
+        await guest.SendReliableAsync(2, 3080, MultiLiveRoom.JoinRequest(roomId, "成员", info), cancel);
+        var joined = MultiLiveRoom.ParseCreated(await Response(guest, 2, 3001), roomId, numbered.roomNo, "12", "成员", info, "11");
+        var member = MultiLiveRoom.ReadMemberJoins(await Response(owner, 2, 3001, 255)).Single();
+        check(joined.players.Length == 2 && joined.players.Select(p => p.userId).ToHashSet().SetEquals(["11", "12"])
+            && member.userId == "12" && member.index == joined.index,
+            "双账号经真实UDP入房，双方收到一致的成员身份、索引和资料");
+        MultiLiveRoom.RequirePlayer(member.playerProperty, MultiLiveRoom.PlayerProperty("成员", info));
+        await SyncNumber(guest, numbered.roomNo);
+        await owner.SendReliableAsync(2, 1021, MultiLiveRoom.UserIndexRequest("12"), cancel);
+        check(MultiLiveRoom.ParseUserIndex(await Response(owner, 2, 1021), "12") == joined.index, "服务端索引查询只返回当前房间真实成员");
+        await Leave(guest, "12");
+        check(MultiLiveRoom.ReadMemberLeaves(await Response(owner, 1, 102, 255), roomId).SequenceEqual(["12"]),
+            "成员退出后房主实际收到带当前房间和成员身份的退出推送");
+        await Leave(owner, "11");
+        await Lookup(numbered.roomNo, 404);
+        using (var independent = new HttpClient { BaseAddress = http.BaseAddress })
+        {
+            foreach (var id in new[] { 11, 12 })
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/suite/user/{id}");
+                request.Headers.Add("X-Session-Token", JwtSignature.GenSessionToken(id));
+                using var response = await independent.SendAsync(request, cancel);
+                check(response.StatusCode == HttpStatusCode.OK, "退出后独立HTTP会话可以重新回读真实Suite接口");
+                var suite = DumpSerializer.Deserialize<SuiteUser>(PrskCrypto.DecryptAesCbc(await response.Content.ReadAsByteArrayAsync(cancel)));
+                check(suite.userRegistration.userId == id && suite.userCards.Length == 0
+                    && suite.userChargedCurrency.free == 123 && suite.userChargedCurrency.paid == 45,
+                    "独立完整Suite回读的账号、卡牌和两类水晶与建房前一致");
+            }
+        }
+        check(DumpSerializer.Serialize(store.Read(11)!.Data.userChargedCurrency).AsSpan().SequenceEqual(before11)
+            && DumpSerializer.Serialize(store.Read(12)!.Data.userChargedCurrency).AsSpan().SequenceEqual(before12)
+            && store.Read(11)!.Data.userCards.Length == 0 && store.Read(12)!.Data.userCards.Length == 0,
+            "完整建房加入退出不改变持久水晶和卡牌");
+
+        // 成员失联应清除成员，活跃房主仍能查房及正常退出。
+        var again = await Reserve(owner);
+        roomId = again.roomId;
+        numbered = await Number(roomId);
+        await Request(11, HttpMethod.Patch, $"/api/user/11/diarkis-room/{roomId}", PatchBody(1), 200);
+        await owner.SendReliableAsync(2, 3070, MultiLiveRoom.CreateRequest(roomId, numbered.roomNo, "房主", info), cancel);
+        await Response(owner, 2, 3001);
+        await guest.SendReliableAsync(2, 3080, MultiLiveRoom.JoinRequest(roomId, "成员", info), cancel);
+        await Response(guest, 2, 3001);
+        await Response(owner, 2, 3001, 255);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        await owner.SendUnreliableAsync(0, 3, new byte[8], cancel);
+        await Response(owner, 0, 3);
+        clock.Advance(TimeSpan.FromSeconds(31));
+        check(MultiLiveRoom.ReadMemberLeaves(await Response(owner, 1, 102, 255), roomId).SequenceEqual(["12"]),
+            "真实UDP空闲成员超时清理，活跃房主实际收到退出通知");
+        await Lookup(numbered.roomNo, 200);
+        await Leave(owner, "11");
+        await Lookup(numbered.roomNo, 404);
+
+        // 伪造退出身份不能移除房主，违规连接清理后房主仍可退出。
+        using (var replacement = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true))
+        {
+            await Connect(replacement);
+            await Open(replacement);
+            await replacement.SendReliableAsync(1, 102, MultiLiveRoom.LeaveRequest(roomId, "11"), cancel);
+            check(MultiLiveRoom.ReadMemberLeaves(await Response(owner, 1, 102, 255), roomId).SequenceEqual(["12"]),
+                "伪造退出只会关闭违规连接，不会移除被冒充的房主");
+            await Lookup(numbered.roomNo, 200);
+            await Leave(owner, "11");
+            await Lookup(numbered.roomNo, 404);
+        }
+        using (var replacement = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true))
+        {
+            await Connect(replacement);
+            await Open(replacement);
+            await Leave(owner, "11");
+            var stopped = false;
+            try { while (true) await replacement.ReceiveAsync(cancel); }
+            catch (IOException) { stopped = true; }
+            check(stopped, "当前本地房主退出策略关闭房间及成员连接，不保留僵尸成员");
+            await Lookup(numbered.roomNo, 404);
+        }
+
+        // 只含 userId 的签名或凭证不能替代实时会话。
+        using (var signatureRequest = new HttpRequestMessage(HttpMethod.Get, "/api/user/11/diarkis-auth?diarkisServerType=multi"))
+        {
+            signatureRequest.Headers.Add("X-Session-Token", JwtSignature.GenUserSignature(11));
+            using var rejected = await http.SendAsync(signatureRequest, cancel);
+            check(rejected.StatusCode == HttpStatusCode.Unauthorized, "普通用户签名不能冒充已认证会话取得实时密钥");
+        }
+
+        // 原始UDP重传同一分片序列，预留只应用一次；错序也由接收序号恢复。
+        await DuplicateReservation();
+        await app.StopAsync();
+
+        async Task Open(DiarkisUdpClient member)
+        {
+            roomId = (await Reserve(owner)).roomId;
+            numbered = await Number(roomId);
+            await Request(11, HttpMethod.Patch, $"/api/user/11/diarkis-room/{roomId}", PatchBody(1), 200);
+            await owner.SendReliableAsync(2, 3070, MultiLiveRoom.CreateRequest(roomId, numbered.roomNo, "房主", info), cancel);
+            await Response(owner, 2, 3001);
+            await member.SendReliableAsync(2, 3080, MultiLiveRoom.JoinRequest(roomId, "成员", info), cancel);
+            await Response(member, 2, 3001);
+            await Response(owner, 2, 3001, 255);
+        }
+        async Task Connect(DiarkisUdpClient connection)
+        {
+            await connection.ConnectAsync(cancel);
+            await connection.FlushAsync(cancel);
+            await connection.WaitForEchoAsync(1, cancel);
+            check(connection.ClientKeyAcknowledged && connection.LastEcho?.IsOffline == false,
+                "真实服务端完成SYN、clientKey确认及带原时间戳的Echo");
+            var timestamp = new byte[8];
+            System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(timestamp, 1234567.0);
+            await connection.SendUnreliableAsync(0, 3, timestamp, cancel);
+            var ping = await Response(connection, 0, 3);
+            check(ping.Payload.Length == 9 && ping.Payload.AsSpan(1).SequenceEqual(timestamp), "真实UDP Ping原样保留调用方时间戳");
+        }
+        async Task<UserDiarkisAuthResponse> Auth(int id) => DumpSerializer.Deserialize<UserDiarkisAuthResponse>(
+            await Request(id, HttpMethod.Get, $"/api/user/{id}/diarkis-auth?diarkisServerType=multi", null, 200));
+        async Task<game::Sekai.MultiLive.CreateMultiLivePrivateRoomResponse> Reserve(DiarkisUdpClient connection)
+        {
+            await connection.SendReliableAsync(2, 3060, MultiLiveReservation.CreateRequest(LiveRuleType.normal, 60, default, true, null, null), cancel);
+            return MultiLiveReservation.ParseResponse(await Response(connection, 2, 3060));
+        }
+        async Task<PrivateRoomNumberPayload> Number(string id) => DumpSerializer.Deserialize<PrivateRoomNumberPayload>(
+            await Request(11, HttpMethod.Post, $"/api/user/11/diarkis-room/{id}/no", NumberBody(), 200));
+        Task<byte[]> Lookup(int number, int status) => Request(12, HttpMethod.Get, $"/api/user/12/diarkis-room-type/multi_live/no/{number}", null, status);
+        async Task SyncNumber(DiarkisUdpClient connection, int number)
+        {
+            await connection.SendReliableAsync(2, 10010, MultiLiveRoom.RoomNumberRequest(number), cancel);
+            check(MultiLiveRoom.ConfirmsRoomNumber(await Response(connection, 2, 10010, 255), number), "房号经真实属性推送确认");
+        }
+        async Task Leave(DiarkisUdpClient connection, string id)
+        {
+            await connection.SendReliableAsync(1, 102, MultiLiveRoom.LeaveRequest(roomId, id), cancel);
+            check((await Response(connection, 1, 102)).Status == 1, "真实UDP退出成功响应");
+        }
+        async Task<DiarkisResponse> Response(DiarkisUdpClient connection, byte version, ushort command, byte status = 1)
+        {
+            while (true)
+            {
+                var response = await connection.ReceiveAsync(cancel);
+                if (response.Version == version && response.Command == command && response.Status == status) return response;
+            }
+        }
+        async Task<byte[]> Request(int user, HttpMethod method, string path, byte[]? body, int status)
+        {
+            using var request = new HttpRequestMessage(method, path);
+            request.Headers.Add("X-Session-Token", JwtSignature.GenSessionToken(user));
+            if (body != null)
+            {
+                request.Content = new ByteArrayContent(PrskCrypto.EncryptAesCbc(body));
+                request.Content.Headers.ContentType = new("application/octet-stream");
+            }
+            using var response = await http.SendAsync(request, cancel);
+            check((int)response.StatusCode == status, "房间HTTP实际状态符合当前操作");
+            return PrskCrypto.DecryptAesCbc(await response.Content.ReadAsByteArrayAsync(cancel));
+        }
+        async Task DuplicateReservation()
+        {
+            var auth = await Auth(13);
+            using var udp = new UdpClient();
+            udp.Connect(IPAddress.Loopback, auth.udpPort);
+            var sid = Convert.FromHexString(auth.sid);
+            var key = Convert.FromHexString(auth.encryptionKey);
+            var iv = Convert.FromHexString(auth.encryptionIv);
+            var mac = Convert.FromHexString(auth.encryptionMacKey);
+            await udp.SendAsync(DiarkisPacket.CreateUdp(2, 0, sid), cancel);
+            await udp.ReceiveAsync(cancel);
+            var clientKey = DiarkisPacket.CreateEncryptedRequest(0, 4, Encoding.UTF8.GetBytes(auth.clientKey), sid, key, iv, mac);
+            await udp.SendAsync(DiarkisPacket.CreateUdp(3, 0, clientKey), cancel);
+            await udp.ReceiveAsync(cancel);
+            var bytes = MultiLiveReservation.CreateRequest(LiveRuleType.normal, 60, default, true, null, null);
+            var original = DumpSerializer.Deserialize<game::Sekai.MultiLive.CreateMultiLivePrivateRoomData>(bytes);
+            original.roomProperty.values[13] = SyncPropertyEncoding.String(new string('x', 2400));
+            var fragments = DiarkisPacket.CreateReliableRequests(2, 3060, DumpSerializer.Serialize(original), sid, key, iv, mac, 0);
+            for (var index = fragments.Count - 1; index >= 0; index--)
+            {
+                await udp.SendAsync(DiarkisPacket.CreateUdp(3, (uint)index + 1, fragments[index]), cancel);
+                await udp.SendAsync(DiarkisPacket.CreateUdp(5, (uint)index + 1, fragments[index]), cancel);
+            }
+            DiarkisResponse reserved;
+            while (true)
+            {
+                var datagram = DiarkisPacket.ParseUdp((await udp.ReceiveAsync(cancel)).Buffer);
+                if (datagram.Flag is not (3 or 5)) continue;
+                var encrypted = DiarkisPacket.ParseResponse(datagram.Payload);
+                reserved = encrypted with { Payload = DiarkisEncryption.Decrypt(encrypted.Payload, key, iv, mac) };
+                await udp.SendAsync(DiarkisPacket.CreateUdp(4, datagram.Sequence, sid), cancel);
+                break;
+            }
+            var reservedId = MultiLiveReservation.ParseResponse(reserved).roomId;
+            check(reservedId.Length == 52, "真实服务端对乱序、重复大分片仅执行一次房间预留");
+            await Request(13, HttpMethod.Post, $"/api/user/13/diarkis-room/{reservedId}/no", NumberBody(), 200);
+            clock.Advance(TimeSpan.FromSeconds(61));
+            await Request(13, HttpMethod.Post, $"/api/user/13/diarkis-room/{reservedId}/no", NumberBody(), 404);
+            check(store.GetUserIds().Order().SequenceEqual(new long[] { 11, 12, 13 }), "空预留到期回收，不新增或删除持久账号");
+        }
+        static byte[] NumberBody() => DumpSerializer.Serialize(new PrivateRoomNumberRequest { privateRoomType = "multi_live", liveRuleType = "normal" });
+        static byte[] PatchBody(int lobby) => DumpSerializer.Serialize(new PrivateRoomNumberPatchRequest { multiLiveLobbyId = lobby, liveRuleType = "normal" });
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        private long ticks = new DateTimeOffset(2026, 10, 20, 0, 0, 0, TimeSpan.Zero).Ticks;
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
+        public void Advance(TimeSpan duration) => Interlocked.Add(ref ticks, duration.Ticks);
+    }
+}

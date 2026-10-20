@@ -12,6 +12,15 @@ internal static class DiarkisPacketChecks
         var large = DiarkisPacket.CreateRequest(7, 0x1234, new byte[0x010203]);
         check(large.AsSpan(0, 10).SequenceEqual(Convert.FromHexString("FEBEDEEF070102031234"))
             && large.Length == 10 + 0x010203, "业务长度覆盖全部三字节，不与版本混淆");
+        var parsedRequest = DiarkisPacket.ParseRequest(Convert.FromHexString("FEBEDEEF020000030BF4A1B2C3"));
+        check(parsedRequest.Version == 2 && parsedRequest.Command == 3060
+            && parsedRequest.Payload.SequenceEqual(new byte[] { 0xA1, 0xB2, 0xC3 }), "服务端按原10字节请求头读取版本、命令和完整载荷");
+        check(DiarkisPacket.CreateResponse(2, 3060, 255, [0xA1, 0xB2, 0xC3])
+            .SequenceEqual(Convert.FromHexString("FEBEDEEF020000030BF4FFA1B2C3")), "服务端响应向量保留独立状态字节且不携带SID");
+        Reject(() => DiarkisPacket.ParseRequest(new byte[9]), "拒绝截断请求头");
+        Reject(() => DiarkisPacket.ParseRequest(Convert.FromHexString("FFBEDEEF020000000BF4")), "拒绝错误请求标识");
+        Reject(() => DiarkisPacket.ParseRequest(Convert.FromHexString("FEBEDEEF020000030BF4A1B2")), "拒绝截断请求载荷");
+        Reject(() => DiarkisPacket.ParseRequest(Convert.FromHexString("FEBEDEEF020000000BF4A1")), "单个业务请求不能隐藏未声明的尾部载荷");
 
         var response = DiarkisPacket.ParseResponse(Convert.FromHexString("FEBEDEEF020000030BF4FFA1B2C39988"));
         check(response.Version == 2 && response.Command == 3060 && response.Status == 255 && response.IsPush

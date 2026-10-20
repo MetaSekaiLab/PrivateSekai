@@ -1,6 +1,10 @@
+using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
-namespace PrivateSekai.Client.Realtime;
+namespace PrivateSekai.Transport.Realtime;
 
 // 一个实例收集一个分片组；调用方按组 ID 分派，并串行调用 Add。
 public sealed class DiarkisSplitPacket

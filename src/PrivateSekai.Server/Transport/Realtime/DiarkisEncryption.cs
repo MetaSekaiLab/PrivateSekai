@@ -1,7 +1,8 @@
+using System;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 
-namespace PrivateSekai.Client.Realtime;
+namespace PrivateSekai.Transport.Realtime;
 
 public static class DiarkisEncryption
 {

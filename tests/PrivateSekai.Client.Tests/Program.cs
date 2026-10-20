@@ -1075,6 +1075,7 @@ try
             new() { Args = new() { ["characterId"] = "1", ["characterMissionType"] = type } }, 1),
             "角色任务拒绝错误大小写、未映射枚举和路径注入");
     Fails(() => Operations.EncodeBody(Operations.All["character-mission-receive"], new()), "角色任务领取不接受请求体");
+    await RealtimeServerChecks.Run(directory, Check);
     Console.WriteLine($"Client：通过 {count} 项检查；隔离 HTTP 服务即将关闭。");
 }
 finally

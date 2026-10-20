@@ -24,6 +24,7 @@ public static class ServerConfig
     public static string SuiteMasterFilePath { get; private set; } = null!;
     public static string SekaiMasterDbDiffPath { get; private set; } = null!;
     public static MasterCacheConfig MasterCache { get; private set; } = new();
+    public static RealtimeConfig Realtime { get; private set; } = new();
     public static string UserDatabasePath { get; private set; } = "data/userdata/users.db";
 
     public static void Load(IConfiguration config, string contentRootPath)
@@ -51,6 +52,7 @@ public static class ServerConfig
         UserDatabasePath = ResolvePath(paths["UserDatabase"] ?? "data/userdata/users.db", contentRootPath);
 
         MasterCache = s.GetSection("MasterCache").Get<MasterCacheConfig>() ?? new MasterCacheConfig();
+        Realtime = s.GetSection("Realtime").Get<RealtimeConfig>() ?? new RealtimeConfig();
     }
 
     private static string ResolvePath(string path, string contentRootPath)

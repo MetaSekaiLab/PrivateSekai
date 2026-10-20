@@ -1,8 +1,10 @@
+using System;
 using System.Buffers.Binary;
+using System.IO;
 using System.Text;
 using PrivateSekai.Protocol;
 
-namespace PrivateSekai.Client.Realtime;
+namespace PrivateSekai.Transport.Realtime;
 
 public static class SyncPropertyEncoding
 {

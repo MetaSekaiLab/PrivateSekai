@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Text;
@@ -98,8 +99,11 @@ public static class JwtSignature
     {
         var payload = VerifyToken(sessionToken);
         if (payload is null) return false;
-        if (!payload.TryGetValue("userId", out var uid)) return false;
-        return Convert.ToInt64(uid) == userId;
+        if (!payload.TryGetValue("userId", out var uid)
+            || !long.TryParse(uid?.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var actualUserId)
+            || actualUserId != userId || !payload.TryGetValue("sessionToken", out var session)) return false;
+        return session is string text && text.Length > 0
+            || session is JsonElement element && element.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(element.GetString());
     }
 
     // ---------- 内部工具 ----------

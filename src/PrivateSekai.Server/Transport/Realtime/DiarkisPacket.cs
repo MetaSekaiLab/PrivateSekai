@@ -1,8 +1,11 @@
+using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 
-namespace PrivateSekai.Client.Realtime;
+namespace PrivateSekai.Transport.Realtime;
 
 public static class DiarkisPacket
 {
@@ -43,6 +46,30 @@ public static class DiarkisPacket
         sid.CopyTo(securePayload);
         encrypted.CopyTo(securePayload, sid.Length);
         return CreateRequest(version, command, securePayload);
+    }
+
+    public static DiarkisRequest ParseRequest(ReadOnlySpan<byte> packet)
+    {
+        if (packet.Length < 10 || BinaryPrimitives.ReadUInt32BigEndian(packet) != HeaderSymbol)
+            throw new InvalidDataException("实时请求头无效。");
+        var length = (int)(BinaryPrimitives.ReadUInt32BigEndian(packet[4..]) & MaxPayloadLength);
+        if (length != packet.Length - 10)
+            throw new InvalidDataException("实时请求载荷长度无效。");
+        return new(packet[4], BinaryPrimitives.ReadUInt16BigEndian(packet[8..]), packet[10..].ToArray());
+    }
+
+    public static byte[] CreateResponse(byte version, ushort command, byte status, ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length > MaxPayloadLength)
+            throw new ArgumentOutOfRangeException(nameof(payload));
+        var packet = new byte[11 + payload.Length];
+        BinaryPrimitives.WriteUInt32BigEndian(packet, HeaderSymbol);
+        BinaryPrimitives.WriteInt32BigEndian(packet.AsSpan(4), payload.Length);
+        packet[4] = version;
+        BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(8), command);
+        packet[10] = status;
+        payload.CopyTo(packet.AsSpan(11));
+        return packet;
     }
 
     public static IReadOnlyList<byte[]> CreateReliableRequests(byte version, ushort command, ReadOnlySpan<byte> payload,
@@ -95,6 +122,8 @@ public static class DiarkisPacket
             packet[4..].ToArray());
     }
 }
+
+public sealed record DiarkisRequest(byte Version, ushort Command, byte[] Payload);
 
 public sealed record DiarkisResponse(byte Version, ushort Command, byte Status, byte[] Payload, int ConsumedSize)
 {

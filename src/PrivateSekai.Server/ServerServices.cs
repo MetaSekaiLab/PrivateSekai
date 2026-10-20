@@ -21,6 +21,7 @@ using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Storage;
 using PrivateSekai.Transport;
+using PrivateSekai.Transport.Realtime;
 
 namespace PrivateSekai;
 
@@ -43,6 +44,10 @@ public static class ServerServices
         services.AddScoped<CharacterService>();
         services.AddSingleton<GachaMasterQueries>();
         services.AddSingleton<LiveMasterQueries>();
+        services.AddSingleton(ServerConfig.Realtime);
+        services.AddSingleton<MultiLiveRooms>();
+        services.AddSingleton<DiarkisServer>();
+        services.AddHostedService(services => services.GetRequiredService<DiarkisServer>());
         services.AddSingleton<MissionMasterQueries>();
         services.AddSingleton<ResourceMasterQueries>();
         services.AddSingleton<ShopMasterQueries>();

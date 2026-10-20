@@ -4,6 +4,7 @@ using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -36,7 +37,8 @@ app.Use(async (ctx, next) =>
     await next();
     sw.Stop();
     appLogger.LogInformation("{Method} {Path} → {StatusCode} ({Elapsed}ms)",
-        ctx.Request.Method, ctx.Request.Path, ctx.Response.StatusCode, sw.ElapsedMilliseconds);
+        ctx.Request.Method, (ctx.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "unmatched",
+        ctx.Response.StatusCode, sw.ElapsedMilliseconds);
 });
 
 app.UseExceptionHandler(handler => handler.Run(async ctx =>

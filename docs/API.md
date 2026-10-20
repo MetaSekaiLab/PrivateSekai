@@ -26,9 +26,9 @@
 
 Client 已提供 `diarkis-auth` 操作，在场景 `args.diarkisServerType` 指定类型，不自动读写前后Suite。隔离HTTP检查验证了查询、无body、响应解密、凭证脱敏和后续会话轮换；服务器类型及参数注入另有检查。
 
-官方 `multi` 样本已核验：HTTP200，返回 `userId`、`clientKey`、`udpHost`、`udpPort`、`sid` 和三项加密字段，未返回 `tcpHost`／`tcpPort`。响应有 `X-Session-Token`，随后独立Suite请求成功；场景记录和HTTP记录中的连接凭证均已脱敏。不能要求TCP与UDP同时存在：客户端 `IsValidTCP`／`IsValidUDP` 分别判断对应host是否非空，`SetupProtocol` 按可用分支配置连接。隔离HTTP夹具覆盖仅UDP字段的形状。其他服务器类型、错误语义及有效期仍待核验；Server 未实现该接口，也不伪造连接凭证。
+官方 `multi` 样本已核验：HTTP200，返回 `userId`、`clientKey`、`udpHost`、`udpPort`、`sid` 和三项加密字段，未返回 `tcpHost`／`tcpPort`。响应有 `X-Session-Token`，随后独立Suite请求成功；场景记录和HTTP记录中的连接凭证均已脱敏。不能要求TCP与UDP同时存在：客户端 `IsValidTCP`／`IsValidUDP` 分别判断对应host是否非空，`SetupProtocol` 按可用分支配置连接。隔离HTTP夹具覆盖仅UDP字段的形状。Server现已提供连接本地UDP服务的独立凭证，启用方式及范围见下文；其他官方服务器类型、错误语义及有效期仍待核验。
 
-实时加密层已按 `Diarkis.Lib.Encryption` 的完整导出实现为 Client 的 `DiarkisEncryption`，并接入下述 UDP 客户端。`SetupProtocol` 将SID及三项加密参数按十六进制解码。消息布局为4字节大端原文长度、32字节HMAC-SHA256、AES-CBC密文；MAC只覆盖密文，不覆盖长度头。加密前补1～16字节零，空原文和整块原文也额外补一块；解密按长度截取，保留原文末尾的零。AES模式及Padding枚举已与dump核对，不能复用HTTP的PKCS7封装。
+实时加密层已按 `Diarkis.Lib.Encryption` 的完整导出实现为共用 `Transport/Realtime/DiarkisEncryption`，Client和Server共用加密、包头、分片与属性编解码。`SetupProtocol` 将SID及三项加密参数按十六进制解码。消息布局为4字节大端原文长度、32字节HMAC-SHA256、AES-CBC密文；MAC只覆盖密文，不覆盖长度头。加密前补1～16字节零，空原文和整块原文也额外补一块；解密按长度截取，保留原文末尾的零。AES模式及Padding枚举已与dump核对，不能复用HTTP的PKCS7封装。
 
 验证包括独立Python加密库生成的空原文、16字节及17字节固定向量，认证码／密文损坏、截断和长度越界检查。非法长度本地拒绝，不声明为官方错误语义；未修改协议MAC覆盖范围。固定向量只证明编解码范围，官方 UDP 连接验证见下文，不能据此推定建房或多人结算已完成。
 
@@ -131,7 +131,7 @@ Ping 证据：`Udp.Ping`（RVA `0x60b77c0`）通过普通 UDP 发送版本 0、�
 
 2026-10-09 官方实测：认证、握手、Ping、三次 Echo 后发送版本 2／命令 3060，返回状态 1、82 字节解密载荷及非空 RoomID；预留前后 Suite 均读取成功。共收发各 29 个数据报，重传为 0。报告只保存 RoomID 是否存在及创建时间，不保存实际房间标识。没有申请房号、入房或演出，也未观察到期回收；Suite 可读不证明账号状态完全不变。写请求失败后尝试独立 Suite 回读，不自动重发预留。
 
-545 项客户端检查通过，覆盖七类属性固定字节向量、数值边界、UTF-8 字节长度、外层整数键和 bin 类型，以及普通／自定义规则、不同 TTL／战力限制、nil／空／多难度数组；新增配置异常、响应版本／命令／状态和缺少 RoomID 的检查。Server 构建与协议检查通过，保留模板未映射字段提示。下一步接通申请房号及入房流程；Server 实时房间服务尚未实现。
+当时545项客户端检查通过，覆盖七类属性固定字节向量、数值边界、UTF-8字节长度、外层整数键和bin类型，以及普通／自定义规则、不同TTL／战力限制、nil／空／多难度数组；另覆盖配置异常、响应版本／命令／状态和缺少RoomID。Server构建与协议检查通过，保留模板未映射字段提示。后续Client和Server私房进退验证见下文。
 
 ## POST `/api/user/{userId}/diarkis-room/{roomId}/no`
 
@@ -254,6 +254,20 @@ Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 m
 
 同日双账号验证通过：加入方按房号查到同一私房，经历一次服务端指定节点切换后收到3001/status1；双方成员集合各为2，彼此昵称、加入路径、难度和二十项基本资料均一致。双方10010房号推送匹配，加入方102/status1退出后房主收到对应退出推送，再由房主102/status1退出，双方独立认证及 Suite 回读成功。房主UDP收发47/47，加入方41/40，业务重传均0。未开始演出，不将此结果描述为 Server 多人演出或结算完成。
 
+## Server 普通私房建房、加入与退出
+
+当前已接入上述实时认证、房号 POST、房间 PATCH、房号 GET 和 UDP 3060／3070／3080／3001／10010／1021／102，使用原 dump 请求及响应类型。`RealtimeConfig` 默认关闭；在 `PrivateSekai:Realtime` 设置 `Enabled=true`、监听地址、对外主机名和 UDP 端口后启用。示例使用回环地址和8832端口；对外主机名必须能被客户端访问。TCP、公共匹配、自定义规则和演出开始／结算不在此进退用例内。
+
+实时认证只接受当前账号的会话 JWT 和已存在用户，普通用户签名不能替代会话；为每个用户生成独立SID、clientKey及加密材料。重复认证使旧连接失效。预留后可以用同一凭证建立新的入房连接；有成员的连接不能直接用SYN重置。房间状态仅保存在当前服务进程，进退不扣费、不发奖、不写入用户卡牌或资源。
+
+房主只能给自己预留的房间申请房号和设置普通大厅；重复申请返回原房号。3070校验房主、已分配房号、大厅及玩家属性，3080校验房间已有成员、人数及所选大厅的战力门槛。入房后返回3001/status1原始同步对象，已有成员收到3001/status255分帧推送；房号以Int64属性实际广播。退出检查传输账号与载荷身份一致，向其他成员推送退出身份，房主最后退出后移除房号。
+
+UDP提供握手、clientKey认证、Ping／Echo、可靠确认与重传、去重、排序及双向分片。空预留按请求TTL回收；成员空闲超时按本地 `IdleTimeoutSeconds` 清理并通知其他成员，活跃房间不会按空预留TTL回收。目前房主先退出会关闭房间及其他成员连接，不声称已实现官方房主转移。连接、房间、未确认消息及分片组设本地容量限制；这些是运行保护参数，不代表官方上限或失败状态。
+
+本地HTTP拒绝使用加密 `ClientErrorResponse`：会话无效401、越权403、缺失或到期404、当前房间状态冲突409、未支持类型501；不将这些本地选择当作官方错误响应对拍。未支持或无效UDP业务关闭该连接并清理成员，不伪造未知官方业务状态码。日志只记录路由模板或固定分类，不输出实时密钥、玩家身份或实际房间标识。
+
+隔离检查启动真实MVC控制器与UDP服务，使用两个虚构用户走完预留、两连接交接、HTTP分配与查询、实际入房、双向成员与房号同步、退出推送和独立完整Suite回读。另覆盖越权、签名冒充会话、未知用户不创建、重复房号、乱序重复大分片、空预留回收、成员超时及资源不变。这是本地HTTP／UDP贯通证据，尚无Unity游戏内运行验收。
+
 ### 双账号选曲与演出开始
 
 Client 命令 `realtime-start <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,leave-room` 在同一私房内完成双方选曲、难度准备、房主申请、成员登记、时钟同步及开始推送，再退出并独立回读。当前用例双方选择同一曲目和难度，使用指定的有效演唱版本、当前主编队、普通私人规则、image类别和零体力；不发送结算或发放奖励。不能据此声称已实现委托选曲、自制谱、自定义规则或完整多人演出。
@@ -305,7 +319,7 @@ Client 命令 `realtime-play <ownerConfig> <guestConfig> <target> <master> <lobb
 
 2026-10-20受控官方协议验证：沿用现有培养成绩模板，双方各100000分，演出体力0，等待180秒；从成员开始请求到首次结算实际间隔183.48秒。全部21次HTTP为200，双方汇总200000，个人rank_c、多人rank_d；每人经验+20，userLivePoint为普通1、每日额外10、剩余2，独立Suite确认免费Live任务进度+11、付费进度不变。卡牌经验及返回库存与回读一致，体力未减少，双方退出及独立认证成功。这是受控协议成绩用例，不是游戏内真实游玩或评分公式对拍，也未验证断连、Fever、不同难度及跨日。
 
-Server共用的 `UpdateLiveMissionProgress` 已修正为把普通P与每日额外P一起计入当期free进度，只有额外P时也记账，并复用任务门槛判断和用户操作回滚；不计入paidProgress。检查覆盖11点入账、纯额外点、门槛达成、编码失败及溢出。此修正不代表Server多人HTTP／实时服务或每日次数生成已经实现。
+Server共用的 `UpdateLiveMissionProgress` 已修正为把普通P与每日额外P一起计入当期free进度，只有额外P时也记账，并复用任务门槛判断和用户操作回滚；不计入paidProgress。检查覆盖11点入账、纯额外点、门槛达成、编码失败及溢出。Server实时服务目前已支持私房进退，但多人演出HTTP和每日次数生成尚未接入。
 
 ## PUT `/api/user/{userId}/profile-honor`
 
@@ -2337,7 +2351,16 @@ Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通�
 
 每日加成适用范围已从[官方 FAQ](https://pjsekai.sega.jp/faq/index.html)确认（2026-10-09查阅）：多人 Live 或 Cheerful Live 通关时，当日前三次获得额外 Live P，次数每日凌晨4点重置。master 的 `wordings.MSG_ABOUT_LIVE_POINT_DAILY_BONUS_CONTENT` 另明确每日最多三次、每次10 Live P。普通单人演出不属于该触发范围，因此上述单人样本无法验证次数扣减；不能为单人结算按游玩次数新增每日奖励。显示文案不能证明网络存档字段或通行证倍率如何叠加，这些仍需匹配版本的多人样本。
 
-`UserMultiLiveClearResponse` 同样返回 `UserLivePoint`。其请求 `UserMultiLiveClearRequest` 包含五个玩家成绩槽、总分、Super Fever、断线玩家及私人房间设置，不能将单人结算请求直接换路由发送。Client已接通受控双人普通私房的完整开局、成绩同步和结算：首次零体力多人结算双方各得普通1／额外10／剩余2，独立回读免费进度各+11。Server多人服务仍未接入，连续次数边界、随后单人结算及跨日回读仍需验证。`colorfulPassV2s.livePointRate` 提供通行证倍率，但现有证据不证明每日加成以购买通行证为前提。
+`UserMultiLiveClearResponse` 同样返回 `UserLivePoint`。其请求 `UserMultiLiveClearRequest` 包含五个玩家成绩槽、总分、Super Fever、断线玩家及私人房间设置，不能将单人结算请求直接换路由发送。Client已接通受控双人普通私房的完整开局、成绩同步和结算。2026-10-20同日连续四场零体力验证，双方每场结果相同：
+
+| 当日场次 | 普通P | 每日额外P | 剩余次数 | 独立回读free进度增量 |
+| --- | --- | --- | --- | --- |
+| 1 | 1 | 10 | 2 | 11 |
+| 2 | 1 | 10 | 1 | 11 |
+| 3 | 1 | 10 | 0 | 11 |
+| 4 | 1 | 0 | 0 | 1 |
+
+每场各21次HTTP全200，受控演出均等待至少180秒；双方各结算一次、退出并独立回读，paid进度不变，卡牌及返回库存一致，未扣体力或水晶。该证据确认这些账号当日前三次加成与耗尽边界；随后单人结算、跨日归属及通行证叠加仍未验证。Server目前只接入私房进退，尚未接入多人演出HTTP和每日次数生成。`colorfulPassV2s.livePointRate` 提供通行证倍率，但现有证据不证明每日加成以购买通行证为前提。
 
 私人房间前置链路：`MultiRoomMatchingOrganizer.PublishReserveRoomRequest` 调用 `MultiLiveRoomMatchingController.ReserveRoom`，先准备实时连接，再预留空房间；成功后以返回的房间标识 POST 申请房号，再 PATCH 设置大厅。Client 普通私人创建、入房、房号同步及退出已实测通过，见上文“私人房间实时创建与入房”；加入已有房间、选曲和多人结算仍未接通。
 
