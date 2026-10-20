@@ -24,6 +24,7 @@ internal static class DiarkisUdpChecks
             ["encryptionMacKey"] = Convert.ToHexString(macKey)
         };
         var expectedLarge = Enumerable.Range(0, 1500).Select(i => (byte)i).ToArray();
+        var operation = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var peer = RunPeer();
         using var client = new DiarkisUdpClient(authentication, false);
         await client.ConnectAsync(cancellation);
@@ -35,7 +36,11 @@ internal static class DiarkisUdpChecks
         await client.SendUnreliableAsync(0, 3, new byte[8], cancellation);
         var ping = await client.ReceiveAsync(cancellation);
         await client.WaitForEchoAsync(2, cancellation);
+        var maintained = await client.MaintainConnectionAsync(operation.Task, cancellation);
+        var duringHttp = await client.ReceiveAsync(cancellation);
         await peer;
+        check(maintained == 37 && duringHttp.Command == 23 && duringHttp.Payload.SequenceEqual(new byte[] { 3 }),
+            "HTTP 等待期间继续接收并确认可靠推送，业务响应保留供后续读取");
         check(notification.IsPush && notification.Command == 99 && notification.Payload.SequenceEqual(new byte[] { 77 }),
             "Echo 内附通知进入业务队列，不随保活响应被丢弃");
         check(first.Command == 20 && first.Payload.SequenceEqual(new byte[] { 1 })
@@ -54,6 +59,20 @@ internal static class DiarkisUdpChecks
         try { await client.ReceiveAsync(canceled.Token); }
         catch (OperationCanceledException) { stopped = true; }
         check(stopped, "无报文时调用方可取消接收，不留下后台读取");
+        using var canceledMaintenance = new CancellationTokenSource();
+        canceledMaintenance.Cancel();
+        var inFlight = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiting = client.MaintainConnectionAsync(inFlight.Task, canceledMaintenance.Token);
+        check(!waiting.IsCompleted, "保活取消后仍等待在途 HTTP 终结，禁止提前开启回读会话");
+        inFlight.SetResult(1);
+        stopped = false;
+        try { await waiting; }
+        catch (OperationCanceledException) { stopped = true; }
+        check(stopped, "在途 HTTP 完成后保留原取消结果");
+        var httpFailure = false;
+        try { await client.MaintainConnectionAsync(Task.FromException<int>(new InvalidOperationException("fixture-http")), cancellation); }
+        catch (InvalidOperationException error) when (error.Message == "fixture-http") { httpFailure = true; }
+        check(httpFailure, "HTTP 业务失败不会被保活流程当成成功");
 
         async Task RunPeer()
         {
@@ -105,6 +124,9 @@ internal static class DiarkisUdpChecks
                 "周期 Echo 只发送时间戳，不重复地址列表");
             await Reply(DiarkisPacket.CreateUdp(4, 2, []));
             await Reply(DiarkisPacket.CreateUdp(1, 0, Response(0, 1, EchoPayload(laterEchoPayload))));
+            await Reply(DiarkisPacket.CreateUdp(3, 11, Response(2, 23, [3])));
+            await Ack(11, 4);
+            operation.SetResult(37);
 
             async Task Reply(byte[] data) => await server.SendAsync(data, endpoint, cancellation);
             async Task Ack(uint sequence, byte flag)

@@ -52,6 +52,8 @@ DiarkisSplitPacketChecks.Run(Check);
 DiarkisEchoChecks.Run(Check);
 MultiLiveReservationChecks.Run(Check);
 LiveAreaPowerChecks.Run(Check);
+MultiLivePlayerChecks.Run(Check);
+MultiLiveRoomChecks.Run(Check);
 await DiarkisUdpChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
     "sensitive-diagnostic-placeholder", new IOException("sensitive-diagnostic-placeholder")))!;

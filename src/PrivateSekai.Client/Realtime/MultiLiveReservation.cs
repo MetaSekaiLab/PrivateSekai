@@ -77,7 +77,7 @@ public static class MultiLiveReservation
                     [14] = SyncPropertyEncoding.Int32((int)liveRuleType), // LIVE_RULE_TYPE
                     [15] = SyncPropertyEncoding.Int32(upperPower.GetValueOrDefault()),
                     [16] = SyncPropertyEncoding.Int32(lowerPower.GetValueOrDefault()),
-                    [17] = SyncPropertyEncoding.Object(SerializeSettings(settings)),
+                    [17] = SyncPropertyEncoding.Object(SerializeFixedMap(settings)),
                     [18] = SyncPropertyEncoding.Boolean(showsRoomId)
                 }
             }
@@ -85,17 +85,17 @@ public static class MultiLiveReservation
         return DumpSerializer.Serialize(request);
     }
 
-    private static byte[] SerializeSettings(CustomRoomSettingData settings)
+    internal static byte[] SerializeFixedMap<T>(T value)
     {
-        // 原 formatter 固定写出全部字段，包括为 nil 的难度数组。
-        var members = DumpContract.For(typeof(CustomRoomSettingData)).Members;
+        // 原 formatter 固定写出全部字段，包括 nil。
+        var members = DumpContract.For(typeof(T)).Members;
         var buffer = new ArrayBufferWriter<byte>();
         var writer = new MessagePackWriter(buffer);
         writer.WriteMapHeader(members.Count);
         foreach (var member in members)
         {
             writer.Write((string)member.Key);
-            MessagePackSerializer.Serialize(member.Type, ref writer, member.Get(settings), DumpSerializer.Options);
+            MessagePackSerializer.Serialize(member.Type, ref writer, member.Get(value!), DumpSerializer.Options);
         }
         writer.Flush();
         return buffer.WrittenSpan.ToArray();

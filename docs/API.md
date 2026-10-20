@@ -153,9 +153,9 @@ Client 命令 `realtime-room <config> <target> <clientConfigs.json> <lobbyId> --
 
 2026-10-09 官方普通规则验证通过：上述 POST、PATCH 均 HTTP200，POST 返回五个字段，PATCH 增加 multiLiveLobbyId=1；两次房间标识及房号一致，最终 Suite 读取成功。本轮七次 HTTP 均200，UDP收发各24个数据报、重传0。RoomID、roomId、roomNo 字段及请求路径中的预留标识均脱敏，原响应保留在内存供后续使用。Suite 的时间、区域、新手任务、体力和活动休息字段有变化，不声称账号状态不变。
 
-559 项客户端检查、Server 构建、协议检查通过；隔离 HTTP 覆盖 POST／PATCH 不同请求模型、64 位创建时间、会话轮换及记录脱敏，另检查错误房间标识和缺失字段。隔离端点不是 Server 房间实现。官方自定义规则、失败响应、到期回收及实时入房仍待核验；创建时间单位未单独验证。
+559 项客户端检查、Server 构建、协议检查通过；隔离 HTTP 覆盖 POST／PATCH 不同请求模型、64 位创建时间、会话轮换及记录脱敏，另检查错误房间标识和缺失字段。隔离端点不是 Server 房间实现。官方自定义规则、失败响应和到期回收仍待核验；普通私人入房验证见下文。
 
-## 私人房间实时创建与入房：命令 3070／3080（静态审计，未接入）
+## 私人房间实时创建与入房：命令 3070／3080
 
 `StartPrivateRoom` 在 HTTP 房间准备后等待 ReadyConnection，新建 MatchingRoom、AttachRoomModule、SetupPrivatePartyMatching，再调用 Core.Connect。不能假定旧预留对象已具有玩家资料或已完成入房。
 
@@ -167,7 +167,9 @@ Client 命令 `realtime-room <config> <target> <clientConfigs.json> <lobbyId> --
 | Join（1） | 重写 Join | 3080 | MultiLiveDirectJoinData |
 | UnlockJoin（2） | UnLockJoin | 3120 | DirectJoinData |
 
-`CreatePrivate`（`0x5cb6a50`）要求 RoomID 长度为52；保留本机玩家并清空其他玩家，将 `RoomID`、`PrivateRoomNumber`、可空的 `TotalPowerUpperLimit`／`TotalPowerLowerLimit`、`TotalPower`、`PlayerProperty` 序列化为 MultiLiveUnLockJoinData，再可靠发送3070并进入等待入房状态。总力与玩家属性使用真实用户资料，与普通 Join 一样不能留空或用常量代替。尽管模型名称含 UnLock，创建行为发送的仍是3070，不是3120。当前预留→HTTP房号→大厅设置流程尚未接入此创建分支，也尚未验证创建完成回包。
+`CreatePrivate`（`0x5cb6a50`）要求 RoomID 长度为52；保留本机玩家并清空其他玩家，将 `RoomID`、`PrivateRoomNumber`、可空的 `TotalPowerUpperLimit`／`TotalPowerLowerLimit`、`TotalPower`、`PlayerProperty` 序列化为 MultiLiveUnLockJoinData，再可靠发送3070并进入等待入房状态。六字段固定写出，空上下限为 nil。尽管模型名称含 UnLock，创建行为发送的仍是3070，不是3120。
+
+Client 命令 `realtime-create <config> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,leave-room` 串联预留、HTTP 房号与大厅设置、3070 创建、3000／3001 入房同步、房号属性推送、退出和独立会话 Suite 回读。玩家资料从本次 Suite 与 master 构造；HTTP 等待期间持续处理 UDP 确认、重传及 Echo。报告仅保存阶段、状态、计数和校验结果，不保存原始 UDP、玩家名、房号或房间标识。该入口只创建普通私人房间；3080 加入已有房间仍未提供 CLI。
 
 - `JoinPrivateRoom` 调用重写后的 `MatchingRoom.Join(roomId, 0)`。该方法要求 RoomID 长度为52，序列化 dump `MultiLiveDirectJoinData`，按当前房间命令版本可靠发送 **3080**。通用 `CP.Realtime.Room.Join` 的1019与解除锁定的3120均不是此入口。
 - 请求包含 `RoomID`、`TotalPower`、`PlayerProperty`。TotalPower 取 `CreateMyBasicInfo().TotalPowerIncludeBuff`；PlayerProperty 为本机玩家属性 `PackToObject(true)`，不能替换为空 map。
@@ -191,26 +193,26 @@ RoomUserBasicInfo 是整数键0～19的 MessagePack 数组，来源包括：
 
 总力继续追溯到 `DeckUtility.GetTotalPowerByDeckId(deckId, true)`（`0x4d82d7c`）：通过 DeckListData 找到编队，再调用 `DeckData.GetTotalPowerIncludeBuff(0)`（`0x634b658`）。后者按 IsSumCard 筛选成员，累加每名成员的 TotalPowerIncludeBuff，最后加上 HonorUtility.GetTotalPowerBuff；参数0时排除第六名 MV 成员。LiveDeckData 构造和 CreateMyBasicInfo 均调用当前活动总力模型限制总力；该链路不等于额外叠加一次活动加成。GetTotalPowerIncludeBuff 导出含局部变量分配警告，筛选与求和已交叉核对完整 lambda 和 IsSumCard，但未独立核验汇编。
 
-### 入房总力计算来源（区域计算已实现，完整总力尚未接入）
+### 入房总力计算来源
 
-`CardViewDataBase.SetupUserCardData`（`0x622fb90`）分别保存卡牌基础总力、区域道具、角色等级、MYSEKAI 门和家具加成，再相加写入 TotalPowerIncludeBuff。其后的 EventBonus 是另一个字段，不能将活动奖励倍率再乘进入房总力。以下为已追到的计算规则，完整总力计算与入房资料构造仍待接入。
+`CardViewDataBase.SetupUserCardData`（`0x622fb90`）分别保存卡牌基础总力、区域道具、角色等级、MYSEKAI 门和家具加成，再相加写入 TotalPowerIncludeBuff。其后的 EventBonus 是另一个字段，不能将活动奖励倍率再乘进入房总力。Client 的 `LiveDeckPower` 已装配这些规则，并由 `MultiLivePlayer` 用于当前主编队的入房资料。
 
 | 部分 | 已确认规则 | 实现时需保留的区别 |
 | --- | --- | --- |
 | 卡牌基础总力 | 三项等级属性，加画布、特训、Master Rank 和已读剧情奖励 | 特训仅在状态为 done 时加固定属性；等级属性来自参数表，不做线性插值 |
 | 称号 | 遍历全部持有的 userHonors，按 honorId 和持有 level 查 honors.levels.bonus 后相加 | 与穿戴槽位无关；精确匹配当前等级，不累计此前各级，也不使用最高级替代 |
 | 角色等级 | 以角色 ID 和 characterRank 查三项 powerBonusRate；各项卡牌属性分别乘百分比并向下取整，再相加 | 不先合并三项属性；卡牌属性计算包含画布、特训、Master Rank、剧情奖励 |
-| 区域道具 | 先按角色、组合、属性等规则筛选及合并，再逐属性累加浮点加成，最后各属性向下取整并求和 | Client 计算组件已实现；持有等级到 master 的数据装配及完整入房尚未接入 |
+| 区域道具 | 先按角色、组合、属性等规则筛选及合并，再逐属性累加浮点加成，最后各属性向下取整并求和 | 遍历 userAreas.areaItems，以道具 ID 和实际等级精确选择全部匹配 master 行 |
 | MYSEKAI 门 | 优先卡牌 supportUnit，否则角色 unit；piapro 选持有门中最高等级，其余选择对应 unit 的门；按门 ID 和等级查倍率 | 以卡牌基础总力乘倍率，先截断至两位小数，再向下取整；不按所有门倍率求和 |
-| MYSEKAI 家具 | 按卡牌角色查用户家具加成，应用普通及活动上限，再乘卡牌基础总力并向下取整 | 用户比例与上限均依赖配置缩放；上限选取的活动时机仍待核对 |
+| MYSEKAI 家具 | 按卡牌角色查用户家具加成，应用普通及活动上限，再乘卡牌基础总力并向下取整 | 家具上限取首个预告或进行中活动；总力上限只在 startAt 至 aggregateAt 之间生效，两者不能合并 |
 
 称号查询缺 master 或缺匹配等级时原实现贡献0；levels 中没有任何正 bonus 时也返回0。本地 master 可见称号105、106、128等 level1 的 bonus=10，证明不能因部分称号全为0而省略此项。这是数据与逆向交叉验证，不是官方总力对拍。
 
 家具缩放配置为 `mysekai_fixture_game_character_bonus_rate_scale`。普通上限和可显示活动上限取较小值，缺失的一方不参与限制；两者都缺失则上限0。原实现先将上限除以缩放配置，四舍五入至三位小数后截断至两位；用户 totalBonusRate 除以同一配置，再与此上限分别除以100后取较小值。配置不大于0时原实现记录错误并保留0，不能硬编码一个常用倍率。浮点运算和每一步取整需要独立边界检查。
 
-证据：HonorUtility.GetTotalPowerBuff（`0x4daf8d4`、`0x4db0914`）、UserDataManager.GetHonors（`0x63292dc`）、MasterHonor.GetBonus／ExistsBonus（`0x614e428`／`0x614e3a8`）；CardUtility.GetTotalPower（`0x4d67be4`）、GetTotalPowerBy（`0x4d69f5c`）、GetDefaultParameterBy（`0x4d685d8`）、GetMasterRankBonus（`0x4d68a70`）、GetEpisodeReadBonusAll（`0x4d6a9cc`）、GetCharacterRankBonusPowerBy（`0x4d6c400`）、GetAreaItemPowerBy（`0x4d6c0d8`）、GetGateBonus（`0x4d68110`）及完整筛选 lambda、GetFixtureBonus（`0x4d695d0`）、GetFixtureBonusLimitRate（`0x4d69328`）、家具加成模型构造（`0x6148e00`）和 FloatExtensions 取整方法。部分导出存在局部变量或类型别名噪声；尚缺 Master Lesson 缓存排序、活动选择和实际总力对照，不能据此宣称已能构造完整入房资料。
+证据：HonorUtility.GetTotalPowerBuff（`0x4daf8d4`、`0x4db0914`）、UserDataManager.GetHonors（`0x63292dc`）、MasterHonor.GetBonus／ExistsBonus（`0x614e428`／`0x614e3a8`）；CardUtility.GetTotalPower（`0x4d67be4`）、GetTotalPowerBy（`0x4d69f5c`）、GetDefaultParameterBy（`0x4d685d8`）、GetMasterRankBonus（`0x4d68a70`）、GetEpisodeReadBonusAll（`0x4d6a9cc`）、GetCharacterRankBonusPowerBy（`0x4d6c400`）、GetAreaItemPowerBy（`0x4d6c0d8`）、GetGateBonus（`0x4d68110`）及完整筛选 lambda、GetFixtureBonus（`0x4d695d0`）、GetFixtureBonusLimitRate（`0x4d69328`）、家具加成模型构造（`0x6148e00`）和 FloatExtensions 取整方法。Master Lesson 缓存按 masterRank 升序，取前 N 项；活动选择分别核对 GetDisplayableMasterEvent、GetEventState、CreateCurrentEventTotalPowerDataModel 和 IsWithinTime。上述计算有独立数值夹具；服务端回显客户端提交的总力不构成官方战力公式对拍。
 
-Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 master 卡牌、角色、编队、已选择持有等级的区域效果，以及三项卡牌属性；它尚未接入官方请求或 Server。
+Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 master 卡牌、角色、编队、已选择持有等级的区域效果，以及三项卡牌属性；已由 `LiveDeckPower` 接入入房请求，Server 尚未复用。
 
 - 先按角色限定、multi_unit、指定组合、指定属性、通用效果的顺序分支。同类倍率先合并，不逐条取整。
 - 组合和属性全员匹配检查前五项，要求至少五项且均匹配；组合允许角色 unit 或卡牌 supportUnit 匹配。三项全员倍率必须同时存在，否则全部回退普通倍率。属性全员倍率先转整数，组合全员倍率保留小数。
@@ -222,13 +224,19 @@ Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 m
 
 证据：完整 GetAreaItemBuffList（`0x4d6adb0`）、AddUnitBonus（`0x4d6ba88`）、AddAttributeBonus（`0x4d6bd9c`）、DeckUtility.IsMultiUnitDeck（`0x4d832a8`）、CheckAllMemberAttributeMatch（`0x4d8368c`）、DeckUtility.GetAreaItemBuffList（`0x4d819d8`）、MasterCard.OnAfterDeserialize（`0x614b71c`）及三个排序 lambda、DeckListData.Setup（`0x6346f10`）、DeckData 构造（`0x63473c8`）和成员构造链。独立小型夹具验证组合竞争、缺少全员字段、混合规则及取整边界；仍无官方区域总力对拍。
 
-回包边界：`MultiLiveRoomBase.OnResponse` 对3080/status1直接返回；status5／102交给带错误码的入房处理，其他失败走通用错误。该方法另在3000／3001成功分支反序列化 MultiLiveRoomSyncData，写入房间基本数据并触发 ResponseJoinPostProcess。因此只收到3080成功或可靠ACK都不能报告“已入房”；完整同步、推送与后处理仍需继续审计。
+回包边界：3070／3080 的 status1 或可靠 ACK 均不代表入房完成。需要3000／3001的 status1同步，按 MultiLiveRoomSyncData 校验房间、房号、本玩家、房主和完整玩家资料，并保留服务器返回的玩家索引；预留房间创建实测返回3001，不能只等待3000。MatchingRoom.ResponseJoinPostProcess（`0x5cb62ec`）与 SetupRoomSyncData（`0x5cb64b4`）分别设置房间基本数据、房主、房间属性及玩家资料。
 
-退出的已确认发送链：`CP.Realtime.Room.Leave()` 先组成 UTF8(innerRoomId)+UTF8(myUserId)，再调用基类 Leave(roomId,message)；基类再前置一次UTF8(roomId)，通过SDK可靠发送版本1／命令102。这是两层组合，不能直接简化为一次房间ID。退出成功回包、当前房间ID赋值及后续清理尚未完成审计，暂不暴露可执行退出入口。
+创建完成后，原客户端通过版本2／命令10010可靠发送 ROOM_NUMBER：DynamicPropertyPayload 的整数键10，值为 Int64 同步属性。实际更新通过10010/status255推送返回；载荷为多组“大端四字节长度＋DynamicPropertyPayload”。Client 逐帧检查实际房号，空请求确认不能视为同步成功。来源为 MultiLiveRoomBase.OnResponse、Room.SendRoomProperty（`0x5deafcc`）、Room.OnPush、ExtractReceivedBuffers（`0x5df27a4`）和 SyncProperty.Unpack（`0x5df5aa8`）。
+
+退出发送链：`CP.Realtime.Room.Leave()` 先组成 UTF8(innerRoomId)+UTF8(myUserId)，再调用基类 Leave(roomId,message)；基类再前置一次UTF8(roomId)，通过SDK可靠发送版本1／命令102。这是两层组合，不能简化为一次房间ID。SDK OnResponse_ 对102以 status1判定退出成功并清除房间状态。创建请求尝试后发生错误时，Client 最多尝试一次退出清理，然后独立认证回读；不自动重发创建。
 
 证据：完整 `StartPrivateRoom.MoveNext`（RVA `0x5cbd880`）、`JoinPrivateRoom`（`0x5cb6c7c`）、重写 Join（`0x5cb6e7c`）、SetupPrivatePartyMatching（`0x5cb7074`）、CreateCommonPlayerProperty（`0x5cb0f34`）、CreateMyBasicInfo（`0x4fda240`）、TotalPowerDataModel.UpdateTotalPower（`0x627d138`）及 getter、CreateCurrentEventTotalPowerDataModel（`0x4d988a0`）；Room.Leave（`0x5deaf3c`）、SDK双参数Leave（`0x62fdea4`）及Send_。属性字符串已与原字符串表核对，模型键及字段与dump核对。
 
-当前缺口：LiveDeckData 总力及各加成的完整计算、当前活动选择的时间边界、服装选择和荣誉任务映射、RoomUserBasicInfo 原 formatter、连接回调到 Join 的完整链路，以及入房／退出响应状态机。以上是静态依据，没有新增官方入房或退出样本；实现前继续补齐，不使用默认资料冒充测试账号。
+玩家资料补充：主编队 leader 决定队长；三件服装取队长角色与组合的实际穿戴。supportUnitType 为 full 时，优先固定服装组合，再取卡牌支援组合，最后取角色组合；其他类型取角色组合。空称号槽 Type=1，普通称号按 honorMissionType 查用户任务进度，羁绊称号不附带普通任务进度。玩家框取 attachStatus=first 的实际编号与布局。RoomUserBasicInfo 按原 formatter 写出二十项数组，不创建手写镜像模型。
+
+本节实现范围为 Client 普通私人建房和退出；Server 实时房间、加入已有房间、选曲及多人演出结算不在已实现范围内。
+
+2026-10-20 官方测试账号验证通过：预留、POST 房号和 PATCH 大厅成功；3070 后收到3001/status1，房间与本玩家的二十项资料一致。房号通过10010/status255实际推送确认，随后102/status1退出，释放旧会话后独立认证及 Suite 回读成功。UDP 收发各38个数据报，重传0；这证明上述 Client 私人建房流程可用，不证明官方会重新计算提交的总力，也不代表 Server 多人服务已实现。
 
 ## PUT `/api/user/{userId}/profile-honor`
 
@@ -2262,7 +2270,7 @@ Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通�
 
 `UserMultiLiveClearResponse` 同样返回 `UserLivePoint`，是后续取证入口。其请求 `UserMultiLiveClearRequest` 包含五个玩家成绩槽、总分、Super Fever、断线玩家及私人房间设置，不能将单人结算请求直接换路由发送。当前Server与协议Client未接入完整多人房间和结算流程；下一步需取得测试账号私人房间的开局、成功结算、随后单人结算及跨日回读，验证共享次数。`colorfulPassV2s.livePointRate` 提供通行证倍率，但本次查阅未证明每日加成以购买通行证为前提。
 
-私人房间前置链路：`MultiRoomMatchingOrganizer.PublishReserveRoomRequest` 调用 `MultiLiveRoomMatchingController.ReserveRoom`，先准备实时连接，再预留空房间；成功后才以返回的房间标识调用 `PatchPrivateRoomNumberAPI`。基础 UDP 已经官方验证，预留请求编码及状态变化见上文“私人房间预留命令 3060”；实际建房、申请房号、加入房间和多人结算仍未打通。
+私人房间前置链路：`MultiRoomMatchingOrganizer.PublishReserveRoomRequest` 调用 `MultiLiveRoomMatchingController.ReserveRoom`，先准备实时连接，再预留空房间；成功后以返回的房间标识 POST 申请房号，再 PATCH 设置大厅。Client 普通私人创建、入房、房号同步及退出已实测通过，见上文“私人房间实时创建与入房”；加入已有房间、选曲和多人结算仍未接通。
 
 歌曲1／Easy、零体力的C档样本中金币均为150、初级练习券均为2，材料组合不同；两份B档样本金币180、初级练习券2，材料组合也不同。其中一份B档响应将同一材料ID的数量2和4分成两条返回，奖励响应不能擅自按资源ID合并。当前固定掉落箱序列不覆盖这些结果；master奖励明细、倍率和评分门槛本身不足以确定池选择及抽取权重。
 

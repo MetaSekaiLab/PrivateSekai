@@ -122,6 +122,21 @@ public sealed class DiarkisUdpClient : IDisposable
         while (MatchedEchoResponses < minimumCount) await Pump(cancellationToken);
     }
 
+    public async Task<T> MaintainConnectionAsync<T>(Task<T> operation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            RequireConnected();
+            while (!operation.IsCompleted) await Pump(cancellationToken);
+        }
+        finally
+        {
+            // 先等在途 HTTP 完成，再交给调用方回读，避免业务请求与回读相互覆盖会话。
+            await operation;
+        }
+        return await operation;
+    }
+
     private async Task SendEcho(IEnumerable<string> addresses, CancellationToken cancellationToken)
     {
         var timestamp = (DateTime.UtcNow - DateTime.UnixEpoch).TotalMilliseconds;
