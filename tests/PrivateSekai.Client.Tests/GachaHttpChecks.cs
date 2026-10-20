@@ -56,8 +56,7 @@ internal static class GachaHttpChecks
                 Query = new() { ["isPriorityUsePaidJewel"] = "true" },
                 Expect = new() { ["/updatedResources/userChargedCurrency/free"] = JsonValue.Create(300),
                     ["/updatedResources/userChargedCurrency/paid"] = JsonValue.Create(300) } },
-            new() { Operation = "gacha-exchange", Body = JsonNode.Parse("""{"gachaCeilExchangeRequest":{"gachaExchangeId":1,"exchangeCount":1}}""")!.AsObject() },
-            new() { Operation = "gacha-wish", Body = JsonNode.Parse("""{"gachaId":1,"rateChoiceGachaDetails":[{"rateChoiceGachaWishId":2,"gachaDetailId":3}]}""")!.AsObject() }
+            new() { Operation = "gacha-exchange", Body = JsonNode.Parse("""{"gachaCeilExchangeRequest":{"gachaExchangeId":1,"exchangeCount":1}}""")!.AsObject() }
         ] };
         ScenarioRunner.Validate(scenario, [new() { BaseUrl = "http://localhost" }], new HashSet<string>());
         await ScenarioRunner.Run(client, scenario, Path.Combine(directory, "gacha"));
@@ -66,8 +65,7 @@ internal static class GachaHttpChecks
             "抽卡真实 HTTP 发放卡牌并记录两次抽取");
         check(saved.userGachaCeilItems.Single().quantity == 1 && saved.userMaterials.Single().quantity == 5,
             "天井兑换消耗道具并发放资源");
-        check(saved.userGachaCeilExchanges.Single().exchangeRemaining == 1 && saved.userRateChoiceGachaWishes.Single().gachaDetailId == 3,
-            "兑换剩余次数和愿望选择正确保存");
+        check(saved.userGachaCeilExchanges.Single().exchangeRemaining == 1, "兑换剩余次数正确保存");
         var record = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "gacha/002.json")))!;
         check(record["query"]!["isPriorityUsePaidJewel"]!.GetValue<string>() == "true" &&
             record["args"]!["gachaId"]!.GetValue<string>() == "1", "脱敏记录保留抽卡路径和付费优先参数");

@@ -4,6 +4,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using game::Sekai;
+using game::Sekai.ApiData;
 using PrivateSekai.Shared.Master;
 
 namespace PrivateSekai.Modules.Gacha;
@@ -30,6 +31,17 @@ public sealed class GachaMasterQueries(MasterData master)
     public MasterGachaBonus GetGachaBonus(int id) =>
         master.GetTable<MasterGachaBonus>("gachaBonuses", b => b.id).FindById(id)
         ?? throw new InvalidOperationException("Missing gacha bonus definition.");
+
+    public MasterRateChoiceGachaWish[] GetRateChoiceWishes(int groupId)
+    {
+        var wishes = master.GetTable<MasterRateChoiceGachaWish>("rateChoiceGachaWishes", w => w.id).Rows
+            .Where(w => w.groupId == groupId).OrderBy(w => w.seq).ToArray();
+        if (wishes.Length == 0 || wishes.Any(w => w.selectCount <= 0
+            || w.lotteryType is not ("rate_choice_first" or "rate_choice_second"))
+            || wishes.Select(w => w.lotteryType).Distinct().Count() != wishes.Length)
+            throw new InvalidOperationException("Invalid rate choice gacha wishes.");
+        return wishes;
+    }
 
     public MasterGiftGachaExchange? GetGiftExchange(int gachaId, int exchangeId) =>
         master.GetTable<MasterGiftGachaExchange>("giftGachaExchanges", e => e.id).FindById(exchangeId) is { } exchange

@@ -2099,6 +2099,20 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 - `Sekai.ScreenLayerRateChoiceGachaCardSelectPresenter.ShowRegisterConfirmDialog`: 注册确认弹窗入口。
 - `Sekai.ScreenLayerRateChoiceGachaCardSelectPresenter.ExecutePutUserRateChoiceGachaWishAsync`: 确认后实际执行保存请求的入口。
 
+### 服务端选择与实际抽取
+
+卡池通过 `rateChoiceGachaWishGroupId` 关联 `rateChoiceGachaWishes`。每组按 `selectCount` 选满，所选详情必须属于当前卡池，并且为 `isWish=true` 的普通四星；请求使用 `gachaDetails.id`，不是 `cardId`。当前master为主档2人、副档8人。空列表、空项、缺人、重复详情、错误组、跨池详情及不合资格的成员均拒绝，不能只保存半份名单。
+
+选择只注册一次，已保存后不能改选，也不重复接受相同名单；其他卡池可以独立注册。依据为 `MSG_RATE_CHOICE_GACHA_REGISTER_CAUTION` 和 `MSG_RATE_CHOICE_GACHA_UNDECIDED_CONFIRM` 的不可修改、选满后才能抽取规则。服务端同时检查卡池存在、类型与开放期，选择不收费、不发卡。旧实现允许普通池写入任意详情的测试已替换为普通池拒绝及专用Rate Choice全流程检查。
+
+抽取读取该池已保存的完整名单。概率先按 `gachaCardRarityRates` 的稀有度和 `lotteryType` 分段抽选：`normal` 从对应稀有度中排除已选详情，再按原权重抽选；`rate_choice_first` 和 `rate_choice_second` 分别在所属名单中等权抽选。当前六池的两档总概率分别为0.8%和1.6%，除以2人、8人后各为0.4%和0.2%；普通四星仍占0.6%。实现读取master，不固定这些人数或概率。响应 `obtainPrizes[].gachaLotteryType` 沿用既有普通奖品的 `normal`；master抽选分类不被推断为新的响应取值，固定保底仍走原分支。
+
+十连不足三星时，仅重抽末位，候选包含符合稀有度的普通、主档和副档，使用这些分段的条件概率；已获得三星以上时不再补抽。卡牌、重复数、任务、服装、费用、天井、行为次数及通行证免费次数沿用共同结算。未注册名单拒绝抽取；已存名单失效、缺配置或正概率段没有候选时整体失败，不静默退回普通池或重新分摊缺失的概率。选择和抽取均保留用户事务及编码成功后提交的边界。
+
+关键二进制依据：候选筛选投影（RVA `0x4b0e540`）要求四星及 `isWish`，请求构造 `CreateUserRateChoiceGachaWishRequest`（`0x4b0be58`）写入愿望组ID和详情ID；`GachaRateChoiceMemberContent.GetNotSelectedGachaDetails`（`0x639fb44`）排除已选详情ID；`CreateSelectedGachaDetails`（`0x639fe80`）按保存的详情ID构造各档名单；`GachaMemberRateTopCell.SetupRateChoiceGacha` 状态机（`0x639be1c`）以档位概率除以名单人数展示每人概率。当前卡池说明同时确认主副档人数、每人概率及十连不满足三星时重抽末位。
+
+验证包含本地业务、加密HTTP、独立认证Suite和SQLite重启后的继续抽取，覆盖分段边界、档内等权、普通池排除、不可改选、指定票券多抽、付费十连、任务、并发注册、配置错误、溢出和编码失败回滚。真实master使用合成用户及历史开放时段：6池31种行为、155个概率段检查、882名候选分别在主副档实际抽中；共1,037次注册、1,919次抽取、2,729张结果，默认及示例配置均通过。该方法验证实现按所选分支结算，不验证官方随机分布；当前所审计卡池均已过期，未消费官方付费资源，也未取得官方Rate Choice成功响应或验证Unity界面。
+
 ## GET `/{gameVersion}/{appHash}`
 
 > 审计版本: jp-6.5.5

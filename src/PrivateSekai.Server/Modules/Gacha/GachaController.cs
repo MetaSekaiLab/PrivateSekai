@@ -110,14 +110,19 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
     [HttpPut("api/user/{userId:long}/rate-choice-gacha-wish")]
     public IActionResult HandleRateChoiceGachaWish(long userId, [FromBody] UserRateChoiceGachaWishRequest request)
     {
-        return Encoded(operations.Execute(userId, () =>
+        try
         {
-            gacha.SaveRateChoiceGachaWish(request);
-
-            return new UserRateChoiceGachaWishResponse
+            return Encoded(operations.Execute(userId, () =>
             {
-                updatedResources = user.BuildRefresh()
-            };
-        }));
+                gacha.SaveRateChoiceGachaWish(request);
+                return new UserRateChoiceGachaWishResponse { updatedResources = user.BuildRefresh() };
+            }));
+        }
+        catch (GachaRequestRejectedException error)
+        {
+            Response.StatusCode = error.Status;
+            return Encoded(operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = (uint)error.Status, ErrorCode = error.Code, ErrorMessage = "" }));
+        }
     }
 }
