@@ -12,6 +12,15 @@ namespace PrivateSekai.Modules.Profiles;
 
 public sealed class CostumeService(UserSession user, CostumeMasterQueries master, MissionService missions, ResourceService resources)
 {
+    public bool Obtain(int costumeId)
+    {
+        var definition = master.GetCostume(costumeId) ?? throw new InvalidOperationException("Missing costume definition.");
+        if (user.Data.userCostume3dStatuses?.Any(c => c.costume3dId == costumeId && c.status == "available") == true) return false;
+        resources.Grant(new UserResource { resourceId = costumeId, resourceType = "costume_3d", quantity = 1 });
+        if (definition.partType == "body") missions.RecordCostumeAcquisition(definition.characterId);
+        return true;
+    }
+
     public UserResource[] ObtainForCard(int cardId)
     {
         var definitions = master.GetInitialCardCostumes(cardId);
@@ -27,11 +36,9 @@ public sealed class CostumeService(UserSession user, CostumeMasterQueries master
         var obtained = new List<UserResource>();
         foreach (var definition in definitions)
         {
-            if (user.Data.userCostume3dStatuses?.Any(c => c.costume3dId == definition.id && c.status == "available") == true) continue;
+            if (!Obtain(definition.id)) continue;
             var resource = new UserResource { resourceId = definition.id, resourceType = "costume_3d", quantity = 1 };
-            resources.Grant(resource);
             obtained.Add(resource);
-            if (definition.partType == "body") missions.RecordCostumeAcquisition(definition.characterId);
         }
         var offers = (user.Data.userCostume3dShopItems ?? []).ToList();
         var statuses = (user.Data.userCostume3dStatuses ?? []).ToList();

@@ -88,6 +88,7 @@ public sealed class GachaService(
         }
         var obtainGachaCeilItems = behavior.resourceCategory == "free_resource" && behavior.gachaSpinnableType == "colorful_pass"
             ? [] : GrantGachaCeilItem(gacha, gachaId, spinCount);
+        GrantExtra(behavior.gachaExtraId, executions);
         missions.RefreshGachaPanels();
 
         return new UserGachaResponse
@@ -102,6 +103,18 @@ public sealed class GachaService(
             obtainCharacterAllBonuses = [],
             obtainCharacterRepeatedBonuses = []
         };
+    }
+
+    private void GrantExtra(int extraId, int executions)
+    {
+        if (extraId == 0) return;
+        var box = master.GetExtraResourceBox(extraId);
+        foreach (var resource in resourceMaster.BuildResourcesFromBox("gacha_extra", box.id))
+        {
+            resource.quantity = checked(resource.quantity * executions);
+            if (resource.resourceType == "costume_3d") costumes.Obtain(resource.resourceId);
+            else resources.Grant(resource);
+        }
     }
 
     public void SaveRateChoiceGachaWish(UserRateChoiceGachaWishRequest request)

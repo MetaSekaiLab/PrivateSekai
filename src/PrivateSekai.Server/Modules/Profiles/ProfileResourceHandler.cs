@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
+using game::Sekai.CustomProfile;
 using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 
@@ -12,7 +13,8 @@ namespace PrivateSekai.Modules.Profiles;
 public sealed class ProfileResourceHandler : IResourceHandler
 {
     public IReadOnlyCollection<string> ResourceTypes { get; } =
-        ["costume_3d", "avatar_motion", "avatar_costume", "avatar_accessory", "avatar_coordinate", "avatar_skin_color", "penlight", "stamp"];
+        ["costume_3d", "avatar_motion", "avatar_costume", "avatar_accessory", "avatar_coordinate", "avatar_skin_color", "penlight", "stamp",
+         "custom_profile_collection_resource"];
 
     public void Grant(UserSession user, UserResource resource)
     {
@@ -21,6 +23,18 @@ public sealed class ProfileResourceHandler : IResourceHandler
 
         switch (resource.resourceType)
         {
+            case "custom_profile_collection_resource":
+                var collections = (user.Data.userCustomProfileResources ?? []).ToList();
+                var collection = collections.SingleOrDefault(c => c.customProfileResourceType == "collection" && c.customProfileResourceId == resource.resourceId);
+                if (collection == null)
+                {
+                    collection = new UserCustomProfileResource { customProfileResourceType = "collection", customProfileResourceId = resource.resourceId };
+                    collections.Add(collection);
+                }
+                collection.quantity = checked(collection.quantity + resource.quantity);
+                user.Data.userCustomProfileResources = collections.ToArray();
+                user.MarkChanged(nameof(SuiteUser.userCustomProfileResources));
+                break;
             case "stamp":
                 var stamps = (user.Data.userStamps ?? []).ToList();
                 if (stamps.Any(s => s.stampId == resource.resourceId)) return;

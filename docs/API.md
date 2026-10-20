@@ -1930,6 +1930,18 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 两份历史官方记录覆盖带服装单抽、十连中的首次与重复卡；服装奖励、制作入口、解锁记录、角色与称号任务的完整响应及相关状态增量均对拍通过。本地独立会话回读核对原记录后快照，未把历史后快照称为新发起的官方认证回读。
 
+### 抽卡行为的固定附赠
+
+成功抽取后，按本次行为的 `gachaExtraId` 查询 `gachaExtras.resourceBoxId`，再取purpose为 `gacha_extra` 的资源箱。`expand` 和 `costume_3d` 箱均发放全部details；数量按行为执行次数计算，十连配置的数量不再乘十，单抽指定 `executeCount=2` 则发两份资源箱。没有附赠配置时不额外发奖；缺失或非法配置整体失败，费用、卡牌、附赠及任务在同一用户事务中回滚。
+
+材料、avatar搭配和名片收藏通过资源服务发放。名片收藏保存到 `userCustomProfileResources`，以 `customProfileResourceType=collection` 和资源ID区分其他同编号素材，数量检查溢出。服装取得沿用首次获取规则，身体服装推进角色和称号收集；已持有服装保留原取得时间，不重复增加收集，头饰和发型不计身体套数。它们与抽到卡牌的初始服装共用同一取得入口。
+
+客户端 `ShowGachaExtraRewardDialog`／`CreateGachaRewardResourceDialog`（RVA `0x6563a20`／`0x6563cc0`）按行为master构造固定附赠展示；服装箱的 `CreateCostumeRewardResources`（`0x6564720`）只选择代表服装用于界面归类，不能据此减少实际发放。`CreateGifts`（`0x6563bb4`）仅在gift池使用 `obtainGachaExtras`。当前实现固定行为附赠，不把它混入gift或随机 `obtainGachaFreebies` 数组，用户实际持有变化通过 `updatedResources` 返回。
+
+验证使用本地合成用户与真实master：95种行为全部执行成功，核对11,041项材料、服装、avatar搭配及名片收藏；同时验证默认和示例配置、实际请求缓存作用域。该请求表集的缓存估算峰值为554,000,272字节，旧128MiB预算连当前gachas表都无法载入；默认与示例上限改为1GiB，按需加载并保留既有回收规则。已有部署若显式配置旧上限，需要相应调整。
+
+隔离加密HTTP验证连续抽取、指定两次单抽、十连、资源刷新、服装任务提示、独立Suite及配置失败回滚；业务检查另覆盖部分奖励后失败、编码回滚、数量溢出和SQLite重启全部持久字段。本用例依据客户端及master实现，未消费官方付费抽卡取得新样本，未验证Unity展示；随机附赠和gift池另行核验。
+
 ### 抽卡限次、指定剩余抽数与日周刷新
 
 行为 `executeLimit` 按卡池、行为和 `userGachas.count` 限制执行次数；卡池 `spinLimit` 按各行为的 `spinCount × count` 合计已抽数量，两者不能混用。耗尽名额返回 `409`、空错误码；拒绝不扣款、不发卡、不修改计数或消费待刷新字段。普通一次性名额不随日切恢复。

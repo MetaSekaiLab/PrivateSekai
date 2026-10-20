@@ -31,6 +31,20 @@ public sealed class GachaMasterQueries(MasterData master)
         master.GetTable<MasterGachaBonus>("gachaBonuses", b => b.id).FindById(id)
         ?? throw new InvalidOperationException("Missing gacha bonus definition.");
 
+    public MasterResourceBox GetExtraResourceBox(int extraId)
+    {
+        var extra = master.GetTable<MasterGachaExtra>("gachaExtras", e => e.id).FindById(extraId)
+            ?? throw new InvalidOperationException("Missing gacha extra definition.");
+        var box = master.GetTable<MasterResourceBox>("resourceBoxes", b => b.id).Rows
+            .SingleOrDefault(b => b.resourceBoxPurpose == "gacha_extra" && b.id == extra.resourceBoxId)
+            ?? throw new InvalidOperationException("Missing gacha extra resource box.");
+        if (box.resourceBoxType is not ("expand" or "costume_3d") || box.details == null || box.details.Length == 0
+            || box.details.Any(d => d.resourceQuantity <= 0 || string.IsNullOrEmpty(d.resourceType))
+            || box.resourceBoxType == "costume_3d" && box.details.Any(d => d.resourceType != "costume_3d"))
+            throw new InvalidOperationException("Invalid gacha extra resource box.");
+        return box;
+    }
+
     public float GetGachaBonusPointRate(bool paid)
     {
         var config = master.GetTable<MasterClientConfig>("clientConfigs", c => c.id).FindById(paid ? 114 : 113)
