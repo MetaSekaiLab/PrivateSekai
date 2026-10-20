@@ -269,7 +269,7 @@ public sealed class ProtocolClient : IDisposable
                 ?? throw new InvalidOperationException("响应不是 MessagePack map。");
             LastResponse = Redactor.Clean(decoded)?.AsObject();
             var validResponse = step.Operation == "suite-master-split"
-                ? decoded.Count > 0 && decoded.All(table => table.Value is JsonArray)
+                ? decoded.Count > 0 && !decoded.ContainsKey("errorCode") && decoded.All(table => table.Value is JsonArray or JsonObject)
                 : definition.RequiredResponseField is { } requiredField ? decoded.ContainsKey(requiredField) : decoded.Count == 0;
             if (!noContent && !validResponse)
                 throw new InvalidOperationException("响应结构不符合预期，可能为业务错误；已停止。");

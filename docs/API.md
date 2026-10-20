@@ -9,12 +9,12 @@
 ## GET `/api/suitemasterfile/{dataVersion}/{splitFile}`
 
 - Path：版本及分片文件名取自认证响应的 `suiteMasterSplitPath`，不固定分片数量、哈希或表名。无 query、body。
-- Response：加密 MessagePack map，键为 master 表名，值为行数组；一个分片包含多张表，可含空表。客户端在认证后据此加载当前版本数据。
+- Response：加密 MessagePack map，键为 master 表名或配置名，值为行数组或单对象配置；一个分片包含多张表，可含空表。客户端在认证后据此加载当前版本数据。MySekai 的体力恢复、通行证、预设槽位等配置在原 `SuiteMaster` 中为单对象，不能要求全部值都是数组。
 - Client 操作：`suite-master-split`，参数为 `dataVersion` 和 `splitFile`。检查完整版本和文件名格式，拒绝路径穿越；错误对象不能作为 master 表接收。
 - 官方静态缓存响应不返回轮换会话 token；读取后保留原会话。当前分片请求及紧接的 Suite 读取成功，确认该例外仅用于 master 静态读取，其他 API 保持原有轮换要求。
 - 场景记录仍使用通用脱敏规则，适合核对数值和结构，不能直接当作完整、无损的 master 发布文件。
 
-证据：认证返回的分片路径、已有分片下载与服务端实现、当前官方分片和后续 Suite 请求。隔离 HTTP 检查覆盖真实分片控制器的加密响应、多表及空表、非法路径、错误对象，以及无轮换 token 后继续业务请求。
+证据：认证返回的分片路径、已有分片下载与服务端实现、当前官方分片和后续 Suite 请求。官方 `06` 号分片包含五个上述单对象配置，与原 `SuiteMaster` 字段类型一致；修复后的实际读取及紧接的 Suite 请求均成功。隔离 HTTP 检查覆盖真实分片控制器的加密响应、多表、空表及这五种单对象、非法路径、错误对象／标量／null／空根对象，以及无轮换 token 后继续业务请求。
 
 ## GET `/api/user/{userId}/diarkis-auth`
 
