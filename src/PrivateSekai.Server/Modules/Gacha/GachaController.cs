@@ -104,6 +104,26 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
         }
     }
 
+    /// <summary>保存普通 Select List 的完整成员名单，剩余次数内允许改选。</summary>
+    [HttpPut("api/user/{userId:long}/gacha-wish")]
+    public IActionResult HandleGachaWish(long userId, [FromBody] UserGachaWishRequest request)
+    {
+        try
+        {
+            return Encoded(operations.Execute(userId, () =>
+            {
+                gacha.SaveGachaWish(request);
+                return new SuiteUserCommonResponse { updatedResources = user.BuildRefresh() };
+            }));
+        }
+        catch (GachaRequestRejectedException error)
+        {
+            Response.StatusCode = error.Status;
+            return Encoded(operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = (uint)error.Status, ErrorCode = error.Code, ErrorMessage = "" }));
+        }
+    }
+
     /// <summary>
     /// 保存 Rate Choice 抽卡的愿望选择。客户端在卡牌选择页确认选择后提交当前选择列表，成功后合并用户资源差异并继续选择完成流程。
     /// </summary>

@@ -2057,6 +2057,30 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 本地另验证最后一次兑换售罄、开放期边界、资源处理或响应编码失败回滚、账号隔离及数据库重启。替代票抵扣按客户端滑块计算：每张减少主费用的 `substituteQuantity`，票券只扣实际张数，累计不得超过替代上限；此分支有客户端与本地验证，尚无官方成功样本。卡牌兑换和 `gachaCeilExchangeIds` 批量入口不属于上述材料兑换结论。
 
+## PUT `/api/user/{userId}/gacha-wish`
+
+> 审计版本: jp-6.5.5
+> 关键词：抽卡，Select List，普通Wish，成员选择
+
+保存普通Select List抽卡的完整名单。客户端在选择页确认后发送请求，成功时合并用户资源差异并返回抽卡页；手动和随机选择都只在最终确认时提交。
+
+- Path `userId`: 当前用户ID。
+- Body `gachaId`: 卡池ID。
+- Body `gachaDetailIds`: 当前池的 `gachaDetails.id` 数组，使用详情ID，不是卡牌ID。
+- Response `updatedResources.userGachaWishes`: 完整名单，每项包含 `gachaId` 和 `gachaDetailId`。替换当前池名单，保留提交顺序及其他池的选择。
+
+普通Select List要求 `wishSelectCount>0`，且 `wishFixedSelectCount`、`wishLimitedSelectCount`、`rateChoiceGachaWishGroupId` 均为0。按 `wishSelectCount` 选满不重复的 `isWish=true` 四星详情；空列表、缺人、重复、跨池、卡牌ID及不合资格的成员均拒绝。保存前检查开放期、行为剩余次数和整池剩余抽数，选择不收费、不发卡。只要还有次数，抽取前后都允许改选；次数耗尽后不能改选，也不能继续抽取。
+
+实际抽取先按master的普通稀有度概率选择档位：四星只从本池保存的名单中等权抽取，未选四星不进入候选；其他稀有度沿用原池和权重。`over_rarity_4_once` 和 `over_rarity_3_once` 分别保留四星、三星以上的十连保障，不因使用Wish统一为四星必出。十连不足保障时仅重抽末位，使用满足条件的稀有度概率；已有符合条件的结果时不补抽。响应奖品类型仍为 `normal`，费用、天井、新卡／重复卡、服装、任务及行为次数沿用共同结算。
+
+没有名单时拒绝抽取，已存名单失效或master有负概率、非有限概率、空正概率段时整体失败，不退回全池或忽略空档重新分摊。选择和实际抽取都在同一用户操作中完成，响应编码成功后才提交；失败保留原名单及全部库存。
+
+协议依据为 `PutUserGachaWishAPI` 的构造函数（RVA `0x617cf64`）、`Execute`（`0x617cfec`）、回调（`0x617d180`）：PUT路径为 `user/{userId}/gacha-wish`，请求为 `UserGachaWishRequest`，响应为 `SuiteUserCommonResponse`。`ScreenLayerWishList.CreateUserDetailList`（`0x4b679e0`）按 `isWish` 提供候选，`ExecuteAPI`（`0x4b690f4`）提交详情ID；`GachaMemberContent.GetTargetListCaseSelectGacha`（`0x638d40c`）按本池已存详情构造名单。`GachaMemberRateTopCell.Setup` 状态机（`0x6399458`）以档位概率除以 `wishSelectCount` 展示各成员概率。`MSG_WISH_LIST_CONFIRM`、`MSG_WISH_LIST_CONFIRM_TIPS`、`MSG_WISH_LIST_GACHA_RATE_NOTICE` 分别确认选满门槛、剩余次数内可改选和四星仅来自所选成员。
+
+Client操作 `gacha-select-wish` 使用上述原模型，并可直接接 `gacha-draw`。既有 `gacha-wish` 操作名继续对应Rate Choice接口，不混用两种请求。客户端的分类Wish另用 `categorized-gacha-wish` 请求及分类规则。
+
+本地验证包含加密HTTP、独立认证Suite、SQLite重启后继续抽取、2／3／10人名单、抽后改选、两种保底、次数耗尽、并发最后一次、账号隔离和编码失败回滚。真实master按合成用户及历史开放时间覆盖28池28行为、84个概率段检查和全部5,831名可选成员；默认与示例配置均通过1,063次保存、1,063次抽取及10,630张结果。27池使用付费水晶且限一次，1池使用普通水晶且限三次。该验证强制选择分支，不验证官方随机分布；当前所审计卡池均已过期，未消费官方资源，尚无普通Wish官方成功响应或Unity界面验证。
+
 ## PUT `/api/user/{userId}/rate-choice-gacha-wish`
 
 > 审计版本: jp-6.5.5
