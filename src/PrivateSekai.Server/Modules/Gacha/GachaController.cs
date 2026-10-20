@@ -1,9 +1,9 @@
 extern alias game;
 
-using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using game::Sekai.ApiData;
+using PrivateSekai.Modules.Cards;
 using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
@@ -29,28 +29,10 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
         {
             return Encoded(operations.Execute(userId, () =>
             {
-                var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
-                var released = (user.Data.userReleaseConditions ?? []).Select(c => c.releaseConditionId).ToHashSet();
-                var before = (user.Data.userCharacterMissionStatuses ?? [])
-                    .Select(s => (s.characterId, s.missionId, s.parameterGroupId, s.seq)).ToHashSet();
+                var acquisitionResponse = new CardAcquisitionResponse(user.Data);
                 var response = gacha.ExecuteGacha(gachaId, gachaBehaviorId, isPriorityUsePaidJewel, executeCount, selectedCardId, selectedItemId);
                 response.updatedResources = user.BuildRefresh(prepareRefresh: false);
-                var newConditions = (user.Data.userReleaseConditions ?? []).Where(c => !released.Contains(c.releaseConditionId)).ToArray();
-                if (newConditions.Length > 0) response.updatedResources.newReleaseConditions = newConditions;
-                HonorMissionResponse.AddAchievementHints(response.updatedResources, previousHonor, missionMaster);
-                if (response.updatedResources.userCharacterMissions != null)
-                {
-                    var achieved = (user.Data.userCharacterMissionStatuses ?? [])
-                        .Where(s => !before.Contains((s.characterId, s.missionId, s.parameterGroupId, s.seq))).ToArray();
-                    var definitions = achieved.Select(s => s.characterId).Distinct().SelectMany(missionMaster.GetCharacterMissions)
-                        .ToDictionary(m => m.id);
-                    response.updatedResources.userCharacterMissions = response.updatedResources.userCharacterMissions.Select(m => new UserCharacterMissionV2
-                    {
-                        userId = m.userId, characterId = m.characterId, characterMissionType = m.characterMissionType,
-                        progress = m.progress, achievedMissions = achieved.Where(s => s.characterId == m.characterId &&
-                            definitions[s.missionId].characterMissionType == m.characterMissionType).ToArray()
-                    }).ToArray();
-                }
+                acquisitionResponse.AddHints(response.updatedResources, missionMaster);
                 return response;
             }));
         }
@@ -73,8 +55,10 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
         {
             return Encoded(operations.Execute(userId, () =>
             {
+                var acquisitionResponse = new CardAcquisitionResponse(user.Data);
                 var response = gacha.ExchangeGachaCeilItem(request);
                 response.updatedResources = user.BuildRefresh();
+                acquisitionResponse.AddHints(response.updatedResources, missionMaster);
                 return response;
             }));
         }

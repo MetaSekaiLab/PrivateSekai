@@ -67,6 +67,7 @@ public static class ServerServices
 
         services.AddScoped<InheritService>();
         services.AddScoped<CardService>();
+        services.AddScoped<CardAcquisitionService>();
         services.AddScoped<GachaService>();
         services.AddScoped<HomeService>();
         services.AddScoped<FriendMasterQueries>();

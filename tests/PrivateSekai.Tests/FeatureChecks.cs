@@ -733,7 +733,8 @@ internal static class FeatureChecks
             services.GetRequiredService<GachaMasterQueries>(),
             services.GetRequiredService<CardMasterQueries>(),
             services.GetRequiredService<ResourceMasterQueries>(), incompleteResources,
-            services.GetRequiredService<MissionService>(), services.GetRequiredService<CostumeService>());
+            services.GetRequiredService<MissionService>(), services.GetRequiredService<CostumeService>(),
+            services.GetRequiredService<CardAcquisitionService>());
         var failure = Check.Throws<NotSupportedException>(
             () => operation.Execute(4, () => incompleteGacha.ExecuteGacha(1, 1, false)), "抽卡中途资源处理失败");
         Check.That(failure.Message.Contains("gacha_ceil_item", StringComparison.Ordinal), "抽卡失败发生在末尾天井道具发放阶段");

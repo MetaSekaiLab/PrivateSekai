@@ -1,5 +1,6 @@
 extern alias game;
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using game::Sekai;
@@ -28,6 +29,27 @@ public sealed class ShopMasterQueries(MasterData master)
 
     public MasterMaterialExchangeSummary? GetMaterialExchangeSummary(int id) =>
         master.GetTable<MasterMaterialExchangeSummary>("materialExchangeSummaries", s => s.Id).FindById(id);
+
+    public MasterResourceBox? GetMaterialExchangeFreebieBox(MasterMaterialExchangeSummary summary, int cardId)
+    {
+        var group = summary.materialExchangeFreebieGroupJson;
+        if (group == null) return null;
+        if (group.id <= 0 || group.materialExchangeFreebieType != "exchange_already_owned_card")
+            throw new InvalidOperationException("Invalid material exchange freebie group.");
+        var card = master.GetTable<MasterCard>("cards", c => c.id).FindById(cardId)
+            ?? throw new InvalidOperationException("Missing exchanged card definition.");
+        var freebie = summary.materialExchangeFreebies?.SingleOrDefault(f => f.materialExchangeFreebieGroupId == group.id
+            && f.materialExchangeFreebieTypeId == card.characterId)
+            ?? throw new InvalidOperationException("Missing material exchange freebie mapping.");
+        var box = master.GetTable<MasterResourceBox>("resourceBoxes", b => b.id).Rows.SingleOrDefault(b =>
+            b.resourceBoxPurpose == "material_exchange_freebie" && b.id == freebie.resourceBoxId)
+            ?? throw new InvalidOperationException("Missing material exchange freebie box.");
+        if (box.resourceBoxType is not ("expand" or "list") || box.details == null || box.details.Length == 0
+            || box.details.Any(d => d.resourceType is not ("material" or "practice_ticket" or "skill_practice_ticket")
+                || d.resourceId <= 0 || d.resourceQuantity <= 0))
+            throw new InvalidOperationException("Invalid material exchange freebie resources.");
+        return box;
+    }
 
     public MasterAreaItem? GetAreaItem(int id) =>
         master.GetTable<MasterAreaItem>("areaItems", i => i.id).FindById(id);

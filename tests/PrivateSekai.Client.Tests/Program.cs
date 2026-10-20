@@ -122,6 +122,7 @@ RateChoiceGachaHttpChecks.WriteMaster(directory);
 SelectListGachaHttpChecks.WriteMaster(directory);
 CategorizedGachaHttpChecks.WriteMaster(directory);
 MemoriaExchangeHttpChecks.WriteMaster(directory);
+CardShopHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -961,6 +962,7 @@ try
     await ChallengeDeckHttpChecks.Run(client, config, store, directory, Check);
     await MaterialExchangeHttpChecks.Run(client, config, store, directory, Check);
     await MemoriaExchangeHttpChecks.Run(client, config, store, directory, Check);
+    await CardShopHttpChecks.Run(client, config, store, directory, Check);
     await EventExchangeHttpChecks.Run(client, config, store, directory, Check);
     await CharacterMissionHttpChecks.Run(client, store, app.Services, directory, Check);
     Fails(() => Operations.Path(Operations.All["custom-profile-card-delete"], new() { Args = new() { ["customProfileId"] = "1" } }, 1),

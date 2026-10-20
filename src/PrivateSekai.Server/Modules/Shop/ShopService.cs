@@ -3,6 +3,7 @@ extern alias game;
 using System;
 using System.Linq;
 using game::Sekai;
+using PrivateSekai.Modules.Cards;
 using PrivateSekai.Modules.Inventory;
 using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Resources;
@@ -15,7 +16,8 @@ public sealed class ShopService(
     ShopMasterQueries master,
     MissionService missions,
     ResourceMasterQueries resourceMaster,
-    ResourceService resourceService) : IUserRefreshHandler
+    ResourceService resourceService,
+    CardAcquisitionService acquisitions) : IUserRefreshHandler
 {
     public (int Status, UserResource[] Rewards) ExchangeEvent(int id, int count)
     {
@@ -55,8 +57,10 @@ public sealed class ShopService(
         var summary = master.GetMaterialExchangeSummary(definition.materialExchangeSummaryId)
             ?? throw new InvalidOperationException("Missing material exchange summary.");
         if (definition.refreshCycle is not ("none" or "monthly") || summary.materialExchangeType != "normal" ||
-            summary.materialExchangeFreebieGroupJson != null || summary.materialExchangeFreebies?.Length > 0)
+            summary.materialExchangeFreebieGroupJson is { materialExchangeFreebieType: not "exchange_already_owned_card" })
             return 501;
+        if (summary.materialExchangeFreebieGroupJson == null && summary.materialExchangeFreebies?.Length > 0)
+            throw new InvalidOperationException("Missing material exchange freebie group.");
         if (user.Now < definition.startAt || (definition.endAt > 0 && user.Now >= definition.endAt) ||
             user.Now < summary.StartAt || (summary.EndAt > 0 && user.Now >= summary.EndAt))
             throw new ArgumentException("Material exchange is not available.");
@@ -81,13 +85,31 @@ public sealed class ShopService(
             return 409;
         var rewards = resourceMaster.BuildResourcesFromBox("material_exchange", definition.resourceBoxId);
         if (rewards.Length == 0) throw new InvalidOperationException("Missing material exchange rewards.");
-        if (rewards.Any(r => r.resourceType is not ("practice_ticket" or "material" or "virtual_coin" or "mysekai_material") || r.quantity <= 0)) return 501;
+        if (rewards.Any(r => r.resourceType is not ("practice_ticket" or "material" or "virtual_coin" or "mysekai_material" or "card") || r.quantity <= 0)) return 501;
+        if (summary.materialExchangeFreebieGroupJson != null && rewards.Any(r => r.resourceType != "card"))
+            throw new InvalidOperationException("Card exchange freebies require card rewards.");
         if (rewards.Any(r => r.resourceType != "virtual_coin" && r.resourceId <= 0) ||
             rewards.Any(r => r.resourceType == "virtual_coin") && user.Data.userGamedata == null)
             throw new InvalidOperationException("Invalid material exchange reward inventory.");
         foreach (var reward in rewards) reward.quantity = checked(reward.quantity * count);
         foreach (var cost in amounts) resourceService.Consume(cost.Key.resourceType, cost.Key.resourceId, cost.Value);
-        resourceService.Grant(rewards);
+        foreach (var reward in rewards)
+        {
+            if (reward.resourceType != "card")
+            {
+                resourceService.Grant(reward);
+                continue;
+            }
+            var freebie = master.GetMaterialExchangeFreebieBox(summary, reward.resourceId);
+            var acquired = acquisitions.Grant(reward.resourceId, reward.quantity);
+            var repeated = reward.quantity - (acquired.IsNew ? 1 : 0);
+            if (freebie == null || repeated == 0) continue;
+            foreach (var resource in resourceMaster.BuildResourcesFromBox("material_exchange_freebie", freebie.id))
+            {
+                resource.quantity = checked(resource.quantity * repeated);
+                resourceService.Grant(resource);
+            }
+        }
         if (record == null)
         {
             record = new UserMaterialExchange { userId = user.UserId, materialExchangeId = id };

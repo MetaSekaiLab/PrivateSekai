@@ -2957,7 +2957,7 @@ Client 测试入口 `--replay-challenge-stage <record> <master> <output>` 从请
 - 再兑换一次后，两种次数均从 2 增至 3，更新时间改变，状态仍为 `exchangeable`。材料不足时官方返回 HTTP 409；重新认证回读确认材料、练习券、兑换记录不变，错误正文尚未对齐。
 - 无上限样本省略 `exchangeRemaining`；未发生的 `lastExchangedAt`、`refreshedAt` 也省略，不发送零值。
 
-Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchange`，要求明确提供整数消耗组与正整数次数。Server 支持 normal 商店中 `refreshCycle=none/monthly`、无附加奖励的普通材料或 Mysekai 材料消耗；奖励覆盖练习券、材料、虚拟货币及 Mysekai 材料。成本和完整资源箱奖励按次数倍乘，库存、次数和最后兑换时间同一事务提交。其他周期、附加奖励及资源类型仍返回本地 501，不代表官方状态码。原无上限练习券的两份官方响应与状态增量对拍结论保留。
+Client 已支持 `material-exchange`、示例场景及 `--replay-material-exchange`，要求明确提供整数消耗组与正整数次数。Server 支持 normal 商店中 `refreshCycle=none/monthly` 的普通材料或 Mysekai 材料消耗；奖励覆盖练习券、材料、虚拟货币、Mysekai 材料及卡牌，附加奖励支持下述已持有成员赠品。成本和完整资源箱奖励按次数倍乘，库存、次数和最后兑换时间同一事务提交。其他周期、赠品类型及资源类型仍返回本地 501，不代表官方状态码。原无上限练习券的两份官方响应与状态增量对拍结论保留。
 
 有限额项目按 `exchangeLimit` 限制本期数量，耗尽时 `exchangeRemaining=0`、`exchangeStatus=not_exchangeable`；超限及材料不足返回 409，保留全部用户状态。月度项目在日本时间每月 1 日零点恢复本期限额，保留 `totalExchangeCount` 和 `lastExchangedAt`，`refreshedAt` 保存下一次月初时间。正常 Suite／资源刷新会处理到期记录，直接兑换也能处理月切；跳过多月不叠加额度。一次性限量不随月份恢复。旧记录缺少截止时间时先保留已用次数并补齐下一截止时间，避免重发额度。
 
@@ -2972,6 +2972,16 @@ Mysekai 材料通过所属资源 Handler 扣发。消耗保留源库存记录及
 证据：`MaterialExchangeGroupingCostData.GetRelationCosts`（RVA `0x6353d0c`）按子项的成本组取得可选成本，选择弹窗按该资源库存判定可选；`ScreenLayerMasterLessonMaterialExchange.OnClickDialogOK`（`0x65d50e8`）提交所选成本的 `costGroupId` 和数量。`MysekaiUserDataUtility.GetMaterialCount`（`0x4ac25ec`）读取材料库存，`GetTotalMaterialPossession`（`0x4ac2774`）读取独立占用字段，容量例外函数（`0x4ac27d4`）区分角色材料等分类。库存与占用的服务端维护沿客户端行为及已有资源处理推导，尚无本用例官方扣发样本。
 
 当前完整 master 的角色 Memoria 目录包含26个目标、146个消耗选项，其中6个目标提供替代角色材料。默认／示例配置各以合成用户验证全部选项：1,752次首次及重复兑换、876次所选库存不足拒绝；包含实际资源、时间、计数和无副作用检查。隔离业务与加密 HTTP 另覆盖展示组误用、同号异类资源、并发、独立认证 Suite 回读、SQLite 重启、中途发奖和编码失败回滚。未执行官方 Memoria 兑换或 Unity 验收。
+
+普通成员兑换通过卡牌获得流程发卡，首次获得时解锁初始服装并推进成员、服装收集任务；重复获得增加等候室重复数和相关任务。卡牌自身的 `card_extra` 附赠沿用抽卡和天井的同一处理。响应仍使用 `UserExchangeResponse`；本次解锁条件、角色任务和称号提示加入 `updatedResources`，提示不保存到用户状态。
+
+`materialExchangeFreebieGroupJson.materialExchangeFreebieType=exchange_already_owned_card` 表示重复成员赠品。映射必须同时满足赠品组 ID 相等和 `materialExchangeFreebieTypeId=card.characterId`，再读取 `material_exchange_freebie` 用途的完整资源箱；不是按稀有度选箱。首次新卡不发此赠品，已持有卡每张发一份；批量中首张为新卡时只排除首张。当前赠品箱包含普通材料、技能练习券和练习券，逐项按重复张数结算。缺失或重复映射、错误用途、非法数量及库存溢出均拒绝并回滚卡牌、费用、服装、附赠、任务和兑换计数，不以空赠品成功返回。
+
+证据：`CharaTicketExchangeTabPage.CreateViewData`（RVA `0x6251580`）读取卡牌持有状态；`CreateFreebies`（`0x6251b48`）在未持有时返回空，已持有时取得赠品资源；其筛选函数（`0x6253804`）严格比较赠品组和卡牌角色编号。`ExecuteExchange`（`0x62522a8`）进入相同材料兑换请求。批量按实际重复张数结算由数量契约和上述持有判定推导，已有本地验证，尚无官方批量成员兑换样本。
+
+隔离业务和加密 HTTP 验证首次、重复、批量、不同角色、完整四项赠品、初始服装、附赠和任务提示；另覆盖并发首次兑换、独立认证 Suite 回读、SQLite 重启、后项赠品溢出及响应编码失败回滚。成员兑换与卡牌附赠同时存在的组合使用合成配置验证，不表示真实目录中已有此组合。未执行官方成员兑换或 Unity 验收。本用例使用的重复兑换赠品表独立于抽卡角色奖励表，不能补足 `gachaCharacterBonuses` 的纪念碎片映射。
+
+新版真实 master 的14个普通成员商店共3,080项，默认／示例配置各验证24,484次合法兑换、52次限额拒绝及4,032份重复赠品，均无差异；按各商店和条目的有效开放时段使用本地合成用户。当前这些兑换卡牌与 `cardExtras` 没有交集。另回归真实卡牌附赠的14条映射、304组抽取及24组天井换卡。
 
 ## POST `/api/user/{userId}/boost-item`
 

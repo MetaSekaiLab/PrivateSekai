@@ -11,6 +11,26 @@ namespace PrivateSekai.Modules.Cards;
 
 public sealed class CardMasterQueries(MasterData master, ResourceMasterQueries resources)
 {
+    public MasterResourceBox? GetCardExtraBox(int cardId)
+    {
+        var extra = master.GetTable<MasterCardExtra>("cardExtras", e => e.id).Rows.SingleOrDefault(e => e.cardId == cardId);
+        if (extra == null) return null;
+        if (extra.resourceBoxId <= 0) throw new InvalidOperationException("Invalid card extra resource box id.");
+        var box = master.GetTable<MasterResourceBox>("resourceBoxes", b => b.id).Rows
+            .SingleOrDefault(b => b.resourceBoxPurpose == "card_extra" && b.id == extra.resourceBoxId)
+            ?? throw new InvalidOperationException("Missing card extra resource box.");
+        if (box.resourceBoxType is not ("expand" or "list") || box.details == null || box.details.Length == 0
+            || box.details.Any(d => d.resourceId <= 0 || d.resourceQuantity <= 0
+                || d.resourceType is not ("avatar_accessory" or "stamp" or "custom_profile_collection_resource" or "mysekai_fixture")
+                || d.resourceType != "custom_profile_collection_resource" && d.resourceQuantity != 1))
+            throw new InvalidOperationException("Invalid card extra resources.");
+        return box;
+    }
+
+    public int GetStampCharacterId(int id) =>
+        (master.GetTable<MasterStamp>("stamps", s => s.id).FindById(id)
+         ?? throw new InvalidOperationException("Missing stamp definition.")).characterId1;
+
     public int[] GetSkillPracticeReleaseConditions()
     {
         var facility = master.GetTable<MasterFacility>("facilities").Rows.Single(f => f.facilityType == "skill_practice");

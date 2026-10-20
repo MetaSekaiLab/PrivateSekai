@@ -52,6 +52,7 @@ internal static class Program
         VirtualShopChecks.Run();
         MaterialExchangeLimitChecks.Run();
         MemoriaExchangeChecks.Run();
+        CardShopChecks.Run();
         LoginStatusChecks.Run();
         FriendChecks.Run();
         FriendFavoriteChecks.Run();

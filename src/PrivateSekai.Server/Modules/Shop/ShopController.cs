@@ -3,6 +3,7 @@ extern alias game;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
+using PrivateSekai.Modules.Cards;
 using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
@@ -51,8 +52,12 @@ public sealed class ShopController(UserOperation operations, UserSession user, S
         var status = 200;
         var encoded = operations.Execute(userId, () =>
         {
+            var acquisitionResponse = new CardAcquisitionResponse(user.Data);
             status = shop.ExchangeMaterial(materialExchangeId, costGroupId, count);
-            return status == 200 ? new UserExchangeResponse { updatedResources = user.BuildRefresh(), releasedActionSetIds = [] } : null;
+            if (status != 200) return null;
+            var response = new UserExchangeResponse { updatedResources = user.BuildRefresh(), releasedActionSetIds = [] };
+            acquisitionResponse.AddHints(response.updatedResources, missionMaster);
+            return response;
         });
         return status == 200 ? Encoded(encoded) : StatusCode(status);
     }
