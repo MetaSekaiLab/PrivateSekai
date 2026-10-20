@@ -55,6 +55,7 @@ LiveAreaPowerChecks.Run(Check);
 MultiLivePlayerChecks.Run(Check);
 MultiLiveRoomChecks.Run(Check);
 await DiarkisUdpChecks.Run(Check);
+await DiarkisRedirectChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
     "sensitive-diagnostic-placeholder", new IOException("sensitive-diagnostic-placeholder")))!;
 Check(networkFailure["httpRequestError"]!.GetValue<string>() == "SecureConnectionError" &&
@@ -394,6 +395,15 @@ app.MapPatch("/api/user/1/diarkis-room/fixture-room", async (HttpContext context
         createdAt = 1791524750000L, multiLiveLobbyId = 7, liveRuleType = "normal"
     })));
 }).WithMetadata(new PrskDecryptRequestAttribute());
+app.MapGet("/api/user/1/diarkis-room-type/multi_live/no/12345", (HttpContext context) =>
+{
+    Check(!context.Request.Query.Any() && context.Request.ContentLength is null or 0, "房号查询以GET发送类型和房号，无请求体或附加查询");
+    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new PrivateRoomNumberPayload
+    {
+        privateRoomType = "multi_live", roomNo = 12345, roomId = "fixture-room",
+        createdAt = 1791524750000L, multiLiveLobbyId = 7, liveRuleType = "normal"
+    })));
+});
 app.MapControllers();
 await app.StartAsync();
 try
@@ -829,6 +839,26 @@ try
         && roomNumberResponse["createdAt"]!.GetValue<long>() == 1791524750000L,
         "房号响应保留房号及64位创建时间，不要求Suite刷新字段");
     Check(!Operations.All["private-room-number"].Snapshot, "申请房号不自动合并Suite");
+    var lookupCaptures = Path.Combine(directory, "room-lookup-http");
+    client.CaptureTo(lookupCaptures);
+    var lookup = await client.Send(new()
+    {
+        Operation = "private-room-lookup", Args = new() { ["privateRoomType"] = "multi_live", ["roomNo"] = "12345" }
+    });
+    Check(PrivateSekai.Client.Realtime.MultiLiveReservation.ReadRoomNumber(lookup, "fixture-room") == 12345
+        && lookup["multiLiveLobbyId"]!.GetValue<int>() == 7 && lookup["createdAt"]!.GetValue<long>() == 1791524750000L,
+        "房号查询解密后保留房间、大厅、规则和64位创建时间，不要求刷新字段");
+    Check(Operations.All["private-room-lookup"].Method == "GET" && !Operations.All["private-room-lookup"].Snapshot,
+        "房号查询作为独立只读操作，不自动合并Suite");
+    Check(Directory.GetFiles(lookupCaptures).All(f => !Path.GetFileName(f).Contains("12345") && !File.ReadAllText(f).Contains("12345")),
+        "房号查询路径、文件名和响应都隐藏房号");
+    Check(client.LastResponse!["roomId"]!.GetValue<string>() == "<redacted>", "房号查询的返回房间标识脱敏");
+    foreach (var value in new[] { "0", "-1", "1/other", "2147483648" })
+        Fails(() => Operations.Path(Operations.All["private-room-lookup"], new()
+            { Args = new() { ["privateRoomType"] = "multi_live", ["roomNo"] = value } }, 1), "查询拒绝非法或穿越房号");
+    Fails(() => Operations.Path(Operations.All["private-room-lookup"], new()
+        { Args = new() { ["privateRoomType"] = "multi_live/other", ["roomNo"] = "1" } }, 1), "查询类型不能注入额外路径");
+    Fails(() => Operations.Path(Operations.All["private-room-lookup"], new(), 1), "查询必须提供房间类型和房号");
     Fails(() => Operations.Path(Operations.All["private-room-number"], new(), 1), "申请房号必须提供预留标识");
     Fails(() => Operations.Path(Operations.All["private-room-number"], new() { Args = new() { ["roomId"] = "../other" } }, 1),
         "房间标识拒绝路径穿越");

@@ -95,6 +95,47 @@ internal static class MultiLiveRoomChecks
         check(SyncPropertyEncoding.ReadInt64(SyncPropertyEncoding.Int64(long.MinValue)) == long.MinValue
             && SyncPropertyEncoding.ReadString(SyncPropertyEncoding.String(name)) == name, "同步属性读取校验类型与长度并保留数值及 Unicode");
 
+        var joinBytes = MultiLiveRoom.JoinRequest(id, name, info);
+        var join = DumpSerializer.Deserialize<MultiLiveDirectJoinData>(joinBytes);
+        check(JsonNode.Parse(MessagePackSerializer.ConvertToJson(joinBytes))!.AsObject().Count == 3
+            && join.roomId == id && join.totalPower == info.TotalPowerIncludeBuff
+            && join.playerProperty.values.Keys.Order().SequenceEqual(new[] { 1, 2, 5, 7 }),
+            "3080加入已有房间使用三字段模型，携带独立玩家资料而非创建请求");
+        sync.playerProperty = join.playerProperty;
+        sync.ownerId = "fixture-owner";
+        check(MultiLiveRoom.ParseCreated(Response(sync) with { Command = 3001 }, id, number, userId, name, info, "fixture-owner").ownerId == "fixture-owner",
+            "加入方验证实际房主，不将自己误认为房主");
+        Reject(() => MultiLiveRoom.ParseCreated(Response(sync), id, number, userId, name, info, "other-owner"));
+        var players = new[]
+        {
+            new RoomSyncPlayer { userId = "fixture-owner", index = 1, playerProperty = MultiLiveRoom.PlayerProperty("房主", info) },
+            new RoomSyncPlayer { userId = userId, index = 2, playerProperty = join.playerProperty }
+        };
+        var memberPush = new DiarkisResponse(2, 3001, 255,
+            [.. Frame(DumpSerializer.Serialize(players[0])), .. Frame(DumpSerializer.Serialize(players[1]))], 0);
+        var entered = MultiLiveRoom.ReadMemberJoins(memberPush);
+        check(entered.Select(p => p.userId).SequenceEqual(new[] { "fixture-owner", userId }) && entered[1].index == 2,
+            "成员加入推送按多帧RoomSyncPlayer解析，保留身份和原始索引");
+        MultiLiveRoom.RequirePlayer(entered[1].playerProperty, join.playerProperty);
+        Reject(() => MultiLiveRoom.RequirePlayer(entered[0].playerProperty, join.playerProperty));
+        Reject(() => MultiLiveRoom.RequirePlayer(new DynamicPropertyPayload { values = [] }, join.playerProperty));
+        Reject(() => MultiLiveRoom.ReadMemberJoins(memberPush with { Status = 1 }));
+        Reject(() => MultiLiveRoom.ReadMemberJoins(memberPush with { Payload = [.. memberPush.Payload, 0] }));
+        var left = new DiarkisResponse(1, 102, 255,
+            [.. Frame(Encoding.UTF8.GetBytes(id + "fixture-owner")), .. Frame(Encoding.UTF8.GetBytes(id + userId))], 0);
+        check(MultiLiveRoom.ReadMemberLeaves(left, id).SequenceEqual(new[] { "fixture-owner", userId }),
+            "成员退出先拆大端长度帧，再剥离52字节房间ID，取得实际退出玩家");
+        Reject(() => MultiLiveRoom.ReadMemberLeaves(left with { Status = 1 }, id));
+        Reject(() => MultiLiveRoom.ReadMemberLeaves(left, new string('x', 52)));
+        Reject(() => MultiLiveRoom.ReadMemberLeaves(left with { Payload = Frame(Encoding.UTF8.GetBytes(id)) }, id));
+        var indexRequest = JsonNode.Parse(MessagePackSerializer.ConvertToJson(MultiLiveRoom.UserIndexRequest(userId)))!.AsObject();
+        check(indexRequest.Count == 1 && indexRequest["UserID"]!.GetValue<string>() == userId, "缺索引时1021以单字段UserIdPayload查询，不补造槽位编号");
+        var indexResponse = new DiarkisResponse(2, 1021, 1, DumpSerializer.Serialize(new UserIndexPayload { userId = userId, index = 7 }), 0);
+        check(MultiLiveRoom.ParseUserIndex(indexResponse, userId) == 7, "成员索引按1021回包与目标玩家匹配，保留服务器原值");
+        Reject(() => MultiLiveRoom.ParseUserIndex(indexResponse with { Status = 4 }, userId));
+        Reject(() => MultiLiveRoom.ParseUserIndex(indexResponse, "other"));
+        Reject(() => MultiLiveRoom.ParseUserIndex(indexResponse with { Payload = DumpSerializer.Serialize(new UserIndexPayload { userId = userId }) }, userId));
+
         void Parse(DiarkisResponse value) => MultiLiveRoom.ParseCreated(value, id, number, userId, name, info);
         static DiarkisResponse Response(MultiLiveRoomSyncData value) => new(2, 3000, 1, DumpSerializer.Serialize(value), 0);
         void Reject(Action action)

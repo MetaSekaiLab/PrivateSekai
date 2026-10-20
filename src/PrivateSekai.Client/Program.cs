@@ -8,6 +8,10 @@ internal static class Program
     {
         try
         {
+            if (args is ["realtime-party", var ownerConfig, var guestConfig, var partyTarget, var partyMaster, var partyLobby,
+                "--official-write", "auth,reserve-room,private-room-number,private-room-update,create-room,join-room,leave-room"])
+                return await Realtime.RealtimeProbe.Run(ownerConfig, partyTarget, Path.Combine(partyMaster, "clientConfigs.json"),
+                    int.Parse(partyLobby, System.Globalization.CultureInfo.InvariantCulture), partyMaster, guestConfig) ? 0 : 2;
             if (args is ["realtime-create", var createConfig, var createTarget, var createMaster, var createLobby,
                 "--official-write", "auth,reserve-room,private-room-number,private-room-update,create-room,leave-room"])
                 return await Realtime.RealtimeProbe.Run(createConfig, createTarget, Path.Combine(createMaster, "clientConfigs.json"),
@@ -41,6 +45,7 @@ internal static class Program
             }
             if (args.Length < 4 || args[0] is not ("plan" or "run"))
             {
+                Console.WriteLine("realtime-party <ownerConfig> <guestConfig> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,leave-room");
                 Console.WriteLine("realtime-create <config> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,leave-room");
                 Console.WriteLine("realtime-room <config> <target> <clientConfigs.json> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update");
                 Console.WriteLine("list\nplan|run <config> <scenario> <target[,target]> [--official-write <operation[,operation]>]\nrealtime-check <config> <target> --official-write auth\nrealtime-reserve <config> <target> <clientConfigs.json> --official-write auth,reserve-room\ncompare <left.json> <right.json> <report.json>\naudit-live-rewards <capture.json> <resourceBoxes.json> <report.json>");

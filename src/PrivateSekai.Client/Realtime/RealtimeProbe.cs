@@ -13,17 +13,25 @@ namespace PrivateSekai.Client.Realtime;
 public static class RealtimeProbe
 {
     public static async Task<bool> Run(string configurationPath, string targetName, string? clientConfigsPath = null,
-        int? lobbyId = null, string? masterDirectory = null)
+        int? lobbyId = null, string? masterDirectory = null, string? guestConfigurationPath = null)
     {
         if (lobbyId.HasValue && (lobbyId <= 0 || clientConfigsPath == null))
             throw new InvalidOperationException("房间设置需要客户端配置和有效大厅 ID。");
         if (masterDirectory != null && !lobbyId.HasValue)
             throw new InvalidOperationException("创建房间需要指定大厅。");
+        if (guestConfigurationPath != null && masterDirectory == null)
+            throw new InvalidOperationException("双账号私房需要完整 master 数据。");
         var roomTtl = clientConfigsPath == null ? (int?)null : MultiLiveReservation.ReadRoomTtl(
             JsonNode.Parse(File.ReadAllText(clientConfigsPath))!.AsArray(), LiveRuleType.normal);
         var configuration = JsonFiles.Read<ClientConfiguration>(configurationPath);
         if (!configuration.Targets.TryGetValue(targetName, out var target))
             throw new InvalidOperationException("目标不存在。");
+        if (guestConfigurationPath != null)
+        {
+            var other = JsonFiles.Read<ClientConfiguration>(guestConfigurationPath);
+            if (!other.Targets.TryGetValue(targetName, out var guestTarget) || guestTarget.Kind != target.Kind || guestTarget.Validate() != target.Validate())
+                throw new InvalidOperationException("双账号私房必须使用同一服务端与目标类型。");
+        }
         var authStep = new ScenarioStep { Operation = "auth" };
         var realtimeStep = new ScenarioStep { Operation = "diarkis-auth", Args = new() { ["diarkisServerType"] = "multi" } };
         ScenarioRunner.Validate(new Scenario { Steps = [authStep, realtimeStep] }, [target], new HashSet<string> { "auth" });
@@ -102,7 +110,7 @@ public static class RealtimeProbe
             report["httpAuthSucceeded"] = true;
             // 连接凭证仅使用本次响应原对象，报告不保存地址、密钥或原始报文。
             realtime = new DiarkisUdpClient(authentication, true);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(guestConfigurationPath == null ? 60 : 120));
             report["phase"] = "udp-handshake";
             await realtime.ConnectAsync(timeout.Token);
             report["udpHandshakeSucceeded"] = true;
@@ -173,6 +181,7 @@ public static class RealtimeProbe
                         report["createAttempted"] = true;
                         await realtime.SendReliableAsync(MultiLiveReservation.Version, MultiLiveRoom.CreateCommand,
                             createRequest, timeout.Token);
+                        MultiLiveRoomSyncData room = default;
                         while (true)
                         {
                             response = await Receive(timeout.Token);
@@ -184,11 +193,11 @@ public static class RealtimeProbe
                             }
                             if (response.Command is not (MultiLiveRoom.CreatedCommand or MultiLiveRoom.JoinedCommand) || response.IsPush) continue;
                             report["joinResponseCommand"] = response.Command;
-                            var sync = MultiLiveRoom.ParseCreated(response, createdRoomId, roomNumber,
+                            room = MultiLiveRoom.ParseCreated(response, createdRoomId, roomNumber,
                                 http.UserId.ToString(CultureInfo.InvariantCulture), nickname!, basic);
                             report["roomJoined"] = true;
-                            report["ownIndex"] = sync.index;
-                            report["playerCount"] = new[] { sync.userId }.Concat((sync.players ?? []).Select(p => p.userId)).Distinct().Count();
+                            report["ownIndex"] = room.index;
+                            report["playerCount"] = new[] { room.userId }.Concat((room.players ?? []).Select(p => p.userId)).Distinct().Count();
                             report["basicInfoMatches"] = true;
                             break;
                         }
@@ -206,6 +215,14 @@ public static class RealtimeProbe
                             if (MultiLiveRoom.ConfirmsRoomNumber(response, roomNumber)) break;
                         }
                         report["roomNumberSyncConfirmed"] = true;
+                        if (guestConfigurationPath != null)
+                        {
+                            report["phase"] = "guest-room-flow";
+                            var guestReport = new JsonObject();
+                            report["guest"] = guestReport;
+                            await MultiLiveGuest.Run(guestConfigurationPath, targetName, masterDirectory!, Path.Combine(output, "guest"),
+                                realtime, room, lobbyId.Value, guestReport, timeout.Token);
+                        }
                         report["phase"] = "leave-private-room";
                         await Leave(timeout.Token);
                     }
@@ -217,7 +234,8 @@ public static class RealtimeProbe
             report["suiteReadbackSucceeded"] = true;
             report["complete"] = realtime.ClientKeyAcknowledged && matches && !realtime.LastEcho.IsOffline
                 && (masterDirectory == null || (report["roomJoined"]?.GetValue<bool>() == true
-                    && report["roomNumberSyncConfirmed"]?.GetValue<bool>() == true && report["leaveSucceeded"]?.GetValue<bool>() == true));
+                    && report["roomNumberSyncConfirmed"]?.GetValue<bool>() == true && report["leaveSucceeded"]?.GetValue<bool>() == true))
+                && (guestConfigurationPath == null || report["guest"]?["complete"]?.GetValue<bool>() == true);
             report["phase"] = "finished";
             return report["complete"]!.GetValue<bool>();
         }
@@ -260,6 +278,7 @@ public static class RealtimeProbe
                 report["sentDatagrams"] = realtime.SentDatagrams;
                 report["receivedDatagrams"] = realtime.ReceivedDatagrams;
                 report["retransmissions"] = realtime.Retransmissions;
+                report["redirects"] = realtime.Redirects;
                 realtime.Dispose();
             }
             JsonFiles.Write(Path.Combine(output, "report.json"), report);

@@ -155,6 +155,14 @@ Client 命令 `realtime-room <config> <target> <clientConfigs.json> <lobbyId> --
 
 559 项客户端检查、Server 构建、协议检查通过；隔离 HTTP 覆盖 POST／PATCH 不同请求模型、64 位创建时间、会话轮换及记录脱敏，另检查错误房间标识和缺失字段。隔离端点不是 Server 房间实现。官方自定义规则、失败响应和到期回收仍待核验；普通私人入房验证见下文。
 
+## GET `/api/user/{userId}/diarkis-room-type/{privateRoomType}/no/{roomNo}`
+
+- Path：当前 `userId`、客户端 `PrivateRoomType` 枚举字符串、正整数房号；无 query 或 body。Client 操作 `private-room-lookup`，不自动读取 Suite。
+- Response：`PrivateRoomNumberPayload`，包含类型、房号、房间标识、64 位创建时间、可空大厅 ID、规则及 parameter。普通私房加入要求查询结果与房主的房间、房号及大厅一致；缺大厅不能继续加入。
+- 时机：`MultiRoomMatchingOrganizer.JoinPrivateRoom` 查询房号，成功回调读取 roomId、liveRuleType 和 multiLiveLobbyId，随后 StartPrivateRoom 以 Join 行为进入3080链路。查询本身不代表入房。
+- 证据：`GetPrivateRoomNumberAPI.Execute`（`0x6194410`）method0、空 body；`StringLiteral_30349` 为 `user/{0}/diarkis-room-type/{1}/no/{2}`，回调只转交结果。调用入口 `0x5cbf330` 及完整成功回调 `0x5cbfe0c` 已核对。
+- 隔离 HTTP 检查覆盖路径、空请求体、加密响应、会话轮换和房号路径／文件名脱敏；非法类型、缺参数、非法房号在发送前拒绝。真实记录只保存字段结构和校验结果。
+
 ## 私人房间实时创建与入房：命令 3070／3080
 
 `StartPrivateRoom` 在 HTTP 房间准备后等待 ReadyConnection，新建 MatchingRoom、AttachRoomModule、SetupPrivatePartyMatching，再调用 Core.Connect。不能假定旧预留对象已具有玩家资料或已完成入房。
@@ -169,7 +177,11 @@ Client 命令 `realtime-room <config> <target> <clientConfigs.json> <lobbyId> --
 
 `CreatePrivate`（`0x5cb6a50`）要求 RoomID 长度为52；保留本机玩家并清空其他玩家，将 `RoomID`、`PrivateRoomNumber`、可空的 `TotalPowerUpperLimit`／`TotalPowerLowerLimit`、`TotalPower`、`PlayerProperty` 序列化为 MultiLiveUnLockJoinData，再可靠发送3070并进入等待入房状态。六字段固定写出，空上下限为 nil。尽管模型名称含 UnLock，创建行为发送的仍是3070，不是3120。
 
-Client 命令 `realtime-create <config> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,leave-room` 串联预留、HTTP 房号与大厅设置、3070 创建、3000／3001 入房同步、房号属性推送、退出和独立会话 Suite 回读。玩家资料从本次 Suite 与 master 构造；HTTP 等待期间持续处理 UDP 确认、重传及 Echo。报告仅保存阶段、状态、计数和校验结果，不保存原始 UDP、玩家名、房号或房间标识。该入口只创建普通私人房间；3080 加入已有房间仍未提供 CLI。
+Client 命令 `realtime-create <config> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,leave-room` 串联预留、HTTP 房号与大厅设置、3070 创建、3000／3001 入房同步、房号属性推送、退出和独立会话 Suite 回读。玩家资料从本次 Suite 与 master 构造；HTTP 等待期间持续处理 UDP 确认、重传及 Echo。报告仅保存阶段、状态、计数和校验结果，不保存原始 UDP、玩家名、房号或房间标识。
+
+双账号命令 `realtime-party <ownerConfig> <guestConfig> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,leave-room` 在上述建房后，用另一账号查询房号并发送3080。双方必须为不同账号且目标服务端一致。加入方完整同步应包含房主和本人，并核对房主资料；房主通过3001/status255的多帧 RoomSyncPlayer 推送核对加入方资料。各端索引按原同步保留。加入方退出后，房主还须收到版本1／102/status255的退出推送，再由房主退出。两账号分别释放旧 HTTP 锁后独立认证和 Suite 回读，全部步骤通过才报告完成。任一侧等待时持续推进另一侧 UDP；异常时最多分别尝试一次退出，不自动重发入房业务。
+
+索引按各次同步的原值导入，不作跨端判等。官方实测同一房主在建房同步中 Index=1，在加入方的成员列表中 Index=2；资料和身份均一致。`Player.ImportSyncData`（`0x5de29f0`）只赋值，不比较其他客户端的旧同步。原 ValidateUserIndex（`0x5ded6bc`）遇到0时调用 RequestUserIndex（`0x5dea904`），以版本2／1021和 UserIdPayload 的 `UserID` 查询，并按 UserIndexPayload 更新；Client 保留此分支及隔离检查。实测额外发送1021没有返回，尚无官方零索引查询成功样本，不用该查询强制刷新所有非零索引，也不补造索引。
 
 - `JoinPrivateRoom` 调用重写后的 `MatchingRoom.Join(roomId, 0)`。该方法要求 RoomID 长度为52，序列化 dump `MultiLiveDirectJoinData`，按当前房间命令版本可靠发送 **3080**。通用 `CP.Realtime.Room.Join` 的1019与解除锁定的3120均不是此入口。
 - 请求包含 `RoomID`、`TotalPower`、`PlayerProperty`。TotalPower 取 `CreateMyBasicInfo().TotalPowerIncludeBuff`；PlayerProperty 为本机玩家属性 `PackToObject(true)`，不能替换为空 map。
@@ -234,9 +246,13 @@ Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 m
 
 玩家资料补充：主编队 leader 决定队长；三件服装取队长角色与组合的实际穿戴。supportUnitType 为 full 时，优先固定服装组合，再取卡牌支援组合，最后取角色组合；其他类型取角色组合。空称号槽 Type=1，普通称号按 honorMissionType 查用户任务进度，羁绊称号不附带普通任务进度。玩家框取 attachStatus=first 的实际编号与布局。RoomUserBasicInfo 按原 formatter 写出二十项数组，不创建手写镜像模型。
 
-本节实现范围为 Client 普通私人建房和退出；Server 实时房间、加入已有房间、选曲及多人演出结算不在已实现范围内。
+连接切换：版本0／命令2的成功响应或推送携带 `BE EF FE ED` 加 UTF8 `host:port`。Client 按该控制消息发送旧节点 FIN，保留 SID、clientKey 和加密材料，重建 UDP 并清空旧序号、重传和分片状态。直接推送与 Echo 内附通知使用同一处理；仅按明确的服务端切换指令重连，不自行重发3080。来源为 `ReconnectCommand_`（`0x60b7ee4`）、`ParseReconnectPayload`、`Reconnect`、`Connect_`、`SendFin_` 和 `MultiplayCore.OnProtocolConnected`；重连回调跳过普通首次连接的业务入口。两节点回环测试核对旧 FIN、新 SYN、相同凭证、序号归零，以及入房响应继续交付且3080不重复发送。非法地址和端口本地拒绝，不代表官方错误语义。
+
+本节实现范围为 Client 普通私人建房、加入和退出；Server 实时房间、选曲及多人演出结算不在已实现范围内。
 
 2026-10-20 官方测试账号验证通过：预留、POST 房号和 PATCH 大厅成功；3070 后收到3001/status1，房间与本玩家的二十项资料一致。房号通过10010/status255实际推送确认，随后102/status1退出，释放旧会话后独立认证及 Suite 回读成功。UDP 收发各38个数据报，重传0；这证明上述 Client 私人建房流程可用，不证明官方会重新计算提交的总力，也不代表 Server 多人服务已实现。
+
+同日双账号验证通过：加入方按房号查到同一私房，经历一次服务端指定节点切换后收到3001/status1；双方成员集合各为2，彼此昵称、加入路径、难度和二十项基本资料均一致。双方10010房号推送匹配，加入方102/status1退出后房主收到对应退出推送，再由房主102/status1退出，双方独立认证及 Suite 回读成功。房主UDP收发47/47，加入方41/40，业务重传均0。未开始演出，不将此结果描述为 Server 多人演出或结算完成。
 
 ## PUT `/api/user/{userId}/profile-honor`
 

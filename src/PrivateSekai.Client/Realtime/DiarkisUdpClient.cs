@@ -9,10 +9,10 @@ namespace PrivateSekai.Client.Realtime;
 // 单连接、串行调用；ReceiveAsync 同时推进接收、确认和重传。
 public sealed class DiarkisUdpClient : IDisposable
 {
-    private readonly UdpClient socket;
+    private UdpClient socket;
     private readonly Stopwatch clock = Stopwatch.StartNew();
-    private readonly string host;
-    private readonly int port;
+    private string host;
+    private int port;
     private readonly string clientKey;
     private readonly byte[] sid;
     private readonly byte[] key;
@@ -31,10 +31,12 @@ public sealed class DiarkisUdpClient : IDisposable
     private bool clientKeySent;
     private long lastEchoSent;
     private readonly HashSet<double> echoTimestamps = [];
+    private (string Host, int Port)? redirect;
 
     public int SentDatagrams { get; private set; }
     public int ReceivedDatagrams { get; private set; }
     public int Retransmissions { get; private set; }
+    public int Redirects { get; private set; }
     public bool ClientKeyAcknowledged => clientKeySent && !pending.ContainsKey(0);
     public int EchoResponses { get; private set; }
     public int MatchedEchoResponses { get; private set; }
@@ -52,14 +54,18 @@ public sealed class DiarkisUdpClient : IDisposable
         macKey = Convert.FromHexString(Required(authentication, "encryptionMacKey"));
         _ = DiarkisEncryption.Encrypt([], key, iv, macKey);
         this.legacySplit = legacySplit;
-        socket = new UdpClient(AddressFamily.InterNetworkV6);
-        socket.Client.DualMode = true;
+        socket = CreateSocket();
     }
 
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         if (started) throw new InvalidOperationException("实时连接实例不能重复连接。");
         started = true;
+        await ConnectEndpoint(cancellationToken);
+    }
+
+    private async Task ConnectEndpoint(CancellationToken cancellationToken)
+    {
         var addresses = await Dns.GetHostAddressesAsync(host, cancellationToken);
         var address = addresses.First();
         socket.Connect(new IPEndPoint(address.MapToIPv6(), port));
@@ -161,6 +167,29 @@ public sealed class DiarkisUdpClient : IDisposable
         }
         if (await ReadDatagram(cancellationToken) is { } datagram)
             await ProcessDatagram(datagram, cancellationToken);
+        if (redirect is { } destination)
+        {
+            redirect = null;
+            if (destination.Host == host && destination.Port == port) return;
+            await SendDatagram(DiarkisPacket.CreateUdp(7, sendSequence, sid), cancellationToken);
+            socket.Dispose();
+            socket = CreateSocket();
+            host = destination.Host;
+            port = destination.Port;
+            connected = false;
+            clientKeySent = false;
+            sendSequence = receiveSequence = 0;
+            splitId = 0;
+            pending.Clear();
+            incoming.Clear();
+            fragments.Clear();
+            responses.Clear();
+            echoTimestamps.Clear();
+            LastEcho = null;
+            Redirects++;
+            // 服务端转移待处理的入房请求；这里只重建连接，不重发业务。
+            await ConnectEndpoint(cancellationToken);
+        }
     }
 
     private async Task ProcessDatagram(byte[] datagram, CancellationToken cancellationToken)
@@ -228,11 +257,25 @@ public sealed class DiarkisUdpClient : IDisposable
             EchoResponses++;
             if (echoTimestamps.Remove(echo.Timestamp)) MatchedEchoResponses++;
             LastEcho = echo;
-            foreach (var notification in echo.Notifications) responses.Enqueue(notification);
+            foreach (var notification in echo.Notifications) QueueResponse(notification);
         }
-        else responses.Enqueue(response with { Payload = payload });
+        else QueueResponse(response with { Payload = payload });
         if (response.ConsumedSize < packet.Length)
             work.Enqueue(packet[response.ConsumedSize..]);
+    }
+
+    private void QueueResponse(DiarkisResponse response)
+    {
+        if (response.Version == 0 && response.Command == 2 && (response.IsPush || response.Status == 1))
+            redirect = DiarkisPacket.ParseReconnect(response.Payload);
+        else responses.Enqueue(response);
+    }
+
+    private static UdpClient CreateSocket()
+    {
+        var result = new UdpClient(AddressFamily.InterNetworkV6);
+        result.Client.DualMode = true;
+        return result;
     }
 
     private void Initialize(uint sequence)

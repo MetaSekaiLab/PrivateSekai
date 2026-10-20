@@ -32,6 +32,7 @@ public static class Operations
         ["diarkis-auth"] = new("GET", "/api/user/{userId}/diarkis-auth?diarkisServerType={diarkisServerType}", null, "clientKey", false),
         ["private-room-number"] = new("POST", "/api/user/{userId}/diarkis-room/{roomId}/no", typeof(PrivateRoomNumberRequest), "roomNo", false),
         ["private-room-update"] = new("PATCH", "/api/user/{userId}/diarkis-room/{roomId}", typeof(PrivateRoomNumberPatchRequest), "roomNo", false),
+        ["private-room-lookup"] = new("GET", "/api/user/{userId}/diarkis-room-type/{privateRoomType}/no/{roomNo}", null, "roomId", false),
         ["login-status-save"] = new("PUT", "/api/user/{userId}/login-status", typeof(PutUserLoginStatusRequest), null, false),
         ["friend-request"] = new("POST", "/api/user/{userId}/friend/{opponentUserId}", typeof(PostUserFriendRequest), "updatedResources"),
         ["friend-approve"] = new("PUT", "/api/user/{userId}/friend/{opponentUserId}", null, "updatedResources"),
@@ -172,6 +173,16 @@ public static class Operations
             {
                 if (!long.TryParse(pair.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var opponentId) || opponentId <= 0)
                     throw new InvalidOperationException("对方用户 ID 必须是正的 64 位整数。");
+            }
+            else if (pair.Key == "privateRoomType")
+            {
+                if (!Enum.GetNames<PrivateRoomType>().Contains(pair.Value, StringComparer.Ordinal))
+                    throw new InvalidOperationException("私房类型必须使用客户端枚举。");
+            }
+            else if (pair.Key == "roomNo")
+            {
+                if (!int.TryParse(pair.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) || number <= 0)
+                    throw new InvalidOperationException("房号必须为正整数。");
             }
             else if (pair.Key is "userLiveId" or "userChallengeLiveId" or "inheritId" or "roomId")
             {

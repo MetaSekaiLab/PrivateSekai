@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using System.Globalization;
+using System.Text;
 
 namespace PrivateSekai.Client.Realtime;
 
@@ -6,6 +8,19 @@ public static class DiarkisPacket
 {
     private const uint HeaderSymbol = 0xFEBEDEEF;
     private const int MaxPayloadLength = 0xFFFFFF;
+
+    public static (string Host, int Port) ParseReconnect(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 5 || !payload[..4].SequenceEqual(new byte[] { 0xBE, 0xEF, 0xFE, 0xED }))
+            throw new InvalidDataException("实时连接切换标识无效。");
+        var address = Encoding.UTF8.GetString(payload[4..]);
+        var separator = address.IndexOf(':');
+        if (separator <= 0 || Uri.CheckHostName(address[..separator]) == UriHostNameType.Unknown
+            || !int.TryParse(address.AsSpan(separator + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var port)
+            || port is < 1 or > 65535)
+            throw new InvalidDataException("实时连接切换地址或端口无效。");
+        return (address[..separator], port);
+    }
 
     public static byte[] CreateRequest(byte version, ushort command, ReadOnlySpan<byte> payload)
     {
