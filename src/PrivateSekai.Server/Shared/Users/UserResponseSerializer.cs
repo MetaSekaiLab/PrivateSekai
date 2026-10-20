@@ -3,6 +3,7 @@ extern alias game;
 using System;
 using System.Linq;
 using game::Sekai;
+using game::Sekai.ApiData;
 using game::Sekai.RankLive;
 using MessagePack;
 using MessagePack.Formatters;
@@ -45,6 +46,16 @@ internal static class UserResponseSerializer
                     (s.grantedAt > 0 && ((key == "resourceId" && s.resourceId == 0) || (key == "resourceLevel" && s.resourceLevel == 0) ||
                         (key == "expiredAt" && s.expiredAt == 0)))),
                 new FieldFilterFormatter<UserGamedata>((s, key) => key == "lastLoginAt" && s.lastLoginAt == 0),
+                new FieldFilterFormatter<UserRegistration>((s, key) =>
+                    (key == "yearOfBirth" && s.yearOfBirth == 0) || (key == "monthOfBirth" && s.monthOfBirth == 0) ||
+                    (key == "dayOfBirth" && s.dayOfBirth == 0) || (key == "age" && s.age == 0)),
+                new FieldFilterFormatter<UserChallengeLivePlayDay>((s, key) => key == "playDaysResetAt" && s.playDaysResetAt == 0),
+                new FieldFilterFormatter<UserMultiLivePenalty>((s, _) => s.penaltyEndAt == 0),
+                new FieldFilterFormatter<BillingRefundPenalty>((s, _) => s.penaltyCount == 0 && s.penaltyEndAt == 0),
+                new FieldFilterFormatter<UserBoostReceived>((s, _) => s.receivedCount == 0 && s.resetAt == 0),
+                new FieldFilterFormatter<UserColorfulPassV2>((s, _) => s.colorfulPassId == 0 && s.continuousBuyHighTierCount == 0 &&
+                    s.expiredAt == 0 && s.continuousBuyHighTierExpiredAt == 0),
+                new FieldFilterFormatter<UserMysekaiColorfulPass>((s, _) => s.mysekaiColorfulPassId == 0 && s.expiredAt == 0),
                 new FieldFilterFormatter<UserGachaCeilExchange>((s, key) =>
                     key == "exchangeRemaining" && s.exchangeStatus == "exchangeable" && s.exchangeRemaining == 0),
                 new FieldFilterFormatter<UserHomeBanner>((s, key) =>

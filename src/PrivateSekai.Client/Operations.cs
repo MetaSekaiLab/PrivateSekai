@@ -28,6 +28,8 @@ public static class Operations
         ["suite-master-split"] = new("GET", "/api/suitemasterfile/{dataVersion}/{splitFile}", null, null, false),
         ["thumbnail-download"] = new("GET", "<previous-response-thumbnail>", null, "sha256", false),
         ["suite"] = new("GET", "/api/suite/user/{userId}", null, "userRegistration", false),
+        ["suite-story-release"] = new("GET", "/api/suite/user/{userId}?isForceAllReload=false&name=user_release_condition,userEventEpisodeStatuses", null, "now", false),
+        ["suite-select"] = new("GET", "/api/suite/user/{userId}?isForceAllReload=false&name={resourceNames}", null, "now", false),
         ["suite-friends"] = new("GET", "/api/suite/user/{userId}/parts?name=user_friend", null, "now", false),
         ["diarkis-auth"] = new("GET", "/api/user/{userId}/diarkis-auth?diarkisServerType={diarkisServerType}", null, "clientKey", false),
         ["private-room-number"] = new("POST", "/api/user/{userId}/diarkis-room/{roomId}/no", typeof(PrivateRoomNumberRequest), "roomNo", false),
@@ -175,6 +177,11 @@ public static class Operations
             {
                 if (pair.Value is not ("VIRTUAL_COIN" or "JEWEL" or "PAID_JEWEL"))
                     throw new InvalidOperationException("虚拟商店消耗类型须使用客户端的大写枚举。");
+            }
+            else if (pair.Key == "resourceNames")
+            {
+                if (!Regex.IsMatch(pair.Value, @"\A[A-Za-z][A-Za-z0-9_]*(,[A-Za-z][A-Za-z0-9_]*)*\z", RegexOptions.CultureInvariant))
+                    throw new InvalidOperationException("Suite 名称须为逗号分隔的标识符。");
             }
             else if (pair.Key == "opponentUserId")
             {

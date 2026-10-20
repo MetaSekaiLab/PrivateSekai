@@ -183,6 +183,8 @@ store.Save(1, new UserState { Data = new SuiteUser
 builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
     .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
+if (args is ["--replay-suite-selection", _, _])
+    builder.Services.AddSingleton(SuiteSelectionReplay.Clock());
 if (args is ["--replay-event-mission", var eventMissionManifest, var eventMissionMaster, _])
 {
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, eventMissionMaster));
@@ -460,6 +462,11 @@ try
     JsonFiles.Write(Path.Combine(directory, "headers.json"), new Dictionary<string, string> { ["Accept"] = "application/octet-stream" });
     var config = new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = 1, RequireRotatingToken = true, HeadersFile = "headers.json" };
     using var client = new ProtocolClient(config, directory, ServerConfig.AesKey.ToArray(), ServerConfig.AesIv.ToArray());
+    if (args is ["--replay-suite-selection", var suiteManifest, var suiteOutput])
+    {
+        await SuiteSelectionReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, suiteManifest, suiteOutput);
+        return;
+    }
     if (args is ["--replay-character-mission", var characterMissionPath, _, var characterMissionOutput])
     {
         await CharacterMissionReplay.Run(client, store, characterMissionPath, characterMissionOutput);
@@ -875,6 +882,8 @@ try
     Fails(() => ThumbnailDownload.ValidatePath("https://example.invalid/image/custom-profile-card/thumbnail/a/b"), "图片拒绝外部 URL");
     Fails(() => ThumbnailDownload.ValidatePath("image/custom-profile-card/thumbnail/../b"), "图片拒绝路径穿越");
     await AccountReadHttpChecks.Run(client, store, directory, Check);
+    await SuiteSelectionHttpChecks.Run(config, store, directory, Check);
+    await client.Send(new() { Operation = "system" });
     await SuiteMasterHttpChecks.Run(client, config, directory, Check);
     var realtimeResponse = await client.Send(new() { Operation = "diarkis-auth", Args = new() { ["diarkisServerType"] = "multi" } });
     Check(realtimeResponse["clientKey"]!.GetValue<string>() == "fixture-client" &&

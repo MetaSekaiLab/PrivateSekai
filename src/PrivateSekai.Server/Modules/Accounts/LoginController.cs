@@ -33,14 +33,20 @@ public sealed class LoginController(
 
     [HttpGet("api/suite/user/{userId}")]
     [ServiceFilter(typeof(LoginBonusStatusFilter))]
-    public IActionResult HandleSuiteUser(long userId) =>
-        Encoded(operations.Execute(ResolveUser(userId), () =>
+    public IActionResult HandleSuiteUser(long userId, [FromQuery] bool? isForceAllReload,
+        [FromQuery(Name = "name")] string? name)
+    {
+        var resolved = ResolveUser(userId);
+        if (isForceAllReload == false)
+            return Encoded(operations.Query(resolved, () => friends.Project(user.BuildNamedSuite(name?.Split(',')))));
+        return Encoded(operations.Execute(resolved, () =>
         {
             home.SetLoginStatus("online");
             boosts.Normalize();
             home.EnsureShopAreaActionSets();
             return friends.Project(user.BuildSuite());
         }));
+    }
 
     [HttpGet("api/suite/user/{userId}/parts")]
     public IActionResult HandleSuiteUserParts(long userId, [FromQuery(Name = "name")] string[]? names) =>

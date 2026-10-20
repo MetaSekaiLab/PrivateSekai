@@ -110,6 +110,13 @@ public sealed class UserSession
         return Data;
     }
 
+    public SuiteUser BuildNamedSuite(IEnumerable<string>? names)
+    {
+        var fields = new HashSet<string>(BaseFields, StringComparer.Ordinal);
+        fields.UnionWith(SuiteFieldSelection.GetFields(names));
+        return SelectFields(fields);
+    }
+
     private void PrepareRefresh()
     {
         _ = State;

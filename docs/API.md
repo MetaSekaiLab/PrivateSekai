@@ -580,23 +580,38 @@ PATCH 保留名称和列表记录，只清空歌曲；重复重置空列表返�
 
 ## GET `/api/suite/user/{userId}`
 
-> 审计版本: jp-6.5.5
+> 查询参数及选择行为复核版本: jp-7.0.0.32
 > 关键词：登录，用户数据，全量，刷新
 
-拉取指定用户的完整 `SuiteUser` 数据。客户端用它在登录后建立完整本地用户状态，也会在部分功能检测到本地状态可能过期时用它做全量同步。
+拉取指定用户的 `SuiteUser` 数据。默认返回完整状态；显式关闭全量刷新时，按名称返回所选数据和公共字段。客户端用它建立登录状态，也用于局部同步。
 
 ### 请求参数
 
 - Path `userId`: 当前用户 ID。
-- Query `isLogin`: 登录后首轮拉取完整用户数据时会带 `true`；普通全量同步路径不带该参数。
+- Query `isForceAllReload`: 当前客户端登录流程带 `true`，普通完整同步可省略；只有显式为 `false` 时按名称筛选。
+- Query `name`: 关闭全量刷新时使用逗号分隔的原始组名。省略名称仅返回公共字段；全量模式忽略名称。
 - Body: 无请求体。
 
 ### 返回字段
 
-- `SuiteUser`: 完整用户数据对象；客户端成功收到后会整体合并到本地用户数据管理器。
+- `SuiteUser`: 完整或局部用户数据对象，客户端按相应调用流程合并到本地数据管理器。
 - `now`: 当前服务器时间，包含在 `SuiteUser` 中。
 - `userRegistration`、`userGamedata`、`userTutorial`、`userConfig`: 登录后初始化用户基础状态时会使用。
 - 其他 `user...` 字段: 用户持有资源、功能状态、任务/活动/商店/虚拟 Live/MySekai 等模块数据；客户端按本地数据管理器规则更新对应模块。
+
+### 按名称读取
+
+官方实测：省略 `isForceAllReload`、或传 `true` 时，即使提供名称仍返回完整 Suite；传 `false` 才进行选择。组名区分大小写，未知名称被忽略，不回退全量。多个名称取字段联合，重复名称不产生重复字段。不能按 DTO 类名推导组名：`user` 返回 `userRegistration` 和 `userGamedata`；`user_friend_invitation_campaign` 同时返回活动及领奖次数。
+
+局部响应的公共字段为 `now`、`refreshableTypes`、`userPresents`、`unreadUserTopics`、`userHomeBanners`、`userMaterialExchanges`、`userGachaCeilExchanges`、`userRankMatchResult`、`userViewableAppeal`、`userBillingRefunds`、`userUnprocessedOrders`、`userInformations`，以及挑战的 `userChallengeLivePlayDay`、`userChallengeLivePlayStatuses`、`userChallengeLiveSoloDecks`、`userChallengeLiveSoloResults`、`userChallengeLiveSoloStages`、`userChallengeLiveSoloHighScoreRewards`。空数组保留，模型中的 null 字段省略。这六个挑战字段只加入 Suite 选择响应，不扩张其他业务的公共刷新集。
+
+`GetReleaseConditionAndEpisodeStatusAPI.Execute`（RVA `0x6181d14`）发送 `?isForceAllReload=false&name=user_release_condition,userEventEpisodeStatuses`，无 body；活动剧情列表在需要更新条件时调用。原响应模型含解锁条件与活动篇章状态，但官方实际只识别其中的 `user_release_condition`，返回 `userReleaseConditions`；驼峰名称没有返回篇章数组。两个测试账号的连续读取及后续独立认证 Suite 未出现新增条件或篇章，不能据此实现自动解锁剧情。
+
+Server 按官方采样建立128个已有模型组的明确映射，使用查询副本投影，不执行完整刷新或保存待刷新标记。Client 提供原始 `suite-story-release` 操作及场景，另有 `suite-select`，通过 `args.resourceNames` 指定逗号名称。通用入口只接受名称标识符，拒绝查询参数注入。检查入口 `--replay-suite-selection <清单> <输出目录>` 比较完整局部响应；每次检查完整 Suite 存储不变，每个相同基线另执行八项业务状态的独立 HTTP 回读。
+
+当前 dump 未映射的官方字段仍有独立缺口：`user_billing_shop` 返回的 `userBillingShopItems`、旧版 `user_colorful_pass` 返回的 `userColorfulPass` 不在本次支持范围；没有手写模型代替未知契约。其他被官方忽略的候选名称按实际忽略，不推造别名。以上是协议采样及本地 HTTP 验证，未启动 Unity。
+
+区域会话仍有独立差异：官方 `user_area` 读取会返回重新抽选的 `userAreas[].actionSets`，当前投影返回已有区域状态，尚未接通该抽选规则；严格回放保留并报告内容差异。`GetUserActionSetAPI.Execute`（RVA `0x617f740`）原请求只带 `?name=user_action_set`，没有关闭全量刷新，因此按已验证的默认行为返回完整 Suite，不能擅自改成窄响应。空状态响应另已对齐：未知出生信息及挑战零重置时间省略；处罚、收到体力和两种通行证的未初始化状态保留空对象，非空状态中的零计数保留。
 
 ### 当前官方读取副作用
 
@@ -613,7 +628,7 @@ Server 根据0／1／2好友对照，在完整 Suite 和常规 `updatedResources
 1. 标题页登录流程中，系统信息请求成功后请求。
    - 客户端在认证成功后加载 master 数据。
    - master 数据加载成功后请求系统信息；系统信息成功后保存登录日期、重置本地用户数据，并请求完整 `SuiteUser`。
-   - 这次请求会带 `isLogin=true`。
+   - 当前客户端这次请求会带 `isForceAllReload=true`。
    - 请求成功后客户端合并完整用户数据，初始化购买模块，关闭等待提示，初始化 tutorial，刷新未读 topic，并标记登录完成。
 
 2. Live 结果或多人相关流程遇到结果已结束、状态冲突类错误时请求。
@@ -627,7 +642,7 @@ Server 根据0／1／2好友对照，在完整 Suite 和常规 `updatedResources
 ### 客户端切入点
 
 - `Sekai.GetSuiteUserAPI.GetSuiteUserAPI`: 构造参数 `isLogin` 决定是否追加登录 query。
-- `Sekai.GetSuiteUserAPI.Execute`: 确认基础 path 为 `suite/user/{userId}`；登录路径追加 `?isLogin=true`；request 为 `EmptyRequest`，response 为 `SuiteUser`。
+- `Sekai.GetSuiteUserAPI.Execute`（RVA `0x617ee44`）: 基础 path 为 `suite/user/{userId}`；当前登录路径追加 `?isForceAllReload=true`；request 为 `EmptyRequest`，response 为 `SuiteUser`。
 - `Sekai.GetSuiteUserAPI.OnCallBack`: 确认成功后整体合并返回的 `SuiteUser`。
 - `Sekai.TitleController.OnFinishSystemAPI` / `OnFinishSuiteUser` / `PostProcessLogin`: 登录后完整用户数据拉取和后处理入口。
 - `Sekai.ScreenLayerLiveResultBase.LiveResultAlreadyEndErrorHandler`: Live 结果状态过期后的全量同步入口之一。

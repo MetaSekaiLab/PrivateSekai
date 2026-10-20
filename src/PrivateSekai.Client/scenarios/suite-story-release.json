@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "suite-story-release" }
+  ]
+}
