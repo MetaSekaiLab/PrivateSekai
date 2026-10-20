@@ -117,7 +117,7 @@ public sealed class InventoryResourceHandler : IResourceHandler
             materials.Add(material);
         }
 
-        material.quantity = quantity < 0 ? Math.Max(0, material.quantity + quantity) : material.quantity + quantity;
+        material.quantity = quantity < 0 ? Math.Max(0, material.quantity + quantity) : checked(material.quantity + quantity);
         user.Data.userMaterials = materials.OrderBy(m => m.materialId).ToArray();
         user.MarkChanged(nameof(SuiteUser.userMaterials));
         return material.quantity;
@@ -133,7 +133,7 @@ public sealed class InventoryResourceHandler : IResourceHandler
             tickets.Add(ticket);
         }
 
-        ticket.quantity = quantity < 0 ? Math.Max(0, ticket.quantity + quantity) : ticket.quantity + quantity;
+        ticket.quantity = quantity < 0 ? Math.Max(0, ticket.quantity + quantity) : checked(ticket.quantity + quantity);
         user.Data.userPracticeTickets = quantity < 0
             ? tickets.OrderBy(t => t.practiceTicketId).ToArray()
             : tickets.ToArray();

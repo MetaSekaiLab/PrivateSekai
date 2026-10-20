@@ -273,9 +273,9 @@ public sealed class LiveMasterQueries(MasterData master)
     public string GetMultiScoreRank(int musicDifficultyId, int score, bool totalScore = false) =>
         GetScoreRank(musicDifficultyId, score, "multi_private", totalScore ? 5 : 1);
 
-    public int GetMultiLowRewardBox(string type, int id, int quantity) =>
+    public int GetMultiRewardBox(string type, int id, int quantity) =>
         master.GetTable<MasterResourceBox>("resourceBoxes").Rows.Where(b => b.resourceBoxPurpose == "score_rank_reward_detail"
-            && b.details?.Length == 1 && b.details[0].resourceType == type && b.details[0].resourceId == id
+            && b.resourceBoxType == "expand" && b.details?.Length == 1 && b.details[0].resourceType == type && b.details[0].resourceId == id
             && b.details[0].resourceQuantity == quantity && b.details[0].resourceLevel == 0)
             .OrderBy(b => b.id).FirstOrDefault()?.id ?? throw new InvalidOperationException("Missing multiplayer reward box.");
 

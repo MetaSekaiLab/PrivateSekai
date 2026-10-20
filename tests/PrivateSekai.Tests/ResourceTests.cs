@@ -91,6 +91,22 @@ internal static class ResourceTests
         Check.That(saved.userCards![0].duplicateCount == 4 && saved.userCards[0].episodes[0].scenarioStatus == "already_read" &&
                    saved.userCards[0].episodes[0].isNotSkipped && saved.userGachaTickets![0].quantity == 3,
             "资源结果通过用户操作持久化到独立快照");
+        foreach (var type in new[] { "material", "practice_ticket" })
+        {
+            var full = store.Read(1)!;
+            full.Data.userMaterials.Single(m => m.materialId == 2).quantity = int.MaxValue;
+            full.Data.userPracticeTickets.Single(t => t.practiceTicketId == 2).quantity = int.MaxValue;
+            store.Save(1, full);
+            var snapshot = DumpSerializer.Serialize(full.Data);
+            Check.Throws<OverflowException>(() => operation.Execute(1, () =>
+            {
+                resources.Grant(Reward("coin", 0, 20));
+                resources.Grant(Reward(type, 2, 2));
+                return session.BuildRefresh();
+            }), "材料或练习券溢出拒绝整个用户操作");
+            Check.That(DumpSerializer.Serialize(store.Read(1)!.Data).AsSpan().SequenceEqual(snapshot),
+                "库存溢出不得留下负数库存或此前发放的金币");
+        }
     }
 
     private static void VerifyCurrency(UserSession session, ResourceService resources)

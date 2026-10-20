@@ -73,11 +73,10 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
             throw new MultiLiveRequestException(400);
         var rank = master.GetMultiScoreRank(own.musicDifficultyId, own.score);
         var totalRank = master.GetMultiScoreRank(own.musicDifficultyId, request.totalScore, true);
-        if (totalRank != "rank_d" || rank != "rank_c" || played.Length != 2) throw new MultiLiveRequestException(501);
-        var coinBox = master.GetMultiLowRewardBox("coin", 0, 20);
-        // 本地对五种属性碎片均匀抽选；现有资料未确认官方权重。
-        var materialBoxes = Enumerable.Range(1, 5).Select(id => master.GetMultiLowRewardBox("material", id, 2)).ToArray();
-        var rewards = resourceMaster.BuildResourcesFromBoxes("score_rank_reward_detail", [coinBox, materialBoxes[random.Next(materialBoxes.Length)]]);
+        if (totalRank is not ("rank_d" or "rank_c") || rank != "rank_c" || played.Length != 2)
+            throw new MultiLiveRequestException(501);
+        var rewards = BuildScoreRewards(totalRank);
+        var addedExp = totalRank == "rank_c" ? 200 : 20;
         var deck = user.Data.userDecks.Single(d => d.deckId == session.Start.deckId);
         var context = new UserLiveSessionData
         {
@@ -94,9 +93,9 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
         user.Private.MultiLiveSessions.Remove(liveId);
         boosts.Normalize();
         user.MarkChanged(nameof(SuiteUser.userBoost));
-        var experience = live.GainPlayerExperience(20);
+        var experience = live.GainPlayerExperience(addedExp);
         var cardResults = new[] { deck.member1, deck.member2, deck.member3, deck.member4, deck.member5 }
-            .Select((id, index) => new DeckCardUpdateExpResult { index = index + 1, expResult = cards.GainExperience(id, 60) }).ToArray();
+            .Select((id, index) => new DeckCardUpdateExpResult { index = index + 1, expResult = cards.GainExperience(id, addedExp * 3) }).ToArray();
         live.UpdateUserMusicResult(context, clear, fullCombo, fullPerfect, "multi", mvp);
         var achievements = live.GrantUserMusicAchievements(context, clear, rank);
         resources.Grant(rewards);
@@ -125,6 +124,27 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
             activeUserIds = played.Select(s => s.userId).ToList(), bondsUpdateExpResults = [], userEventDeviceTransferRestrict = new(),
             boost = master.BuildMasterBoost(0), userLivePoint = points
         };
+    }
+
+    private UserResource[] BuildScoreRewards(string rank)
+    {
+        if (rank == "rank_d")
+        {
+            // 本地对五种属性碎片均匀抽选；现有资料未确认官方权重。
+            var materials = Enumerable.Range(1, 5).Select(id => master.GetMultiRewardBox("material", id, 2)).ToArray();
+            return resourceMaster.BuildResourcesFromBoxes("score_rank_reward_detail",
+                [master.GetMultiRewardBox("coin", 0, 20), materials[random.Next(materials.Length)]]);
+        }
+        // 本地均匀选择已验证的C档材料组合，包含额外服装材料；不代表官方候选全集或掉率。
+        (int Id, int Quantity)[][] materialsByResult =
+        [
+            [(1, 2), (2, 1), (7, 1), (12, 1)],
+            [(3, 2), (2, 1), (7, 1)],
+            [(3, 2), (5, 1), (8, 1)]
+        ];
+        var boxes = new[] { master.GetMultiRewardBox("coin", 0, 200), master.GetMultiRewardBox("practice_ticket", 1, 2) }
+            .Concat(materialsByResult[random.Next(materialsByResult.Length)].Select(m => master.GetMultiRewardBox("material", m.Id, m.Quantity)));
+        return resourceMaster.BuildResourcesFromBoxes("score_rank_reward_detail", boxes);
     }
 }
 

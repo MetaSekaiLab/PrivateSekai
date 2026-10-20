@@ -35,19 +35,29 @@ internal static class RealtimeServerChecks
         var tables = new Dictionary<string, string>
         {
             ["cards"] = JsonSerializer.Serialize(Enumerable.Range(1, 5).Select(id => new { id, characterId = id, cardRarityType = "rarity_1" })),
-            ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":3,"trainingMaxLevel":3}]""",
-            ["levels"] = """[{"levelType":"user","level":1,"totalExp":0},{"levelType":"user","level":2,"totalExp":10000},{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300}]""",
-            ["configs"] = """[{"configKey":"date_change_hour","value":"4"},{"configKey":"boost_recovery_max_count","value":"25"},{"configKey":"boost_recovery_second","value":"1800"}]""",
+            ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":4,"trainingMaxLevel":4}]""",
+            ["levels"] = """[{"levelType":"user","level":1,"totalExp":0},{"levelType":"user","level":2,"totalExp":500},{"levelType":"user","level":3,"totalExp":10000},{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300},{"levelType":"card","level":4,"totalExp":1000}]""",
+            ["configs"] = """[{"configKey":"date_change_hour","value":"4"},{"configKey":"boost_recovery_max_count","value":"25"},{"configKey":"boost_recovery_second","value":"1800"},{"configKey":"rank_up_recover_boost_count","value":"10"}]""",
             ["boosts"] = """[{"id":1,"costBoost":0,"expRate":1,"rewardRate":1,"livePointRate":1}]""",
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":21,"s":1000000,"a":800000,"b":400000,"c":80000},{"liveType":"multi_open","playLevel":21,"s":1000000,"a":800000,"b":400000,"c":50000}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = """[{"id":11,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":11},{"id":12,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":34}]""",
-            ["musicAchievements"] = "[]", ["beginnerMissionV2s"] = "[]", ["honorMissions"] = "[]", ["characterMissionV2s"] = "[]"
+            ["musicAchievements"] = "[]", ["beginnerMissionV2s"] = "[]", ["honorMissions"] = "[]", ["characterMissionV2s"] = "[]",
+            ["playerRankRewards"] = """[{"playerRank":2,"seq":1,"resourceBoxId":1}]""",
+            ["releaseConditions"] = """[{"id":501,"releaseConditionType":"user_rank","releaseConditionTypeLevel":2}]"""
         };
         foreach (var pair in tables) File.WriteAllText(Path.Combine(masterPath, pair.Key + ".json"), pair.Value);
-        var boxes = new List<MasterResourceBox> { new() { id = 99, resourceBoxPurpose = "score_rank_reward_detail", details = [new() { resourceType = "coin", resourceQuantity = 20 }] } };
+        var boxes = new List<MasterResourceBox>
+        {
+            new() { id = 99, resourceBoxPurpose = "score_rank_reward_detail", resourceBoxType = "expand", details = [new() { resourceType = "coin", resourceQuantity = 20 }] },
+            new() { id = 100, resourceBoxPurpose = "score_rank_reward_detail", resourceBoxType = "expand", details = [new() { resourceType = "coin", resourceQuantity = 200 }] },
+            new() { id = 101, resourceBoxPurpose = "score_rank_reward_detail", resourceBoxType = "expand", details = [new() { resourceType = "practice_ticket", resourceId = 1, resourceQuantity = 2 }] },
+            new() { id = 1, resourceBoxPurpose = "player_rank_reward", resourceBoxType = "expand", details = [new() { resourceType = "jewel", resourceQuantity = 25 }] }
+        };
         boxes.AddRange(Enumerable.Range(1, 5).Select(id => new MasterResourceBox
-            { id = id, resourceBoxPurpose = "score_rank_reward_detail", details = [new() { resourceType = "material", resourceId = id, resourceQuantity = 2 }] }));
+            { id = id, resourceBoxPurpose = "score_rank_reward_detail", resourceBoxType = "expand", details = [new() { resourceType = "material", resourceId = id, resourceQuantity = 2 }] }));
+        boxes.AddRange(new[] { 2, 5, 7, 8, 12 }.Select(id => new MasterResourceBox
+            { id = id + 10, resourceBoxPurpose = "score_rank_reward_detail", resourceBoxType = "expand", details = [new() { resourceType = "material", resourceId = id, resourceQuantity = 1 }] }));
         File.WriteAllText(Path.Combine(masterPath, "resourceBoxes.json"), JsonSerializer.Serialize(boxes, DumpJson.Options));
         File.WriteAllText(Path.Combine(masterPath, "multiLiveLobbies.json"),
             """[{"id":1,"totalPower":0,"multiLiveLobbyType":"normal"}]""");
@@ -65,11 +75,13 @@ internal static class RealtimeServerChecks
                 userCards = [], userMaterials = [], userChargedCurrency = new() { free = 123, paid = 45 }
             } });
         var clock = new Clock();
+        var rewardRandom = new RewardRandom();
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(o => o.Listen(IPAddress.Loopback, 0));
         builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
             .AddSingleton<TimeProvider>(clock)
+            .AddSingleton<Random>(rewardRandom)
             .AddSingleton(new RealtimeConfig { Enabled = true, Port = 0, IdleTimeoutSeconds = 60 })
             .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, masterPath));
         builder.Services.AddControllers().AddApplicationPart(typeof(DiarkisController).Assembly);
@@ -211,6 +223,7 @@ internal static class RealtimeServerChecks
 
         await StartLive();
         await PlayLive();
+        await PlayRankC();
         CheckDailyBoundary();
 
         // 原始UDP重传同一分片序列，预留只应用一次；错序也由接收序号恢复。
@@ -401,7 +414,7 @@ internal static class RealtimeServerChecks
                     var suite = await client.Suite();
                     var data = JsonSerializer.Deserialize<SuiteUser>(suite.ToJsonString(), DumpJson.Options)!;
                     check(data.userGamedata.totalExp == (round + 1) * 20 && data.userGamedata.coin == (round + 1) * 20
-                        && data.userCards.All(c => c.totalExp == Math.Min(300, (round + 1) * 60))
+                        && data.userCards.All(c => c.totalExp == (round + 1) * 60)
                         && data.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress == (round < 3 ? (round + 1) * 11 : 34)
                         && data.userLiveMissions.All(m => m.achievedMissionIds == null || m.achievedMissionIds.Length == 0)
                         && data.userBoost.current == 10 && data.userMusicResults.Single(r => r.playType == "multi").mvpCount == round + 1,
@@ -413,6 +426,133 @@ internal static class RealtimeServerChecks
             using (var reopened = new SqliteUserStore(database))
                 check(reopened.Read(11)!.Private.DailyLivePoint.BonusCount == 3
                     && reopened.Read(11)!.Private.MultiLiveSessions.Count == 0, "SQLite重启保留每日次数并确认已消费演出会话");
+        }
+
+        async Task PlayRankC()
+        {
+            var song = new MultiLiveSong(7, 71, 1, "easy");
+            var ownerScore = new UserMultiLiveClearScoreRequest { score = 100000, perfectCount = 210, goodCount = 10, maxCombo = 210, tapCount = 220, life = 1000 };
+            var guestScore = new UserMultiLiveClearScoreRequest { score = 150000, perfectCount = 210, goodCount = 10, maxCombo = 210, tapCount = 220, life = 1000 };
+            var result = MultiLivePerformance.Result([11, 12], new Dictionary<long, UserMultiLiveClearScoreRequest>
+                { [11] = MultiLivePerformance.Score(ownerScore, 11, 71), [12] = MultiLivePerformance.Score(guestScore, 12, 71) });
+            var performance = new MultiLivePerformance { DurationMilliseconds = 1, OwnerScore = ownerScore, GuestScore = guestScore };
+            for (var round = 0; round < 3; round++)
+            {
+                rewardRandom.Choice = round;
+                using var member = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true);
+                await Connect(member);
+                var room = await Open(member);
+                using var ownerHttp = Client(11);
+                using var guestHttp = Client(12);
+                var beforeOwner = store.Read(11)!;
+                var beforeGuest = store.Read(12)!;
+                var output = Path.Combine(masterPath, "rank-c-" + round);
+                Directory.CreateDirectory(output);
+                var report = new JsonObject();
+                check(await MultiLiveFlow.Run(owner, member, ownerHttp, guestHttp, beforeOwner.Data, beforeGuest.Data,
+                    room.Owner, room.Guest, room.Seen, 1, song, output, report, cancel, performance)
+                    && report["phase"]!.GetValue<string>() == "cleared", "现有Client贯通全场C双边成绩、结算及资源刷新");
+                var liveId = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "live-state.local.json")))!["liveId"]!.GetValue<string>();
+                foreach (var id in new[] { 11, 12 })
+                    await Request(id, HttpMethod.Put, $"/api/user/{id}/multi-live/{liveId}", DumpSerializer.Serialize(result), 404);
+                await Leave(member, "12");
+                await Response(owner, 1, 102, 255);
+                await Leave(owner, "11");
+                await Lookup(numbered.roomNo, 404);
+                var materialRewards = round switch
+                {
+                    0 => new Dictionary<int, int> { [1] = 2, [2] = 1, [7] = 1, [12] = 1 },
+                    1 => new Dictionary<int, int> { [3] = 2, [2] = 1, [7] = 1 },
+                    _ => new Dictionary<int, int> { [3] = 2, [5] = 1, [8] = 1 }
+                };
+                foreach (var (id, before, response) in new[] { (11, beforeOwner, ownerHttp.LastResponse!), (12, beforeGuest, guestHttp.LastResponse!) })
+                {
+                    var exp = JsonSerializer.Deserialize<UpdateExpResult>(response["userExpResult"]!.ToJsonString(), DumpJson.Options)!;
+                    var cardExp = JsonSerializer.Deserialize<DeckCardUpdateExpResult[]>(response["deckCardExpResults"]!.ToJsonString(), DumpJson.Options)!;
+                    var points = JsonSerializer.Deserialize<UserLivePoint>(response["userLivePoint"]!.ToJsonString(), DumpJson.Options)!;
+                    check(response["scoreRank"]!.GetValue<string>() == "rank_c" && response["multiScoreRank"]!.GetValue<string>() == "rank_c"
+                        && response["totalScore"]!.GetValue<int>() == 250000 && exp.afterTotalExp - exp.beforeTotalExp == 200
+                        && cardExp.All(c => c.expResult.afterTotalExp == Math.Min(1000, c.expResult.beforeTotalExp + 600))
+                        && (round != 0 || cardExp.All(c => c.expResult.afterTotalExp - c.expResult.beforeTotalExp == 600)),
+                        "全场C返回200玩家经验和600卡牌经验，并遵守卡牌等级上限");
+                    check(response["user1"]!["mvpFlg"]?.GetValue<bool>() != true && response["user2"]!["mvpFlg"]!.GetValue<bool>()
+                        && response["user1"]!["fullComboFlg"]?.GetValue<bool>() != true && response["user2"]!["fullComboFlg"]?.GetValue<bool>() != true
+                        && points.addDailyBonusProgress == 0 && points.livePointBonusRemaining == 0,
+                        "不同成绩仅最高分成员获得MVP，已用尽的每日名额不再增加");
+                    var rewards = JsonSerializer.Deserialize<UserResource[]>(response["scoreRankRewards"]!.ToJsonString(), DumpJson.Options)!;
+                    check(rewards.Single(r => r.resourceType == "coin").quantity == 200
+                        && rewards.Single(r => r.resourceType == "practice_ticket").resourceId == 1
+                        && rewards.Single(r => r.resourceType == "practice_ticket").quantity == 2
+                        && rewards.Count(r => r.resourceType == "material") == materialRewards.Count
+                        && materialRewards.All(p => rewards.Single(r => r.resourceType == "material" && r.resourceId == p.Key).quantity == p.Value),
+                        "全场C覆盖三组实际奖励，含可选服装材料");
+                    using var independent = Client(id);
+                    var suite = JsonSerializer.Deserialize<SuiteUser>((await independent.Suite()).ToJsonString(), DumpJson.Options)!;
+                    check(suite.userGamedata.totalExp == 80 + (round + 1) * 200 && suite.userGamedata.coin == 80 + (round + 1) * 200
+                        && suite.userCards.All(c => c.totalExp == Math.Min(1000, 240 + (round + 1) * 600))
+                        && suite.userPracticeTickets.Single(t => t.practiceTicketId == 1).quantity == (round + 1) * 2,
+                        "双方退出后独立Suite确认经验、金币、练习券和卡牌仅入账一次");
+                    var oldMaterials = (before.Data.userMaterials ?? []).ToDictionary(m => m.materialId, m => m.quantity);
+                    check(suite.userMaterials.All(m => m.quantity - oldMaterials.GetValueOrDefault(m.materialId) == materialRewards.GetValueOrDefault(m.materialId))
+                        && materialRewards.All(p => suite.userMaterials.Any(m => m.materialId == p.Key))
+                        && suite.userMusicResults.Single(r => r.playType == "multi").mvpCount == (id == 11 ? 4 : 5 + round)
+                        && suite.userMusicResults.Single(r => r.playType == "multi").highScore == (id == 11 ? 100000 : 150000)
+                        && suite.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress == 35 + round,
+                        "双方回读材料增量逐项吻合、MVP和最高分分别累计，任务继续推进");
+                    check(suite.userGamedata.rank == (round == 2 ? 2 : 1) && suite.userBoost.current == (round == 2 ? 20 : 10)
+                        && suite.userChargedCurrency.free == (round == 2 ? 148 : 123) && suite.userChargedCurrency.paid == 45
+                        && (round != 2 || suite.userReleaseConditions.Any(c => c.releaseConditionId == 501)),
+                        "C档升级衔接等级奖励、体力恢复和等级解锁，未升级时保持原值");
+                }
+                if (round == 1)
+                {
+                    var state = store.Read(11)!;
+                    state.Private.MultiLiveSessions.Add(liveId, new()
+                    {
+                        Master = MultiLiveFlow.PrepareRequest(state.Data, roomId, 1, song, [11, 12]),
+                        Start = MultiLiveFlow.MemberRequest(state.Data, roomId, 1, song), CreatedAt = clock.GetUtcNow().ToUnixTimeMilliseconds()
+                    });
+                    store.Save(11, state);
+                    using var scope = app.Services.CreateScope();
+                    var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
+                    var service = scope.ServiceProvider.GetRequiredService<MultiLiveService>();
+                    var snapshot = DumpSerializer.Serialize(state.Data);
+                    var failed = false;
+                    try { operations.Execute(11, () => { service.Clear(liveId, result); return new BrokenResponse(); }); }
+                    catch (MessagePack.MessagePackSerializationException) { failed = true; }
+                    check(failed && DumpSerializer.Serialize(store.Read(11)!.Data).AsSpan().SequenceEqual(snapshot)
+                        && store.Read(11)!.Private.MultiLiveSessions.ContainsKey(liveId)
+                        && store.Read(11)!.Private.DailyLivePoint.BonusCount == 3,
+                        "C档编码失败回滚升级、所有资源、任务、每日次数和会话删除");
+                    var overflow = state.DeepClone();
+                    overflow.Data.userPracticeTickets.Single(t => t.practiceTicketId == 1).quantity = int.MaxValue;
+                    store.Save(11, overflow);
+                    snapshot = DumpSerializer.Serialize(overflow.Data);
+                    failed = false;
+                    try { operations.Execute(11, () => service.Clear(liveId, result)); }
+                    catch (OverflowException) { failed = true; }
+                    check(failed && DumpSerializer.Serialize(store.Read(11)!.Data).AsSpan().SequenceEqual(snapshot)
+                        && store.Read(11)!.Private.MultiLiveSessions.ContainsKey(liveId),
+                        "C档练习券溢出回滚此前金币、等级奖励及卡牌经验，会话仍可处理");
+                    state.Private.MultiLiveSessions.Clear();
+                    store.Save(11, state);
+                }
+            }
+            var database = Path.Combine(masterPath, "rank-c.db");
+            using (var saved = new SqliteUserStore(database))
+                foreach (var id in new[] { 11, 12 }) saved.Save(id, store.Read(id)!);
+            using (var reopened = new SqliteUserStore(database))
+                foreach (var id in new[] { 11, 12 })
+                {
+                    var restored = reopened.Read(id)!;
+                    var expected = store.Read(id)!.Data;
+                    // SQLite只保存持久字段，排除响应时间和刷新标记。
+                    expected.now = restored.Data.now;
+                    expected.refreshableTypes = restored.Data.refreshableTypes;
+                    check(DumpSerializer.Serialize(restored.Data).AsSpan().SequenceEqual(DumpSerializer.Serialize(expected))
+                        && restored.Private.MultiLiveSessions.Count == 0 && restored.Private.DailyLivePoint.BonusCount == 3,
+                        "SQLite重启恢复双账号C档完整状态、每日次数及已消费会话");
+                }
         }
 
         void CheckDailyBoundary()
@@ -536,6 +676,12 @@ internal static class RealtimeServerChecks
         }
         static byte[] NumberBody() => DumpSerializer.Serialize(new PrivateRoomNumberRequest { privateRoomType = "multi_live", liveRuleType = "normal" });
         static byte[] PatchBody(int lobby) => DumpSerializer.Serialize(new PrivateRoomNumberPatchRequest { multiLiveLobbyId = lobby, liveRuleType = "normal" });
+    }
+
+    private sealed class RewardRandom : Random
+    {
+        public int Choice { get; set; }
+        public override int Next(int maxValue) => Choice % maxValue;
     }
 
     private sealed class Clock : TimeProvider
