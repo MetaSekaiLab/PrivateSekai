@@ -14,6 +14,7 @@ public static class MultiLiveRoom
     public const ushort CreatedCommand = 3000;
     public const ushort JoinedCommand = 3001;
     public const ushort JoinCommand = 3080;
+    public const ushort RecreateCommand = 3110;
     public const ushort PropertyCommand = 10010;
     public const ushort LeaveCommand = 102;
     public const ushort UserIndexCommand = 1021;

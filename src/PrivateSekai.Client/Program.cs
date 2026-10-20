@@ -8,6 +8,22 @@ internal static class Program
     {
         try
         {
+            if (args is ["realtime-replay", var observerOwner, var observerGuest, var observerTarget, var observerMaster, var observerLobby,
+                var observerMusic, var observerDifficulty, var observerVocal, var observerPerformance, "--observer", var observerConfig, "--official-write",
+                "auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,recreate-room,leave-room"])
+                return await Realtime.RealtimeProbe.Run(observerOwner, observerTarget, Path.Combine(observerMaster, "clientConfigs.json"),
+                    int.Parse(observerLobby, System.Globalization.CultureInfo.InvariantCulture), observerMaster, observerGuest,
+                    Realtime.MultiLiveSong.Read(observerMaster, int.Parse(observerMusic, System.Globalization.CultureInfo.InvariantCulture),
+                        observerDifficulty, int.Parse(observerVocal, System.Globalization.CultureInfo.InvariantCulture)),
+                    Realtime.MultiLivePerformance.Read(observerPerformance), true, observerConfig) ? 0 : 2;
+            if (args is ["realtime-replay", var replayOwner, var replayGuest, var replayTarget, var replayMaster, var replayLobby,
+                var replayMusic, var replayDifficulty, var replayVocal, var replayPerformance, "--official-write",
+                "auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,recreate-room,leave-room"])
+                return await Realtime.RealtimeProbe.Run(replayOwner, replayTarget, Path.Combine(replayMaster, "clientConfigs.json"),
+                    int.Parse(replayLobby, System.Globalization.CultureInfo.InvariantCulture), replayMaster, replayGuest,
+                    Realtime.MultiLiveSong.Read(replayMaster, int.Parse(replayMusic, System.Globalization.CultureInfo.InvariantCulture),
+                        replayDifficulty, int.Parse(replayVocal, System.Globalization.CultureInfo.InvariantCulture)),
+                    Realtime.MultiLivePerformance.Read(replayPerformance), true) ? 0 : 2;
             if (args is ["realtime-play", var playOwner, var playGuest, var playTarget, var playMaster, var playLobby,
                 var playMusic, var playDifficulty, var playVocal, var performancePath, "--official-write",
                 "auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room"])
@@ -60,6 +76,7 @@ internal static class Program
             }
             if (args.Length < 4 || args[0] is not ("plan" or "run"))
             {
+                Console.WriteLine("realtime-replay <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> [--observer <config>] --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,recreate-room,leave-room");
                 Console.WriteLine("realtime-play <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room");
                 Console.WriteLine("realtime-start <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,leave-room");
                 Console.WriteLine("realtime-party <ownerConfig> <guestConfig> <target> <master> <lobbyId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,leave-room");

@@ -16,10 +16,12 @@ public static class MultiLiveGuest
     public static async Task<bool> Run(string configurationPath, string targetName, string masterDirectory, string output,
         DiarkisUdpClient owner, MultiLiveRoomSyncData room, int lobbyId, JsonObject report, CancellationToken cancellationToken,
         ProtocolClient? ownerHttp = null, SuiteUser? ownerUser = null, MultiLiveSong? song = null, MultiLivePerformance? performance = null,
-        MultiLiveSong? guestSong = null)
+        MultiLiveSong? guestSong = null, bool replay = false)
     {
         if (song != null && (ownerHttp == null || ownerUser == null))
             throw new InvalidOperationException("开始演出需要房主的当前HTTP会话及用户快照。");
+        if (replay && (performance == null || song == null))
+            throw new InvalidOperationException("再演需要完整成绩用例。");
         var target = JsonFiles.Read<ClientConfiguration>(configurationPath).Targets[targetName];
         var configDirectory = Path.GetDirectoryName(Path.GetFullPath(configurationPath))!;
         using var http = new ProtocolClient(target, configDirectory);
@@ -110,6 +112,7 @@ public static class MultiLiveGuest
                     throw new InvalidDataException("加入私人房间被拒绝。");
                 if (response.Command is not (MultiLiveRoom.CreatedCommand or MultiLiveRoom.JoinedCommand)) continue;
                 var snapshot = DumpSerializer.Deserialize<MultiLiveRoomSyncData>(response.Payload);
+                JsonFiles.Write(Path.Combine(output, "join-state.local.json"), JsonSerializer.SerializeToNode(snapshot, DumpJson.Options)!);
                 report["joinChecks"] = new JsonObject
                 {
                     ["roomMatches"] = snapshot.roomId == room.roomId, ["roomNumberMatches"] = snapshot.privateRoomNumber == number,
@@ -233,6 +236,30 @@ public static class MultiLiveGuest
                 report["live"] = flow;
                 await MultiLiveFlow.Run(owner, guest, ownerHttp!, http, ownerUser!, guestUser!, room, joined,
                     guestSeen, lobbyId, song, output, flow, cancellationToken, performance, guestSong);
+                if (replay)
+                {
+                    var recreate = new JsonObject();
+                    report["recreate"] = recreate;
+                    await MultiLiveFlow.Recreate(owner, guest, room, joined, output, recreate, cancellationToken);
+                    var lookup = await owner.MaintainConnectionAsync(guest.MaintainConnectionAsync(http.Send(new ScenarioStep
+                    {
+                        Operation = "private-room-lookup", Args = new() { ["privateRoomType"] = "multi_live", ["roomNo"] = number.ToString(CultureInfo.InvariantCulture) }
+                    }), cancellationToken), cancellationToken);
+                    if (MultiLiveReservation.ReadRoomNumber(lookup, room.roomId) != number)
+                        throw new InvalidDataException("再演后的房间或房号不一致。");
+                    recreate["roomLookupMatches"] = true;
+                    ownerUser = JsonSerializer.Deserialize<SuiteUser>((await owner.MaintainConnectionAsync(
+                        guest.MaintainConnectionAsync(ownerHttp!.Suite(), cancellationToken), cancellationToken)).ToJsonString(), DumpJson.Options)!;
+                    guestUser = JsonSerializer.Deserialize<SuiteUser>((await owner.MaintainConnectionAsync(
+                        guest.MaintainConnectionAsync(http.Suite(), cancellationToken), cancellationToken)).ToJsonString(), DumpJson.Options)!;
+                    var second = new JsonObject();
+                    report["replayLive"] = second;
+                    var replayOutput = Path.Combine(output, "replay");
+                    Directory.CreateDirectory(replayOutput);
+                    await MultiLiveFlow.Run(owner, guest, ownerHttp!, http, ownerUser, guestUser, room, joined,
+                        guestSeen, lobbyId, song, replayOutput, second, cancellationToken, performance, guestSong);
+                    recreate["complete"] = true;
+                }
             }
             report["phase"] = "guest-leave";
             await owner.MaintainConnectionAsync(Leave(cancellationToken), cancellationToken);

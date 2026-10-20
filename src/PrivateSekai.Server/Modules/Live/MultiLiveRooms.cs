@@ -84,6 +84,15 @@ public sealed class MultiLiveRooms(TimeProvider clock, MasterData master)
             }
             if (version != 2) throw new NotSupportedException("未支持的房间命令版本。");
             var current = Current(userId);
+            if (command == 3110)
+            {
+                if (payload.Length != 0) throw new InvalidDataException("再演请求必须为空载荷。");
+                current.Closed = false;
+                current.LiveId = null;
+                current.Master = null;
+                current.Prepared.Clear();
+                return [];
+            }
             if (command == 1013)
             {
                 if (current.Owner != userId || !payload.AsSpan().SequenceEqual(new byte[] { 1 }))

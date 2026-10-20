@@ -14,7 +14,7 @@ public static class RealtimeProbe
 {
     public static async Task<bool> Run(string configurationPath, string targetName, string? clientConfigsPath = null,
         int? lobbyId = null, string? masterDirectory = null, string? guestConfigurationPath = null, MultiLiveSong? song = null,
-        MultiLivePerformance? performance = null)
+        MultiLivePerformance? performance = null, bool replay = false, string? observerConfigurationPath = null)
     {
         if (lobbyId.HasValue && (lobbyId <= 0 || clientConfigsPath == null))
             throw new InvalidOperationException("房间设置需要客户端配置和有效大厅 ID。");
@@ -26,6 +26,8 @@ public static class RealtimeProbe
             throw new InvalidOperationException("演出开始流程需要双账号私房。");
         if (performance != null && song == null)
             throw new InvalidOperationException("演出结算需要歌曲及双账号私房。");
+        if (replay && performance == null) throw new InvalidOperationException("再演需要完整演出成绩用例。");
+        if (observerConfigurationPath != null && !replay) throw new InvalidOperationException("再演后入房验证需要双场演出。");
         var guestSong = song != null && performance?.GuestDifficulty is { } guestDifficulty
             ? MultiLiveSong.Read(masterDirectory!, song.MusicId, guestDifficulty, song.VocalId) : song;
         var roomTtl = clientConfigsPath == null ? (int?)null : MultiLiveReservation.ReadRoomTtl(
@@ -33,9 +35,9 @@ public static class RealtimeProbe
         var configuration = JsonFiles.Read<ClientConfiguration>(configurationPath);
         if (!configuration.Targets.TryGetValue(targetName, out var target))
             throw new InvalidOperationException("目标不存在。");
-        if (guestConfigurationPath != null)
+        foreach (var otherPath in new[] { guestConfigurationPath, observerConfigurationPath }.Where(p => p != null))
         {
-            var other = JsonFiles.Read<ClientConfiguration>(guestConfigurationPath);
+            var other = JsonFiles.Read<ClientConfiguration>(otherPath!);
             if (!other.Targets.TryGetValue(targetName, out var guestTarget) || guestTarget.Kind != target.Kind || guestTarget.Validate() != target.Validate())
                 throw new InvalidOperationException("双账号私房必须使用同一服务端与目标类型。");
         }
@@ -119,7 +121,7 @@ public static class RealtimeProbe
             // 连接凭证仅使用本次响应原对象，报告不保存地址、密钥或原始报文。
             realtime = new DiarkisUdpClient(authentication, true);
             using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(
-                (long)(performance?.DurationMilliseconds ?? 0) + (guestConfigurationPath == null ? 60000 : 120000)));
+                (long)(performance?.DurationMilliseconds ?? 0) * (replay ? 2 : 1) + (replay ? 240000 : guestConfigurationPath == null ? 60000 : 120000)));
             report["phase"] = "udp-handshake";
             await realtime.ConnectAsync(timeout.Token);
             report["udpHandshakeSucceeded"] = true;
@@ -208,6 +210,7 @@ public static class RealtimeProbe
                             report["ownIndex"] = room.index;
                             report["playerCount"] = new[] { room.userId }.Concat((room.players ?? []).Select(p => p.userId)).Distinct().Count();
                             report["basicInfoMatches"] = true;
+                            JsonFiles.Write(Path.Combine(output, "created-room.local.json"), JsonSerializer.SerializeToNode(room, DumpJson.Options)!);
                             break;
                         }
                         report["phase"] = "sync-room-number";
@@ -230,7 +233,20 @@ public static class RealtimeProbe
                             var guestReport = new JsonObject();
                             report["guest"] = guestReport;
                             await MultiLiveGuest.Run(guestConfigurationPath, targetName, masterDirectory!, Path.Combine(output, "guest"),
-                                realtime, room, lobbyId.Value, guestReport, timeout.Token, http, ownerUser, song, performance, guestSong);
+                                realtime, room, lobbyId.Value, guestReport, timeout.Token, http, ownerUser, song, performance, guestSong,
+                                replay);
+                            if (observerConfigurationPath != null)
+                            {
+                                report["phase"] = "reopen-for-new-member";
+                                await realtime.SendReliableAsync(2, MultiLiveRoom.RecreateCommand, [], timeout.Token);
+                                await realtime.SendReliableAsync(2, MultiLiveFlow.PlayerPropertyCommand,
+                                    DumpSerializer.Serialize(MultiLiveFlow.Status(PlayerStatus.Matching)), timeout.Token);
+                                await realtime.FlushAsync(timeout.Token);
+                                var observerReport = new JsonObject();
+                                report["observer"] = observerReport;
+                                await MultiLiveGuest.Run(observerConfigurationPath, targetName, masterDirectory!, Path.Combine(output, "observer"),
+                                    realtime, room, lobbyId.Value, observerReport, timeout.Token);
+                            }
                         }
                         report["phase"] = "leave-private-room";
                         await Leave(timeout.Token);

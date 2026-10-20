@@ -33,6 +33,27 @@ public static class MultiLiveFlow
 {
     public const ushort PlayerPropertyCommand = 10030;
 
+    public static async Task Recreate(
+        DiarkisUdpClient owner, DiarkisUdpClient guest, MultiLiveRoomSyncData room, MultiLiveRoomSyncData joined,
+        string output, JsonObject report, CancellationToken token)
+    {
+        var journalPath = Path.Combine(output, "recreate-state.local.json");
+        var journal = new JsonObject { ["phase"] = "owner-attempted", ["previousRoomId"] = room.roomId,
+            ["ownerUserId"] = room.userId, ["guestUserId"] = joined.userId };
+        report["complete"] = false;
+        JsonFiles.Write(journalPath, journal);
+        await owner.SendReliableAsync(2, MultiLiveRoom.RecreateCommand, [], token);
+        journal["phase"] = "guest-attempted";
+        JsonFiles.Write(journalPath, journal);
+        await guest.SendReliableAsync(2, MultiLiveRoom.RecreateCommand, [], token);
+        async Task<bool> Flush(DiarkisUdpClient connection) { await connection.FlushAsync(token); return true; }
+        await owner.MaintainConnectionAsync(Flush(guest), token);
+        await guest.MaintainConnectionAsync(Flush(owner), token);
+        report["transportAcknowledged"] = true;
+        journal["phase"] = "transport-acknowledged";
+        JsonFiles.Write(journalPath, journal);
+    }
+
     public static DynamicPropertyPayload Property(params (int Key, byte[] Value)[] values) => new()
     {
         isRSend = 1, values = values.ToDictionary(v => v.Key, v => v.Value)
