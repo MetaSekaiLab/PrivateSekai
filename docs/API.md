@@ -256,7 +256,7 @@ Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 m
 
 ## Server 普通私房建房、加入与退出
 
-当前已接入上述实时认证、房号 POST、房间 PATCH、房号 GET 和 UDP 3060／3070／3080／3001／10010／1021／102，使用原 dump 请求及响应类型。`RealtimeConfig` 默认关闭；在 `PrivateSekai:Realtime` 设置 `Enabled=true`、监听地址、对外主机名和 UDP 端口后启用。示例使用回环地址和8832端口；对外主机名必须能被客户端访问。TCP、公共匹配和自定义规则尚未支持；后续选曲与演出准备见下文，结算尚未接入。
+当前已接入上述实时认证、房号 POST、房间 PATCH、房号 GET 和 UDP 3060／3070／3080／3001／10010／1021／102，使用原 dump 请求及响应类型。`RealtimeConfig` 默认关闭；在 `PrivateSekai:Realtime` 设置 `Enabled=true`、监听地址、对外主机名和 UDP 端口后启用。示例使用回环地址和8832端口；对外主机名必须能被客户端访问。TCP、公共匹配和自定义规则尚未支持；选曲、演出准备及基础结算见下文。
 
 实时认证只接受当前账号的会话 JWT 和已存在用户，普通用户签名不能替代会话；为每个用户生成独立SID、clientKey及加密材料。重复认证使旧连接失效。预留后可以用同一凭证建立新的入房连接；有成员的连接不能直接用SYN重置。房间状态仅保存在当前服务进程，进退不扣费、不发奖、不写入用户卡牌或资源。
 
@@ -325,7 +325,21 @@ Client 命令 `realtime-play <ownerConfig> <guestConfig> <target> <master> <lobb
 
 2026-10-20受控官方协议验证：沿用现有培养成绩模板，双方各100000分，演出体力0，等待180秒；从成员开始请求到首次结算实际间隔183.48秒。全部21次HTTP为200，双方汇总200000，个人rank_c、多人rank_d；每人经验+20，userLivePoint为普通1、每日额外10、剩余2，独立Suite确认免费Live任务进度+11、付费进度不变。卡牌经验及返回库存与回读一致，体力未减少，双方退出及独立认证成功。这是受控协议成绩用例，不是游戏内真实游玩或评分公式对拍，也未验证断连、Fever、不同难度及跨日。
 
-Server共用的 `UpdateLiveMissionProgress` 已修正为把普通P与每日额外P一起计入当期free进度，只有额外P时也记账，并复用任务门槛判断和用户操作回滚；不计入paidProgress。检查覆盖11点入账、纯额外点、门槛达成、编码失败及溢出。Server目前已支持私房进退和演出准备，但多人结算HTTP和每日次数生成尚未接入。
+Server共用的 `UpdateLiveMissionProgress` 把普通P与每日额外P一起计入当期free进度，纯额外P也记账，不计入paidProgress。任务达成提示只出现在本次响应，不保存在后续Suite中。
+
+### Server 基础双人结算与每日 Live P
+
+上述PUT已接入真实Controller和用户事务。当前完整用例为零体力、image、普通私人房间、两名玩家均成功、个人C档／全场D档；其他评分组合、Fever、镜像、断连或语音列表返回本地501，不代表官方拒绝语义。会话缺失或重复提交返回404，账号会话不符401，槽位身份、歌曲／难度或总分不符400。核验通过后同一事务移除私有准备会话、发奖、更新卡牌／玩家经验、多人音乐记录、MVP、使用次数及相关任务；编码或后续奖励失败全部回滚。
+
+当前D档每人20经验、每张未满级卡牌60经验、20金币及两份属性碎片，来自四场双方响应及独立回读。满级卡牌经验保持上限。基础资源盒按purpose、类型、编号、数量和等级查询，沿用资源发放服务；五种属性碎片当前使用本地均匀抽选，官方候选范围和权重尚未完整对拍，不将该策略说成官方概率。多人记录使用playType=multi；同分最高时，本次请求者获得MVP，双方各自提交后都可累计MVP。角色使用次数与样本一致，增加领队及前四个成员位。
+
+个人评分和全场评分分别计算。`MultiLiveBootData`完整构造（RVA `0x6316af0`）固定向`MultiLiveScoreData`传5；后者构造（`0x6316d38`）把选曲参考难度的四档门槛逐项乘5，不按实际房内人数缩放。`MasterDataManager.GetMasterPlayLevelScore`（`0x629caf0`）优先读取当前类型，缺失时在multi_private和multi_open之间互查。个人评分使用未乘五的多人门槛；单人仍保留solo表。
+
+`LivePointService`在私有DailyLivePoint中保存游戏日及已领奖次数。多人成功结算当日前三次各加10P，第四次仅普通P；同一用户事务消费次数和会话，重放或失败不重复发放。单人结算读取相同剩余次数，不领取或消耗每日加成。日期按UTC+9及master的date_change_hour计算，当前为4点；日期归属使用结算时刻。日切、编码／溢出回滚和SQLite重启恢复已有本地检查，跨4点的真实开局／结算仍未采样。
+
+本地现有Client完整状态机已串联实际Server的建房、开始、成绩推送、双方结算、退出及独立Suite，连续四场确认免费Live P增量11／11／11／1、玩家经验各+20、卡牌经验、金币及MVP只入账一次、体力不变；另验证重复提交、越权、总分错误、编码失败、后续奖励溢出和任务提示不持久化。此证据为本地协议贯通，不是Unity游戏内验收。
+
+补充官方受控验证：同样个人C档，双方100000／150000、合计250000时全场为C，双方各+200经验，普通P1、每日P0、剩余0，21次HTTP全200并完成退出和独立回读。先前100000／500000场次仅房主结算成功，加入方409 invalid_live；加入方回读确认经验、金币、卡牌和水晶不变，双方退出，该失败场不计作完整成功。之后零体力单人场正常结算，返回普通P1、每日P0、剩余0且独立回读成功，确认单人与多人共享剩余次数。全场C档发奖仍需扩展，不将新样本等同于Server已支持该档。
 
 ## PUT `/api/user/{userId}/profile-honor`
 
@@ -2285,7 +2299,7 @@ Client 的 `--replay-live-start` 已验证正常、跨曲难度、不存在难�
 
 Boost 契约补充：官方结算的 `boost` 包含整数 `bondsExpRate`，零体力手动样本为 1、消耗一体力的 Auto 样本为 5，与 `boosts` 对应行一致。原始 `MasterBoost` dump 及其 formatter 只有七个字段，未知 Key 走跳过分支；未发现客户端读取该新增字段的证据。构建副本现显式补充该 Key，Server 从 master 复制原值，不用其他倍率代替；原始 DLL 不变。`--replay-live-boost` 使用开局、结算、master、输出目录参数，断言完整 `boost` 对象，两组样本通过。协议检查确认新增字段的 JSON／MessagePack 往返及其余原始契约不变；这不代表羁绊经验发放已实现。
 
-仍待确认：`userLivePoint.livePointBonusRemaining` 当前本地误用 `costBoost`；官方零体力样本为 3。逆向 `LiveReward.SetData` 将该字段传给 `LiveResultLiveMission.Initialize`，再由 `SetBonusRemaining` 填写剩余次数文本，但尚未确定服务端生成规则、每日重置与付费状态关系。需补充不同剩余次数及跨日样本，不能直接将本地逻辑替换为固定 3。
+`userLivePoint.livePointBonusRemaining` 已改为共享每日计数，不再使用costBoost。初始名额为3；多人前三次通关逐次减少，耗尽后单人结算也返回0。逆向`LiveReward.SetData`将该字段传给`LiveResultLiveMission.Initialize`，再由`SetBonusRemaining`填写剩余次数文本。真实跨日及会员叠加仍需补证，不能将剩余次数固定为3。
 
 普通奖励重复采样：同曲 Normal、同音源、零体力、零分及生命耗尽的开局和结算请求完全相同，两次均获得 15 金币、2 个材料，但材料 ID 分别为 1、4。结算后快照和额外 Suite 回读确认材料到账；不能用单次观测固定资源箱序列。按 `resourceBoxes` 的 purpose、资源类型、ID、数量及倍率匹配，两个材料分别对应候选箱 18、21，金币对应 61；这只能证明资源内容匹配，尚不能证明选择算法、概率或适用的难度／评分范围。当前 Server 的两个历史组合仍是未完成实现，不扩展该硬编码。
 
@@ -2351,9 +2365,9 @@ B 档基础经验为240，复用普通演出的 `boost.expRate`、玩家跨级�
 
 C档样本符合基础经验200乘 `boost.expRate`；两份B档样本增量240。Server 已补齐 B 档并通过这两份记录的经验及关联状态对拍，但尚无 B 档其他倍率及 A／S 档成功样本，不能据此宣称全档经验规则已还原。
 
-76份响应的 `addDailyBonusProgress` 均为0，`livePointBonusRemaining` 均为3，覆盖0、1、3、5、10体力消耗。这反证当前Server将 `costBoost` 填入剩余次数的实现，但不能证明该字段应永远固定为3。客户端 `LiveReward.SetData` 将这两个字段直接传给 `LiveResultLiveMission.Initialize`，后者分别保存并展示；未在该路径从体力重新计算剩余次数。每日发放条件、次数扣减、跨日及付费状态仍需补证。
+早期76份单人响应的`addDailyBonusProgress`均为0、`livePointBonusRemaining`均为3，覆盖0、1、3、5、10体力，反证旧Server使用costBoost作为剩余次数，但不能证明应固定为3。后续多人样本已确认次数扣减，耗尽后单人返回0，现已使用共享计数。客户端`LiveReward.SetData`直接传递这两个字段，结果页分别保存并展示，不从体力重新计算；跨日及会员状态仍需官方样本补证。
 
-Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通过实际本地 HTTP 结算比较完整 `userLivePoint`，校验成功状态与 HTTP 状态；缺少该对象或存在差异即失败。零体力官方样本确认仅剩余次数字段不同：官方3、本地0。该检查覆盖响应中的普通进度、每日加成、剩余次数及周期，不替代任务持久状态、独立回读和跨日验证。
+Client检查入口`--replay-live-point <start> <clear> <master> <output>`通过实际本地HTTP结算比较完整userLivePoint及HTTP状态，缺对象或有差异即失败。它曾定位零体力样本的旧差异（官方3、本地0）；当前剩余次数已修正。该入口不替代持久状态、独立回读和跨日验证。
 
 每日加成适用范围已从[官方 FAQ](https://pjsekai.sega.jp/faq/index.html)确认（2026-10-09查阅）：多人 Live 或 Cheerful Live 通关时，当日前三次获得额外 Live P，次数每日凌晨4点重置。master 的 `wordings.MSG_ABOUT_LIVE_POINT_DAILY_BONUS_CONTENT` 另明确每日最多三次、每次10 Live P。普通单人演出不属于该触发范围，因此上述单人样本无法验证次数扣减；不能为单人结算按游玩次数新增每日奖励。显示文案不能证明网络存档字段或通行证倍率如何叠加，这些仍需匹配版本的多人样本。
 
@@ -2366,7 +2380,7 @@ Client 检查入口 `--replay-live-point <start> <clear> <master> <output>` 通�
 | 3 | 1 | 10 | 0 | 11 |
 | 4 | 1 | 0 | 0 | 1 |
 
-每场各21次HTTP全200，受控演出均等待至少180秒；双方各结算一次、退出并独立回读，paid进度不变，卡牌及返回库存一致，未扣体力或水晶。该证据确认这些账号当日前三次加成与耗尽边界；随后单人结算、跨日归属及通行证叠加仍未验证。Server目前已接入私房进退和演出准备，尚未接入多人结算HTTP和每日次数生成。`colorfulPassV2s.livePointRate` 提供通行证倍率，但现有证据不证明每日加成以购买通行证为前提。
+每场各21次HTTP全200，受控演出均等待至少180秒；双方各结算一次、退出并独立回读，paid进度不变，卡牌及返回库存一致，未扣体力或水晶。该证据确认这些账号当日前三次加成与耗尽边界。之后单人场已确认普通1／每日0／剩余0，不改变每日名额；跨日归属及通行证叠加仍待官方样本验证。Server已接入基础双人结算及私有日计数，范围见前述小节。`colorfulPassV2s.livePointRate` 提供通行证倍率，但现有证据不证明每日加成以购买通行证为前提。
 
 私人房间前置链路：`MultiRoomMatchingOrganizer.PublishReserveRoomRequest` 调用 `MultiLiveRoomMatchingController.ReserveRoom`，先准备实时连接，再预留空房间；成功后以返回的房间标识 POST 申请房号，再 PATCH 设置大厅。Client 普通私人创建、入房、房号同步及退出已实测通过，见上文“私人房间实时创建与入房”；加入已有房间、选曲和多人结算仍未接通。
 

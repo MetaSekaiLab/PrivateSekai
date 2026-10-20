@@ -4,11 +4,17 @@ using System;
 using System.Linq;
 using game::Sekai;
 using PrivateSekai.Models;
+using PrivateSekai.Modules.Cards;
+using PrivateSekai.Modules.Inventory;
+using PrivateSekai.Modules.Missions;
+using PrivateSekai.Shared.Resources;
 using PrivateSekai.Shared.Users;
 
 namespace PrivateSekai.Modules.Live;
 
-public sealed class MultiLiveService(UserSession user, LiveMasterQueries master)
+public sealed class MultiLiveService(UserSession user, LiveMasterQueries master, LiveService live, LivePointService livePoints,
+    CardService cards, BoostService boosts, ResourceMasterQueries resourceMaster, ResourceService resources, MissionService missions,
+    Random random)
 {
     public void Prepare(string liveId, MultiLiveRequest all, UserMultiLiveRequest request)
     {
@@ -36,6 +42,89 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master)
         user.Private.MultiLiveSessions.Add(liveId, new() { Master = all, Start = request, CreatedAt = user.Now });
         user.NormalizeEventBreakTime();
         user.MarkChanged(nameof(SuiteUser.userEventBreakTime));
+    }
+
+    public UserMultiLiveClearResponse Clear(string liveId, UserMultiLiveClearRequest request)
+    {
+        if (!user.Private.MultiLiveSessions.TryGetValue(liveId, out var session)) throw new MultiLiveRequestException(404);
+        if (request.superFeverFlg || request.isMirrored || request.disconnectUserIds?.Count > 0
+            || request.musicCategoryName != "image" || request.privateRoomSettings?.liveRuleType != "normal"
+            || request.ingameCutinCharacterArchiveVoiceGroupIds?.Count > 0)
+            throw new MultiLiveRequestException(501);
+        var slots = new[] { request.score1, request.score2, request.score3, request.score4, request.score5 };
+        var ids = new[] { session.Master.userId1, session.Master.userId2, session.Master.userId3, session.Master.userId4, session.Master.userId5 };
+        for (var i = 0; i < slots.Length; i++)
+        {
+            var score = slots[i];
+            if (ids[i] == 0)
+            {
+                if (score != null) throw new MultiLiveRequestException(400);
+                continue;
+            }
+            if (score == null || score.userId != ids[i] || score.score < 0 || score.life <= 0
+                || score.perfectCount < 0 || score.greatCount < 0 || score.goodCount < 0 || score.badCount < 0 || score.missCount < 0
+                || score.maxCombo < 0 || score.tapCount < 0
+                || master.GetMasterMusicDifficulty(score.musicDifficultyId)?.musicId != session.Start.musicId)
+                throw new MultiLiveRequestException(400);
+        }
+        var played = slots.Where(s => s != null).ToArray();
+        var own = played.SingleOrDefault(s => s.userId == user.UserId) ?? throw new MultiLiveRequestException(400);
+        if (own.musicDifficultyId != session.Start.musicDifficultyId || played.Sum(s => (long)s.score) != request.totalScore)
+            throw new MultiLiveRequestException(400);
+        var rank = master.GetMultiScoreRank(own.musicDifficultyId, own.score);
+        var totalRank = master.GetMultiScoreRank(own.musicDifficultyId, request.totalScore, true);
+        if (totalRank != "rank_d" || rank != "rank_c" || played.Length != 2) throw new MultiLiveRequestException(501);
+        var coinBox = master.GetMultiLowRewardBox("coin", 0, 20);
+        // 本地对五种属性碎片均匀抽选；现有资料未确认官方权重。
+        var materialBoxes = Enumerable.Range(1, 5).Select(id => master.GetMultiLowRewardBox("material", id, 2)).ToArray();
+        var rewards = resourceMaster.BuildResourcesFromBoxes("score_rank_reward_detail", [coinBox, materialBoxes[random.Next(materialBoxes.Length)]]);
+        var deck = user.Data.userDecks.Single(d => d.deckId == session.Start.deckId);
+        var context = new UserLiveSessionData
+        {
+            MusicId = session.Start.musicId, MusicDifficultyId = own.musicDifficultyId, DeckId = session.Start.deckId
+        };
+        var clear = new UserLiveClearRequest
+        {
+            score = own.score, perfectCount = own.perfectCount, greatCount = own.greatCount, goodCount = own.goodCount,
+            badCount = own.badCount, missCount = own.missCount, maxCombo = own.maxCombo, life = own.life
+        };
+        var fullCombo = own.goodCount == 0 && own.badCount == 0 && own.missCount == 0;
+        var fullPerfect = fullCombo && own.greatCount == 0;
+        var mvp = own.score == played.Max(s => s.score);
+        user.Private.MultiLiveSessions.Remove(liveId);
+        boosts.Normalize();
+        user.MarkChanged(nameof(SuiteUser.userBoost));
+        var experience = live.GainPlayerExperience(20);
+        var cardResults = new[] { deck.member1, deck.member2, deck.member3, deck.member4, deck.member5 }
+            .Select((id, index) => new DeckCardUpdateExpResult { index = index + 1, expResult = cards.GainExperience(id, 60) }).ToArray();
+        live.UpdateUserMusicResult(context, clear, fullCombo, fullPerfect, "multi", mvp);
+        var achievements = live.GrantUserMusicAchievements(context, clear, rank);
+        resources.Grant(rewards);
+        resources.Grant(live.BuildMusicAchievementRewards(achievements));
+        var points = livePoints.Build(master.BuildMasterBoost(0), true);
+        missions.UpdateLiveMissionProgress(points);
+        missions.RecordLiveRecords(own.maxCombo, master.ResolveMusicPlayLevel(own.musicDifficultyId));
+        missions.RecordLiveFinish(true);
+        missions.RecordManualLiveClear();
+        live.RecordDeckLiveClear(session.Start.deckId);
+        var users = played.Select(s => new UserMultiLiveClearScoreResponse
+        {
+            userId = s.userId, musicDifficultyId = s.musicDifficultyId, score = s.score, perfectCount = s.perfectCount,
+            greatCount = s.greatCount, goodCount = s.goodCount, badCount = s.badCount, missCount = s.missCount,
+            maxCombo = s.maxCombo, fullComboFlg = s.goodCount == 0 && s.badCount == 0 && s.missCount == 0,
+            fullPerfectFlg = s.greatCount == 0 && s.goodCount == 0 && s.badCount == 0 && s.missCount == 0,
+            mvpFlg = s.score == played.Max(p => p.score) && (s.userId == user.UserId || !mvp)
+        }).ToArray();
+        return new()
+        {
+            scoreRank = rank, multiScoreRank = totalRank, totalScore = request.totalScore,
+            user1 = users.ElementAtOrDefault(0), user2 = users.ElementAtOrDefault(1), user3 = users.ElementAtOrDefault(2),
+            user4 = users.ElementAtOrDefault(3), user5 = users.ElementAtOrDefault(4), userExpResult = experience.Result,
+            deckCardExpResults = cardResults, unitExpResults = [], userDeck = deck, userMusicAchievements = achievements,
+            scoreRankRewards = rewards, superFeverRewards = [], playerRankRewards = experience.Rewards, limitedTermScoreRankRewards = [],
+            activeUserIds = played.Select(s => s.userId).ToList(), bondsUpdateExpResults = [], userEventDeviceTransferRestrict = new(),
+            boost = master.BuildMasterBoost(0), userLivePoint = points
+        };
     }
 }
 

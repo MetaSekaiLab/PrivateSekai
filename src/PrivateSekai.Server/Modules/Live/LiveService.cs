@@ -18,8 +18,8 @@ public sealed class LiveService(
     UserSession user,
     LiveMasterQueries master,
     BoostService boosts,
-    MissionMasterQueries missionMaster,
     MissionService missions,
+    LivePointService livePoints,
     CardService cards,
     ResourceMasterQueries resourceMaster,
     ResourceService resources)
@@ -223,7 +223,7 @@ public sealed class LiveService(
         MergeLiveCharacterArchiveVoiceGroups([liveResultCharacterArchiveVoiceGroupId]);
     }
 
-    private void RecordDeckLiveClear(int deckId)
+    internal void RecordDeckLiveClear(int deckId)
     {
         var deck = GetUserDeck(deckId) ?? throw new ArgumentException("Live deck is missing.");
         var characterId = master.GetCardCharacter(deck.leader);
@@ -252,18 +252,18 @@ public sealed class LiveService(
         missions.RecordCharacterLiveClear(characterId);
     }
 
-    private bool UpdateUserMusicResult(
+    internal bool UpdateUserMusicResult(
         UserLiveSessionData session,
         UserLiveClearRequest request,
         bool fullCombo,
-        bool fullPerfect)
+        bool fullPerfect, string playType = "solo", bool mvp = false)
     {
         user.Data.userMusicResults ??= [];
         var results = user.Data.userMusicResults.ToList();
         var difficultyType = master.ResolveMusicDifficultyType(session.MusicDifficultyId);
         var result = results.FirstOrDefault(r =>
             r.musicId == session.MusicId &&
-            string.Equals(r.playType, "solo", StringComparison.Ordinal) &&
+            string.Equals(r.playType, playType, StringComparison.Ordinal) &&
             string.Equals(r.musicDifficultyType, difficultyType, StringComparison.Ordinal));
 
         var previousHighScore = result?.highScore ?? 0;
@@ -276,30 +276,31 @@ public sealed class LiveService(
             {
                 musicId = session.MusicId,
                 musicDifficultyType = difficultyType,
-                playType = "solo",
+                playType = playType,
                 playResult = "not_clear"
             };
             results.Add(result);
         }
 
-        var before = (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg);
-        result.playType = "solo";
+        var before = (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg, result.mvpCount);
+        result.playType = playType;
         var playResult = BuildPlayResult(fullCombo, fullPerfect, request.life);
         if (PlayResultRank(playResult) > PlayResultRank(result.playResult))
             result.playResult = playResult;
         result.highScore = Math.Max(result.highScore, request.score);
         result.fullComboFlg = result.fullComboFlg || fullCombo;
         result.fullPerfectFlg = result.fullPerfectFlg || fullPerfect;
+        if (mvp) result.mvpCount = checked(result.mvpCount + 1);
 
         user.Data.userMusicResults = results.OrderBy(r => r.musicId)
             .ThenBy(r => r.musicDifficultyType, StringComparer.Ordinal).ToArray();
         if (isNew || !results.SequenceEqual(user.Data.userMusicResults) ||
-            before != (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg))
+            before != (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg, result.mvpCount))
             user.MarkChanged(nameof(SuiteUser.userMusicResults));
         return highScoreFlg;
     }
 
-    private UserMusicAchievement[] GrantUserMusicAchievements(
+    internal UserMusicAchievement[] GrantUserMusicAchievements(
         UserLiveSessionData session,
         UserLiveClearRequest request,
         string scoreRank)
@@ -333,7 +334,7 @@ public sealed class LiveService(
         return granted.ToArray();
     }
 
-    private UserResource[] BuildMusicAchievementRewards(UserMusicAchievement[] achievements)
+    internal UserResource[] BuildMusicAchievementRewards(UserMusicAchievement[] achievements)
     {
         var rewards = new List<UserResource>();
         foreach (var achievement in achievements)
@@ -378,7 +379,7 @@ public sealed class LiveService(
             _ => []
         };
 
-    private void MergeLiveCharacterArchiveVoiceGroups(IEnumerable<int>? groupIds)
+    internal void MergeLiveCharacterArchiveVoiceGroups(IEnumerable<int>? groupIds)
     {
         if (groupIds == null)
             return;
@@ -526,14 +527,7 @@ public sealed class LiveService(
         };
     }
 
-    private UserLivePoint BuildUserLivePoint(MasterBoost boost) =>
-        new()
-        {
-            addNormalProgress = boost.livePointRate,
-            addDailyBonusProgress = 0,
-            livePointBonusRemaining = boost.costBoost,
-            liveMissionPeriodId = missionMaster.GetLiveMissionPeriodId(user.Now)
-        };
+    private UserLivePoint BuildUserLivePoint(MasterBoost boost) => livePoints.Build(boost);
 
     private static int PlayResultRank(string result) => result switch
     {

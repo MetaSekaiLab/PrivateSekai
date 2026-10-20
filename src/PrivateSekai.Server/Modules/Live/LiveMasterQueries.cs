@@ -270,7 +270,16 @@ public sealed class LiveMasterQueries(MasterData master)
     public string BuildScoreRank(int musicDifficultyId, int score) =>
         GetScoreRank(musicDifficultyId, score, "solo");
 
-    private string GetScoreRank(int musicDifficultyId, int score, string liveType)
+    public string GetMultiScoreRank(int musicDifficultyId, int score, bool totalScore = false) =>
+        GetScoreRank(musicDifficultyId, score, "multi_private", totalScore ? 5 : 1);
+
+    public int GetMultiLowRewardBox(string type, int id, int quantity) =>
+        master.GetTable<MasterResourceBox>("resourceBoxes").Rows.Where(b => b.resourceBoxPurpose == "score_rank_reward_detail"
+            && b.details?.Length == 1 && b.details[0].resourceType == type && b.details[0].resourceId == id
+            && b.details[0].resourceQuantity == quantity && b.details[0].resourceLevel == 0)
+            .OrderBy(b => b.id).FirstOrDefault()?.id ?? throw new InvalidOperationException("Missing multiplayer reward box.");
+
+    private string GetScoreRank(int musicDifficultyId, int score, string liveType, int factor = 1)
     {
         var selected = GetMasterMusicDifficulty(musicDifficultyId)
             ?? throw new ArgumentException("Unknown music difficulty.");
@@ -281,13 +290,15 @@ public sealed class LiveMasterQueries(MasterData master)
             .OrderBy(d => d.Kind)
             .FirstOrDefault().Row
             ?? throw new InvalidOperationException("Missing score reference difficulty.");
-        var thresholds = master.GetTable<MasterPlayLevelScore>("playLevelScores").Rows
-            .SingleOrDefault(s => s.liveType == liveType && s.playLevel == reference.playLevel)
-            ?? throw new InvalidOperationException("Missing score thresholds.");
-        if (score >= thresholds.s) return "rank_s";
-        if (score >= thresholds.a) return "rank_a";
-        if (score >= thresholds.b) return "rank_b";
-        return score >= thresholds.c ? "rank_c" : "rank_d";
+        var rows = master.GetTable<MasterPlayLevelScore>("playLevelScores").Rows;
+        var thresholds = rows.SingleOrDefault(s => s.liveType == liveType && s.playLevel == reference.playLevel);
+        if (thresholds == null && liveType == "multi_private")
+            thresholds = rows.SingleOrDefault(s => s.liveType == "multi_open" && s.playLevel == reference.playLevel);
+        if (thresholds == null) throw new InvalidOperationException("Missing score thresholds.");
+        if (score >= checked(thresholds.s * factor)) return "rank_s";
+        if (score >= checked(thresholds.a * factor)) return "rank_a";
+        if (score >= checked(thresholds.b * factor)) return "rank_b";
+        return score >= checked(thresholds.c * factor) ? "rank_c" : "rank_d";
     }
 
     public static string BuildScoreRank(int score) =>

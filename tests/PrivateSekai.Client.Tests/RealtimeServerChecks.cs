@@ -29,10 +29,30 @@ internal static class RealtimeServerChecks
     {
         var masterPath = Path.Combine(directory, "realtime");
         Directory.CreateDirectory(masterPath);
+        foreach (var table in Directory.EnumerateFiles(directory, "*.json"))
+            File.Copy(table, Path.Combine(masterPath, Path.GetFileName(table)));
+        // 隔离的虚构数据，用于验证结算事务及边界。
+        var tables = new Dictionary<string, string>
+        {
+            ["cards"] = JsonSerializer.Serialize(Enumerable.Range(1, 5).Select(id => new { id, characterId = id, cardRarityType = "rarity_1" })),
+            ["cardRarities"] = """[{"cardRarityType":"rarity_1","maxLevel":3,"trainingMaxLevel":3}]""",
+            ["levels"] = """[{"levelType":"user","level":1,"totalExp":0},{"levelType":"user","level":2,"totalExp":10000},{"levelType":"card","level":1,"totalExp":0},{"levelType":"card","level":2,"totalExp":100},{"levelType":"card","level":3,"totalExp":300}]""",
+            ["configs"] = """[{"configKey":"date_change_hour","value":"4"},{"configKey":"boost_recovery_max_count","value":"25"},{"configKey":"boost_recovery_second","value":"1800"}]""",
+            ["boosts"] = """[{"id":1,"costBoost":0,"expRate":1,"rewardRate":1,"livePointRate":1}]""",
+            ["playLevelScores"] = """[{"liveType":"solo","playLevel":21,"s":1000000,"a":800000,"b":400000,"c":80000},{"liveType":"multi_open","playLevel":21,"s":1000000,"a":800000,"b":400000,"c":50000}]""",
+            ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
+            ["liveMissions"] = """[{"id":11,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":11},{"id":12,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":34}]""",
+            ["musicAchievements"] = "[]", ["beginnerMissionV2s"] = "[]", ["honorMissions"] = "[]", ["characterMissionV2s"] = "[]"
+        };
+        foreach (var pair in tables) File.WriteAllText(Path.Combine(masterPath, pair.Key + ".json"), pair.Value);
+        var boxes = new List<MasterResourceBox> { new() { id = 99, resourceBoxPurpose = "score_rank_reward_detail", details = [new() { resourceType = "coin", resourceQuantity = 20 }] } };
+        boxes.AddRange(Enumerable.Range(1, 5).Select(id => new MasterResourceBox
+            { id = id, resourceBoxPurpose = "score_rank_reward_detail", details = [new() { resourceType = "material", resourceId = id, resourceQuantity = 2 }] }));
+        File.WriteAllText(Path.Combine(masterPath, "resourceBoxes.json"), JsonSerializer.Serialize(boxes, DumpJson.Options));
         File.WriteAllText(Path.Combine(masterPath, "multiLiveLobbies.json"),
             """[{"id":1,"totalPower":0,"multiLiveLobbyType":"normal"}]""");
         File.WriteAllText(Path.Combine(masterPath, "musicDifficulties.json"),
-            """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":5,"totalNoteCount":10}]""");
+            """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":5,"totalNoteCount":220},{"id":74,"musicId":7,"musicDifficulty":"expert","playLevel":21,"totalNoteCount":900}]""");
         File.WriteAllText(Path.Combine(masterPath, "musicVocals.json"), """[{"id":1,"musicId":7}]""");
         File.WriteAllText(Path.Combine(masterPath, "musicCategories.json"), """[{"musicId":7,"musicCategoryName":"image"}]""");
         File.WriteAllText(Path.Combine(masterPath, "limitedTimeMusics.json"), "[]");
@@ -190,6 +210,8 @@ internal static class RealtimeServerChecks
         }
 
         await StartLive();
+        await PlayLive();
+        CheckDailyBoundary();
 
         // 原始UDP重传同一分片序列，预留只应用一次；错序也由接收序号恢复。
         await DuplicateReservation();
@@ -214,6 +236,8 @@ internal static class RealtimeServerChecks
             {
                 var state = store.Read(id)!;
                 state.Data.userGamedata.deck = 1;
+                state.Data.userGamedata.rank = 1;
+                state.Data.userBoost = new() { current = 10, recoveryAt = (ulong)clock.GetUtcNow().ToUnixTimeMilliseconds() };
                 state.Data.userCards = Enumerable.Range(1, 5).Select(cardId => new UserCard { cardId = cardId, level = 1 }).ToArray();
                 state.Data.userDecks = [new() { deckId = 1, leader = 1, member1 = 1, member2 = 2, member3 = 3, member4 = 4, member5 = 5 }];
                 store.Save(id, state);
@@ -302,13 +326,119 @@ internal static class RealtimeServerChecks
                 && JsonNode.DeepEquals(guestBefore["userChargedCurrency"], guestAfter["userChargedCurrency"]),
                 "开始演出后双方退出及独立Suite回读卡牌和水晶不变");
 
-            ProtocolClient Client(int id)
+        }
+
+        async Task PlayLive()
+        {
+            var song = new MultiLiveSong(7, 71, 1, "easy");
+            var score = new UserMultiLiveClearScoreRequest { score = 100000, perfectCount = 210, goodCount = 10, maxCombo = 210, tapCount = 220, life = 1000 };
+            var performance = new MultiLivePerformance { DurationMilliseconds = 1, OwnerScore = score, GuestScore = score };
+            var old = store.Read(11)!;
+            var oldId = old.Private.MultiLiveSessions.Single().Key;
+            var request = MultiLivePerformance.Result([11, 12], new Dictionary<long, UserMultiLiveClearScoreRequest>
+                { [11] = MultiLivePerformance.Score(score, 11, 71), [12] = MultiLivePerformance.Score(score, 12, 71) });
+            request.totalScore++;
+            await Request(11, HttpMethod.Put, $"/api/user/11/multi-live/{oldId}", DumpSerializer.Serialize(request), 400);
+            request.totalScore--;
+            await Request(12, HttpMethod.Put, $"/api/user/11/multi-live/{oldId}", DumpSerializer.Serialize(request), 401);
+            using (var scope = app.Services.CreateScope())
             {
-                var file = $"realtime-{id}.json";
-                JsonFiles.Write(Path.Combine(masterPath, file), new Dictionary<string, string> { ["X-Session-Token"] = JwtSignature.GenSessionToken(id) });
-                return new(new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = id, HeadersFile = file },
-                    masterPath, ServerConfig.AesKey, ServerConfig.AesIv);
+                var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
+                var service = scope.ServiceProvider.GetRequiredService<MultiLiveService>();
+                var failed = false;
+                try { operations.Execute(11, () => { service.Clear(oldId, request); return new BrokenResponse(); }); }
+                catch (MessagePack.MessagePackSerializationException) { failed = true; }
+                check(failed && store.Read(11)!.Private.MultiLiveSessions.ContainsKey(oldId)
+                    && store.Read(11)!.Private.DailyLivePoint.BonusCount == 0 && store.Read(11)!.Data.userGamedata.totalExp == 0
+                    && store.Read(11)!.Data.userCards.All(c => c.totalExp == 0), "结算编码失败同时回滚会话删除、每日次数和全部经验");
+                var overflow = store.Read(11)!;
+                overflow.Data.userGamedata.coin = int.MaxValue;
+                store.Save(11, overflow);
+                failed = false;
+                try { operations.Execute(11, () => service.Clear(oldId, request)); }
+                catch (OverflowException) { failed = true; }
+                check(failed && store.Read(11)!.Private.MultiLiveSessions.ContainsKey(oldId)
+                    && store.Read(11)!.Data.userGamedata.totalExp == 0 && store.Read(11)!.Data.userCards.All(c => c.totalExp == 0),
+                    "后续奖励溢出回滚前面经验与会话删除");
+                store.Save(11, old);
             }
+            for (var round = 0; round < 4; round++)
+            {
+                using var member = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true);
+                await Connect(member);
+                var room = await Open(member);
+                using var ownerHttp = Client(11);
+                using var guestHttp = Client(12);
+                var output = Path.Combine(masterPath, "clear-" + round);
+                Directory.CreateDirectory(output);
+                var report = new JsonObject();
+                check(await MultiLiveFlow.Run(owner, member, ownerHttp, guestHttp, store.Read(11)!.Data, store.Read(12)!.Data,
+                    room.Owner, room.Guest, room.Seen, 1, song, output, report, cancel, performance)
+                    && report["phase"]!.GetValue<string>() == "cleared", "现有Client受控演出从真实Server准备贯通双方结算");
+                foreach (var side in new[] { "ownerResult", "guestResult" })
+                {
+                    var point = report[side]!["userLivePoint"]!;
+                    check(report[side]!["scoreRank"]!.GetValue<string>() == "rank_c"
+                        && report[side]!["multiScoreRank"]!.GetValue<string>() == "rank_d"
+                        && point["livePointBonusRemaining"]!.GetValue<int>() == Math.Max(0, 2 - round)
+                        && (point["addDailyBonusProgress"]?.GetValue<int>() ?? 0) == (round < 3 ? 10 : 0),
+                        "双方同日四场逐次获得3份每日加成，第四场不再领取");
+                }
+                var cleared = ownerHttp.LastResponse!;
+                if (round is 0 or 3)
+                    check(cleared["updatedResources"]!["userLiveMissions"]![0]!["achievedMissionIds"]!.AsArray()
+                        .Select(v => v!.GetValue<int>()).SequenceEqual([round == 0 ? 11 : 12]), "Live任务跨门槛返回本次达成提示");
+                var liveId = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "live-state.local.json")))!["liveId"]!.GetValue<string>();
+                await Request(11, HttpMethod.Put, $"/api/user/11/multi-live/{liveId}", DumpSerializer.Serialize(MultiLivePerformance.Result([11, 12],
+                    new Dictionary<long, UserMultiLiveClearScoreRequest> { [11] = MultiLivePerformance.Score(score, 11, 71), [12] = MultiLivePerformance.Score(score, 12, 71) })), 404);
+                await Leave(member, "12");
+                await Response(owner, 1, 102, 255);
+                await Leave(owner, "11");
+                using var independent = Client(11);
+                using var guestIndependent = Client(12);
+                foreach (var client in new[] { independent, guestIndependent })
+                {
+                    var suite = await client.Suite();
+                    var data = JsonSerializer.Deserialize<SuiteUser>(suite.ToJsonString(), DumpJson.Options)!;
+                    check(data.userGamedata.totalExp == (round + 1) * 20 && data.userGamedata.coin == (round + 1) * 20
+                        && data.userCards.All(c => c.totalExp == Math.Min(300, (round + 1) * 60))
+                        && data.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress == (round < 3 ? (round + 1) * 11 : 34)
+                        && data.userLiveMissions.All(m => m.achievedMissionIds == null || m.achievedMissionIds.Length == 0)
+                        && data.userBoost.current == 10 && data.userMusicResults.Single(r => r.playType == "multi").mvpCount == round + 1,
+                        "双方退出后独立Suite确认经验、卡牌、金币、Live P和MVP仅结算一次，体力不变");
+                }
+            }
+            var database = Path.Combine(masterPath, "daily-point.db");
+            using (var saved = new SqliteUserStore(database)) saved.Save(11, store.Read(11)!);
+            using (var reopened = new SqliteUserStore(database))
+                check(reopened.Read(11)!.Private.DailyLivePoint.BonusCount == 3
+                    && reopened.Read(11)!.Private.MultiLiveSessions.Count == 0, "SQLite重启保留每日次数并确认已消费演出会话");
+        }
+
+        void CheckDailyBoundary()
+        {
+            using var scope = app.Services.CreateScope();
+            var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
+            var points = scope.ServiceProvider.GetRequiredService<LivePointService>();
+            var boost = new MasterBoost { livePointRate = 1 };
+            clock.Set(new DateTimeOffset(2026, 10, 20, 18, 59, 59, TimeSpan.Zero));
+            var before = DumpSerializer.Deserialize<UserLivePoint>(operations.Execute(11, () => points.Build(boost, true)));
+            check(before.addDailyBonusProgress == 0 && before.livePointBonusRemaining == 0, "JP日切前保留已耗尽的每日次数");
+            clock.Advance(TimeSpan.FromSeconds(1));
+            var solo = DumpSerializer.Deserialize<UserLivePoint>(operations.Execute(11, () => points.Build(boost)));
+            check(solo.addDailyBonusProgress == 0 && solo.livePointBonusRemaining == 3
+                && store.Read(11)!.Private.DailyLivePoint.BonusCount == 3, "JP凌晨4点单人查询显示新日名额，不发额外点或消费次数");
+            var after = DumpSerializer.Deserialize<UserLivePoint>(operations.Execute(11, () => points.Build(boost, true)));
+            check(after.addDailyBonusProgress == 10 && after.livePointBonusRemaining == 2
+                && store.Read(11)!.Private.DailyLivePoint.BonusCount == 1, "新日首次多人通关重新发放一次额外点");
+        }
+
+        ProtocolClient Client(int id)
+        {
+            var file = $"realtime-{id}.json";
+            JsonFiles.Write(Path.Combine(masterPath, file), new Dictionary<string, string> { ["X-Session-Token"] = JwtSignature.GenSessionToken(id) });
+            return new(new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = id, HeadersFile = file },
+                masterPath, ServerConfig.AesKey, ServerConfig.AesIv);
         }
         async Task Connect(DiarkisUdpClient connection)
         {
@@ -413,6 +543,7 @@ internal static class RealtimeServerChecks
         private long ticks = new DateTimeOffset(2026, 10, 20, 0, 0, 0, TimeSpan.Zero).Ticks;
         public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
         public void Advance(TimeSpan duration) => Interlocked.Add(ref ticks, duration.Ticks);
+        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref ticks, value.Ticks);
     }
 
     [MessagePack.MessagePackObject(AllowPrivate = true)]

@@ -28,6 +28,7 @@ public class NotSuiteData
 
     public Dictionary<string, UserChallengeLiveStartRequest> ChallengeLiveSessions { get; set; } = [];
     public Dictionary<string, UserMultiLiveSessionData> MultiLiveSessions { get; set; } = [];
+    public DailyLivePointData DailyLivePoint { get; set; } = new();
 
     public Dictionary<string, List<StoryBookmarkData>> StoryBookmarks { get; set; } = [];
 }
@@ -37,6 +38,12 @@ public sealed class UserMultiLiveSessionData
     public MultiLiveRequest Master { get; set; } = new();
     public UserMultiLiveRequest Start { get; set; } = new();
     public long CreatedAt { get; set; }
+}
+
+public sealed class DailyLivePointData
+{
+    public int Day { get; set; }
+    public int BonusCount { get; set; }
 }
 
 public sealed class StoryBookmarkData

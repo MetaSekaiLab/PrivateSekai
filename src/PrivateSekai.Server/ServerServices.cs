@@ -30,6 +30,7 @@ public static class ServerServices
     public static IServiceCollection AddPrivateSekai(this IServiceCollection services)
     {
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddSingleton(Random.Shared);
         services.AddSingleton<IUserStore>(_ => new SqliteUserStore(ServerConfig.UserDatabasePath));
         services.AddSingleton<UserLocks>();
         services.AddSingleton<AccountTemplates>();
@@ -75,6 +76,7 @@ public static class ServerServices
         services.AddScoped<LoginBonusStatusFilter>();
         services.AddScoped<LiveService>();
         services.AddScoped<MultiLiveService>();
+        services.AddScoped<LivePointService>();
         services.AddScoped<BoostService>();
         services.AddScoped<DeckService>();
         services.AddScoped<MusicMyListService>();

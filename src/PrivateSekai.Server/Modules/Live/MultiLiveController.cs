@@ -3,15 +3,18 @@ extern alias game;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using game::Sekai;
 using Microsoft.AspNetCore.Mvc;
 using PrivateSekai.Protocol;
+using PrivateSekai.Modules.Missions;
 using PrivateSekai.Shared.Users;
 using PrivateSekai.Transport;
 
 namespace PrivateSekai.Modules.Live;
 
-public sealed class MultiLiveController(UserOperation operations, UserSession user, MultiLiveService live, MultiLiveRooms rooms) : PrskController
+public sealed class MultiLiveController(UserOperation operations, UserSession user, MultiLiveService live, MultiLiveRooms rooms,
+    MissionMasterQueries missions) : PrskController
 {
     [HttpPost("api/multi-live")]
     public IActionResult Prepare([FromBody] MultiLiveRequest request) => Respond(request.userId, () =>
@@ -41,6 +44,30 @@ public sealed class MultiLiveController(UserOperation operations, UserSession us
                 isInBreakTime = false, updatedResources = new() { userEventBreakTime = user.Data.userEventBreakTime }
             };
         })));
+
+    [HttpPut("api/user/{userId}/multi-live/{liveId}")]
+    public IActionResult Clear(long userId, string liveId, [FromBody] UserMultiLiveClearRequest request) => Respond(userId, () =>
+        operations.Execute(userId, () =>
+        {
+            var previousBeginner = BeginnerMissionResponse.AchievedIds(user.Data);
+            var previousHonor = HonorMissionResponse.AchievedIds(user.Data);
+            var previousLive = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "live_mission"
+                && s.missionStatus is "achieved" or "received").Select(s => s.missionId).ToHashSet();
+            var response = live.Clear(liveId, request);
+            response.updatedResources = user.BuildRefresh();
+            HonorMissionResponse.AddAchievementHints(response.updatedResources, previousHonor, missions);
+            BeginnerMissionResponse.AddAchievementHints(response.updatedResources, previousBeginner);
+            var achieved = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "live_mission"
+                && s.missionStatus == "achieved" && !previousLive.Contains(s.missionId)).Select(s => s.missionId).ToArray();
+            if (achieved.Length > 0)
+                response.updatedResources.userLiveMissions = response.updatedResources.userLiveMissions.Select(m => new UserLiveMission
+                {
+                    userId = m.userId, liveMissionPeriodId = m.liveMissionPeriodId, liveMissionStatus = m.liveMissionStatus,
+                    progress = m.progress, paidProgress = m.paidProgress,
+                    achievedMissionIds = m.liveMissionPeriodId == response.userLivePoint.liveMissionPeriodId ? achieved : m.achievedMissionIds
+                }).ToArray();
+            return response;
+        }));
 
     private IActionResult Respond(long userId, Func<byte[]> action)
     {
