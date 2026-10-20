@@ -248,11 +248,46 @@ Client 的 `LiveAreaPower` 已实现以下区域计算规则，输入为实际 m
 
 连接切换：版本0／命令2的成功响应或推送携带 `BE EF FE ED` 加 UTF8 `host:port`。Client 按该控制消息发送旧节点 FIN，保留 SID、clientKey 和加密材料，重建 UDP 并清空旧序号、重传和分片状态。直接推送与 Echo 内附通知使用同一处理；仅按明确的服务端切换指令重连，不自行重发3080。来源为 `ReconnectCommand_`（`0x60b7ee4`）、`ParseReconnectPayload`、`Reconnect`、`Connect_`、`SendFin_` 和 `MultiplayCore.OnProtocolConnected`；重连回调跳过普通首次连接的业务入口。两节点回环测试核对旧 FIN、新 SYN、相同凭证、序号归零，以及入房响应继续交付且3080不重复发送。非法地址和端口本地拒绝，不代表官方错误语义。
 
-本节实现范围为 Client 普通私人建房、加入和退出；Server 实时房间、选曲及多人演出结算不在已实现范围内。
+本节实现范围为 Client 普通私人建房、加入、选曲、演出开始和退出；Server 实时房间及多人演出业务、Client 多人结算不在已实现范围内。
 
 2026-10-20 官方测试账号验证通过：预留、POST 房号和 PATCH 大厅成功；3070 后收到3001/status1，房间与本玩家的二十项资料一致。房号通过10010/status255实际推送确认，随后102/status1退出，释放旧会话后独立认证及 Suite 回读成功。UDP 收发各38个数据报，重传0；这证明上述 Client 私人建房流程可用，不证明官方会重新计算提交的总力，也不代表 Server 多人服务已实现。
 
 同日双账号验证通过：加入方按房号查到同一私房，经历一次服务端指定节点切换后收到3001/status1；双方成员集合各为2，彼此昵称、加入路径、难度和二十项基本资料均一致。双方10010房号推送匹配，加入方102/status1退出后房主收到对应退出推送，再由房主102/status1退出，双方独立认证及 Suite 回读成功。房主UDP收发47/47，加入方41/40，业务重传均0。未开始演出，不将此结果描述为 Server 多人演出或结算完成。
+
+### 双账号选曲与演出开始
+
+Client 命令 `realtime-start <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,leave-room` 在同一私房内完成双方选曲、难度准备、房主申请、成员登记、时钟同步及开始推送，再退出并独立回读。当前用例双方选择同一曲目和难度，使用指定的有效演唱版本、当前主编队、普通私人规则、image类别和零体力；不发送结算或发放奖励。不能据此声称已实现委托选曲、自制谱、自定义规则或完整多人演出。
+
+玩家属性可靠发送版本2／10030，推送可为10020／10030，逐个大端长度帧反序列化 RoomSyncPlayer 并按真实玩家合并属性。玩家 STATUS 键4与房间 STEP 键2分别维护；每阶段要求收到对方的实际属性推送，房间步骤则要求双方实际推送匹配。
+
+| 阶段 | 玩家属性 | 房主房间属性 |
+| --- | --- | --- |
+| 固定成员 | STATUS=Matching（1） | 1013关闭匹配；STEP=MusicSelect（2）、MESSAGE=1，清空LIVE_ID并生成RANDOM_SEED |
+| 选定歌曲 | MUSIC_ID键8、IS_ENTRUST键9=0、STATUS=FixedMusic（4） | STEP=Shuffle（3）、SELECTED_MUSIC_ID键4、SELECTED_MUSIC_USER_ID键11、MESSAGE=2 |
+| 难度准备 | SELECT_DIFFICULTY键7、CUSTOM_SCORE_ID键11为空字符串、STATUS=ReadyToLive（6） | 先STEP=ReadyFinal（4），双方准备后STEP=Loading（5） |
+| 开始准备 | 双方STATUS=LoadComplete（8） | 房主申请成功后LIVE_ID键12同步，房主STATUS=PrepareAPIFinished（9）再到InGameLiveReady（10） |
+| 进入演出 | 成员登记成功后STATUS=InGameLiveReady（10）；同步时钟后双方STATUS=Live（11） | STEP=Live（6）；所有玩家Live后发送MESSAGE=3、START_LIVE_TIMESTAMP键7（Int64）和STEP=Live |
+
+状态链来源为完整 MatchingRoom.FixedParty（`0x5cb8334`）、MoveToShuffleRoomStep（`0x5cb7824`）、MoveToReadyFinalRoomStep（`0x5cb7f50`）、OnPlayerStatusChanged（`0x5cb9934`）、MoveToLoadingRoomStep（`0x5cb9e6c`）、SuccessPrepareAPI（`0x5cb8644`）、MyPlayerStatusHandler各方法及MatchingRoom.Initialize映射。开始链为MultiLiveRoom.LiveReadyAsync（`0x5cc2234`）、StartLive（`0x5cc14f8`）；时钟使用2／10000、单字节1请求和TimestampPayload，按往返时间的一半补偿。所有业务写入均不自动重试。
+
+#### POST `/api/multi-live`
+
+- 无path/query参数；Client操作为 `multi-live-prepare`，请求使用dump MultiLiveRequest。
+- 包含当前 `userId`、`photonRoomName`、`multiLiveLobbyId`、`privateFlg`、`musicId`、`musicDifficultyId`、`musicVocalId`、`deckId`、`boostCount`、五组 `userIdN`／`selectedMusicIdN`、`privateRoomSettings` 和可选自制谱标识。普通私房只设置liveRuleType=normal及实际可空上下限，自定义字段保持空。
+- 五名成员槽位按GetPartyMembers排序：正的玩家ORDER键3优先，否则使用该端导入索引；之后按排序位置重新赋0～4槽位。空槽账号和选曲均为0，不以房主身份固定第一槽。
+- 响应MultiLiveResponse含 `updatedResources`、`liveId`、`isInBreakTime`。房主分发同一liveId并发送状态9；自身随后转状态10，其他成员收到房主准备完成事件后才登记。
+- 来源：完整PostMultiLiveAPI构造（`0x6188c7c`）、GetUserId（`0x61892b8`）及槽位lambda、Execute（`0x61893c8`，字符串multi-live）；GetPartyMembers（`0x5caf178`）及排序lambda；ScreenLayerMultiLiveLoading.OnLoadCompleteAll（`0x65e8c80`）与OnFinishMasterMultiLivePrepareAPI（`0x65ea084`）。
+
+#### POST `/api/user/{userId}/multi-live/{liveId}`
+
+- path为当前账号与房主返回的 `liveId`，无query；Client操作为 `multi-live-member-start`。
+- 请求使用dump UserMultiLiveRequest：同一房间、规则、大厅和歌曲，成员自己的 `deckId`、`musicDifficultyId`、`musicVocalId`、`boostCount`、`musicCategoryName`、`privateRoomSettings`及可选自制谱标识。此接口不携带五组成员槽位。
+- 响应UserMultiLiveResponse含 `updatedResources`、`isInBreakTime`，成功后成员转状态10。房主不重复调用此接口。
+- 来源：完整PostUserMultiLiveAPI构造（`0x618e144`）、Execute（`0x618e600`，路径字符串已核对），ExecuteMemberMultiLiveStartAPI.MoveNext（`0x65ea970`）及OnFinishUserMultiLiveAPI（`0x65ea2ac`）。
+
+2026-10-20官方双账号验证：上述完整开始流程成功，两个演出HTTP请求及全部19次HTTP均200；双方实际收到准备与开始同步，时钟同步有效，随后各自102/status1退出，房主确认成员退出，双方独立认证及Suite成功。请求boostCount均0，回读体力未减少，水晶、金币、经验和卡牌不变；Suite时间、区域和体力恢复字段有变化。此用例未结算，尚不能证明多人奖励、每日Live P或Server多人实现。
+
+HTTP记录隐藏五槽账号、房间名和Live ID；写入前保存本机恢复记录，保留业务阶段和实际Live ID供人工核对，该记录不进入可提交文件。脱敏报告只保存阶段与验证结果，不含原始UDP。
 
 ## PUT `/api/user/{userId}/profile-honor`
 

@@ -13,7 +13,7 @@ namespace PrivateSekai.Client.Realtime;
 public static class RealtimeProbe
 {
     public static async Task<bool> Run(string configurationPath, string targetName, string? clientConfigsPath = null,
-        int? lobbyId = null, string? masterDirectory = null, string? guestConfigurationPath = null)
+        int? lobbyId = null, string? masterDirectory = null, string? guestConfigurationPath = null, MultiLiveSong? song = null)
     {
         if (lobbyId.HasValue && (lobbyId <= 0 || clientConfigsPath == null))
             throw new InvalidOperationException("房间设置需要客户端配置和有效大厅 ID。");
@@ -21,6 +21,8 @@ public static class RealtimeProbe
             throw new InvalidOperationException("创建房间需要指定大厅。");
         if (guestConfigurationPath != null && masterDirectory == null)
             throw new InvalidOperationException("双账号私房需要完整 master 数据。");
+        if (song != null && guestConfigurationPath == null)
+            throw new InvalidOperationException("演出开始流程需要双账号私房。");
         var roomTtl = clientConfigsPath == null ? (int?)null : MultiLiveReservation.ReadRoomTtl(
             JsonNode.Parse(File.ReadAllText(clientConfigsPath))!.AsArray(), LiveRuleType.normal);
         var configuration = JsonFiles.Read<ClientConfiguration>(configurationPath);
@@ -46,6 +48,7 @@ public static class RealtimeProbe
         DiarkisUdpClient? realtime = null;
         RoomUserBasicInfo? basic = null;
         string? nickname = null;
+        SuiteUser? ownerUser = null;
         string? createdRoomId = null;
         var leaveAttempted = false;
         var readbackAttempted = false;
@@ -96,8 +99,8 @@ public static class RealtimeProbe
                 report["suiteBeforeSucceeded"] = true;
                 if (masterDirectory != null)
                 {
-                    basic = new MultiLivePlayer(masterDirectory).Create(
-                        JsonSerializer.Deserialize<SuiteUser>(suite.ToJsonString(), DumpJson.Options)!, suite["now"]!.GetValue<long>());
+                    ownerUser = JsonSerializer.Deserialize<SuiteUser>(suite.ToJsonString(), DumpJson.Options)!;
+                    basic = new MultiLivePlayer(masterDirectory).Create(ownerUser, suite["now"]!.GetValue<long>());
                     nickname = suite["userGamedata"]!["name"]!.GetValue<string>();
                     report["basicInfoPrepared"] = true;
                     report["totalPower"] = basic.TotalPowerIncludeBuff;
@@ -221,7 +224,7 @@ public static class RealtimeProbe
                             var guestReport = new JsonObject();
                             report["guest"] = guestReport;
                             await MultiLiveGuest.Run(guestConfigurationPath, targetName, masterDirectory!, Path.Combine(output, "guest"),
-                                realtime, room, lobbyId.Value, guestReport, timeout.Token);
+                                realtime, room, lobbyId.Value, guestReport, timeout.Token, http, ownerUser, song);
                         }
                         report["phase"] = "leave-private-room";
                         await Leave(timeout.Token);

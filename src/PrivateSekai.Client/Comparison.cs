@@ -16,7 +16,9 @@ public sealed class Redactor
     public JsonNode? Clean(JsonNode? node, string field = "")
     {
         if (node == null) return null;
-        if (IsSensitive(field) || field is "userId" or "friendId" or "targetUserId" or "name" or "tabName" or "word" or "twitterId" or "text" or "thumbnail" or "roomId" or "RoomID" or "roomNo")
+        if (IsSensitive(field) || Regex.IsMatch(field, "^userId[1-5]$", RegexOptions.CultureInvariant)
+            || field is "userId" or "friendId" or "targetUserId" or "name" or "tabName" or "word" or "twitterId" or "text" or "thumbnail"
+                or "roomId" or "RoomID" or "roomNo" or "photonRoomName" or "liveId")
             return JsonValue.Create("<redacted>");
         if (node is JsonObject obj)
         {

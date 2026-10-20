@@ -86,7 +86,7 @@ public static class MultiLiveRoom
         }).ToArray();
     }
 
-    private static List<ReadOnlyMemory<byte>> ReadFrames(ReadOnlyMemory<byte> payload)
+    internal static List<ReadOnlyMemory<byte>> ReadFrames(ReadOnlyMemory<byte> payload)
     {
         var frames = new List<ReadOnlyMemory<byte>>();
         while (!payload.IsEmpty)

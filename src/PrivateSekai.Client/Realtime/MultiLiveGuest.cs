@@ -14,8 +14,11 @@ namespace PrivateSekai.Client.Realtime;
 public static class MultiLiveGuest
 {
     public static async Task<bool> Run(string configurationPath, string targetName, string masterDirectory, string output,
-        DiarkisUdpClient owner, MultiLiveRoomSyncData room, int lobbyId, JsonObject report, CancellationToken cancellationToken)
+        DiarkisUdpClient owner, MultiLiveRoomSyncData room, int lobbyId, JsonObject report, CancellationToken cancellationToken,
+        ProtocolClient? ownerHttp = null, SuiteUser? ownerUser = null, MultiLiveSong? song = null)
     {
+        if (song != null && (ownerHttp == null || ownerUser == null))
+            throw new InvalidOperationException("开始演出需要房主的当前HTTP会话及用户快照。");
         var target = JsonFiles.Read<ClientConfiguration>(configurationPath).Targets[targetName];
         var configDirectory = Path.GetDirectoryName(Path.GetFullPath(configurationPath))!;
         using var http = new ProtocolClient(target, configDirectory);
@@ -27,6 +30,8 @@ public static class MultiLiveGuest
         DiarkisUdpClient? guest = null;
         RoomUserBasicInfo? basic = null;
         string? nickname = null;
+        SuiteUser? guestUser = null;
+        RoomSyncPlayer guestSeen = default;
         var guestId = http.UserId.ToString(CultureInfo.InvariantCulture);
         var number = checked((int)room.privateRoomNumber);
         var joinAttempted = false;
@@ -66,8 +71,8 @@ public static class MultiLiveGuest
             await http.AcquireSignature();
             await http.Send(auth);
             var suite = await http.Suite();
-            basic = new MultiLivePlayer(masterDirectory).Create(
-                JsonSerializer.Deserialize<SuiteUser>(suite.ToJsonString(), DumpJson.Options)!, suite["now"]!.GetValue<long>());
+            guestUser = JsonSerializer.Deserialize<SuiteUser>(suite.ToJsonString(), DumpJson.Options)!;
+            basic = new MultiLivePlayer(masterDirectory).Create(guestUser, suite["now"]!.GetValue<long>());
             nickname = suite["userGamedata"]!["name"]!.GetValue<string>();
             report["basicInfoPrepared"] = true;
             report["phase"] = "lookup-room-number";
@@ -144,6 +149,7 @@ public static class MultiLiveGuest
                     if (player.userId != guestId) continue;
                     MultiLiveRoom.RequirePlayer(player.playerProperty, MultiLiveRoom.PlayerProperty(nickname!, basic!));
                     foundIndex = player.index;
+                    guestSeen = player;
                     seen = true;
                 }
                 if (!seen) continue;
@@ -220,6 +226,13 @@ public static class MultiLiveGuest
             report["phase"] = "owner-member-join";
             await guest!.MaintainConnectionAsync(OwnerSeesJoin(), cancellationToken);
             report["ownerSeesGuest"] = true;
+            if (song != null)
+            {
+                var flow = new JsonObject();
+                report["live"] = flow;
+                await MultiLiveFlow.Run(owner, guest, ownerHttp!, http, ownerUser!, guestUser!, room, joined,
+                    guestSeen, lobbyId, song, output, flow, cancellationToken);
+            }
             report["phase"] = "guest-leave";
             await owner.MaintainConnectionAsync(Leave(cancellationToken), cancellationToken);
             await guest.MaintainConnectionAsync(OwnerSeesLeave(), cancellationToken);

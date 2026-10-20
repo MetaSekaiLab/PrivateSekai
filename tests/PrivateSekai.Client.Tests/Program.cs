@@ -54,6 +54,7 @@ MultiLiveReservationChecks.Run(Check);
 LiveAreaPowerChecks.Run(Check);
 MultiLivePlayerChecks.Run(Check);
 MultiLiveRoomChecks.Run(Check);
+MultiLiveFlowChecks.Run(Check);
 await DiarkisUdpChecks.Run(Check);
 await DiarkisRedirectChecks.Run(Check);
 var networkFailure = FailureDiagnostics.Transport(new HttpRequestException(HttpRequestError.SecureConnectionError,
@@ -404,6 +405,26 @@ app.MapGet("/api/user/1/diarkis-room-type/multi_live/no/12345", (HttpContext con
         createdAt = 1791524750000L, multiLiveLobbyId = 7, liveRuleType = "normal"
     })));
 });
+app.MapPost("/api/multi-live", async (HttpContext context) =>
+{
+    using var body = new MemoryStream();
+    await context.Request.Body.CopyToAsync(body);
+    var request = DumpSerializer.Deserialize<MultiLiveRequest>(body.ToArray());
+    Check(request.userId == 1 && request.userId1 == 2 && request.userId2 == 1 && request.userId3 == 0
+        && request.boostCount == 0 && request.privateFlg && request.musicId == 37 && !context.Request.Query.Any(),
+        "全场准备HTTP读取加密dump请求，保留成员槽位及零体力");
+    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new MultiLiveResponse
+        { liveId = "fixture-multi-live", updatedResources = new() })));
+}).WithMetadata(new PrskDecryptRequestAttribute());
+app.MapPost("/api/user/1/multi-live/fixture-multi-live", async (HttpContext context) =>
+{
+    using var body = new MemoryStream();
+    await context.Request.Body.CopyToAsync(body);
+    var request = DumpSerializer.Deserialize<UserMultiLiveRequest>(body.ToArray());
+    Check(request.photonRoomName == "fixture-room" && request.musicId == 37 && request.boostCount == 0
+        && request.musicCategoryName == "image" && !context.Request.Query.Any(), "成员登记HTTP保留房间、歌曲和类别，无额外查询");
+    return Results.Bytes(PrskCrypto.EncryptAesCbc(DumpSerializer.Serialize(new UserMultiLiveResponse { updatedResources = new() })));
+}).WithMetadata(new PrskDecryptRequestAttribute());
 app.MapControllers();
 await app.StartAsync();
 try
@@ -853,6 +874,37 @@ try
     Check(Directory.GetFiles(lookupCaptures).All(f => !Path.GetFileName(f).Contains("12345") && !File.ReadAllText(f).Contains("12345")),
         "房号查询路径、文件名和响应都隐藏房号");
     Check(client.LastResponse!["roomId"]!.GetValue<string>() == "<redacted>", "房号查询的返回房间标识脱敏");
+    var liveCaptures = Path.Combine(directory, "multi-live-http");
+    client.CaptureTo(liveCaptures);
+    var liveUser = new SuiteUser { userGamedata = new() { userId = 1, deck = 4 } };
+    var liveSong = new PrivateSekai.Client.Realtime.MultiLiveSong(37, 372, 371, "normal");
+    var wrongOwnerRejected = false;
+    try
+    {
+        await client.Send(new() { Operation = "multi-live-prepare", Body = new() { ["userId"] = 2 } });
+    }
+    catch (InvalidOperationException) { wrongOwnerRejected = client.LastHttpStatus == null; }
+    Check(wrongOwnerRejected, "全场准备的请求账号与当前会话不一致时，在HTTP发送前拒绝");
+    var prepared = await client.Send(new()
+    {
+        Operation = "multi-live-prepare", Body = System.Text.Json.JsonSerializer.SerializeToNode(
+            PrivateSekai.Client.Realtime.MultiLiveFlow.PrepareRequest(liveUser, "fixture-room", 7, liveSong, [2, 1]), DumpJson.Options)!.AsObject()
+    });
+    Check(prepared["liveId"]!.GetValue<string>() == "fixture-multi-live"
+        && client.LastResponse!["liveId"]!.GetValue<string>() == "<redacted>", "实际Live ID只传给后续操作，报告脱敏");
+    await client.Send(new()
+    {
+        Operation = "multi-live-member-start", Args = new() { ["liveId"] = prepared["liveId"]!.GetValue<string>() },
+        Body = System.Text.Json.JsonSerializer.SerializeToNode(
+            PrivateSekai.Client.Realtime.MultiLiveFlow.MemberRequest(liveUser, "fixture-room", 7, liveSong), DumpJson.Options)!.AsObject()
+    });
+    Check(client.LastHttpStatus == 200, "成员登记沿用准备后的轮换会话");
+    Check(Directory.GetFiles(liveCaptures).All(f => !Path.GetFileName(f).Contains("fixture-multi-live")
+        && !File.ReadAllText(f).Contains("fixture-multi-live") && !File.ReadAllText(f).Contains("fixture-room")),
+        "演出HTTP记录与文件名隐藏Live ID和房间名");
+    foreach (var invalidLiveId in new[] { "../other", "", "live?x=1" })
+        Fails(() => Operations.Path(Operations.All["multi-live-member-start"], new()
+            { Args = new() { ["liveId"] = invalidLiveId } }, 1), "成员登记拒绝穿越或无效Live路径标识");
     foreach (var value in new[] { "0", "-1", "1/other", "2147483648" })
         Fails(() => Operations.Path(Operations.All["private-room-lookup"], new()
             { Args = new() { ["privateRoomType"] = "multi_live", ["roomNo"] = value } }, 1), "查询拒绝非法或穿越房号");

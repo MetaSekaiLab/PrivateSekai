@@ -33,6 +33,8 @@ public static class Operations
         ["private-room-number"] = new("POST", "/api/user/{userId}/diarkis-room/{roomId}/no", typeof(PrivateRoomNumberRequest), "roomNo", false),
         ["private-room-update"] = new("PATCH", "/api/user/{userId}/diarkis-room/{roomId}", typeof(PrivateRoomNumberPatchRequest), "roomNo", false),
         ["private-room-lookup"] = new("GET", "/api/user/{userId}/diarkis-room-type/{privateRoomType}/no/{roomNo}", null, "roomId", false),
+        ["multi-live-prepare"] = new("POST", "/api/multi-live", typeof(MultiLiveRequest), "liveId", false),
+        ["multi-live-member-start"] = new("POST", "/api/user/{userId}/multi-live/{liveId}", typeof(UserMultiLiveRequest), "updatedResources", false),
         ["login-status-save"] = new("PUT", "/api/user/{userId}/login-status", typeof(PutUserLoginStatusRequest), null, false),
         ["friend-request"] = new("POST", "/api/user/{userId}/friend/{opponentUserId}", typeof(PostUserFriendRequest), "updatedResources"),
         ["friend-approve"] = new("PUT", "/api/user/{userId}/friend/{opponentUserId}", null, "updatedResources"),
@@ -184,7 +186,7 @@ public static class Operations
                 if (!int.TryParse(pair.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) || number <= 0)
                     throw new InvalidOperationException("房号必须为正整数。");
             }
-            else if (pair.Key is "userLiveId" or "userChallengeLiveId" or "inheritId" or "roomId")
+            else if (pair.Key is "userLiveId" or "userChallengeLiveId" or "inheritId" or "roomId" or "liveId")
             {
                 if (string.IsNullOrEmpty(pair.Value) || pair.Value.Length > 256 ||
                     pair.Value.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_')))
