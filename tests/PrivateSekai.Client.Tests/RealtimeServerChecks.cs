@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PrivateSekai;
+using PrivateSekai.Client;
 using PrivateSekai.Client.Realtime;
 using PrivateSekai.Config;
 using PrivateSekai.Modules.Live;
@@ -30,6 +31,12 @@ internal static class RealtimeServerChecks
         Directory.CreateDirectory(masterPath);
         File.WriteAllText(Path.Combine(masterPath, "multiLiveLobbies.json"),
             """[{"id":1,"totalPower":0,"multiLiveLobbyType":"normal"}]""");
+        File.WriteAllText(Path.Combine(masterPath, "musicDifficulties.json"),
+            """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":5,"totalNoteCount":10}]""");
+        File.WriteAllText(Path.Combine(masterPath, "musicVocals.json"), """[{"id":1,"musicId":7}]""");
+        File.WriteAllText(Path.Combine(masterPath, "musicCategories.json"), """[{"musicId":7,"musicCategoryName":"image"}]""");
+        File.WriteAllText(Path.Combine(masterPath, "limitedTimeMusics.json"), "[]");
+        File.WriteAllText(Path.Combine(masterPath, "specialSeasons.json"), "[]");
         var store = new MemoryUserStore();
         for (var id = 11; id <= 13; id++)
             store.Save(id, new UserState { Data = new SuiteUser
@@ -138,6 +145,8 @@ internal static class RealtimeServerChecks
         await guest.SendReliableAsync(2, 3080, MultiLiveRoom.JoinRequest(roomId, "成员", info), cancel);
         await Response(guest, 2, 3001);
         await Response(owner, 2, 3001, 255);
+        await guest.SendUnreliableAsync(0, 3, new byte[8], cancel);
+        await Response(guest, 0, 3);
         clock.Advance(TimeSpan.FromSeconds(30));
         await owner.SendUnreliableAsync(0, 3, new byte[8], cancel);
         await Response(owner, 0, 3);
@@ -180,20 +189,126 @@ internal static class RealtimeServerChecks
             check(rejected.StatusCode == HttpStatusCode.Unauthorized, "普通用户签名不能冒充已认证会话取得实时密钥");
         }
 
+        await StartLive();
+
         // 原始UDP重传同一分片序列，预留只应用一次；错序也由接收序号恢复。
         await DuplicateReservation();
         await app.StopAsync();
 
-        async Task Open(DiarkisUdpClient member)
+        async Task<(game::Sekai.MultiLive.MultiLiveRoomSyncData Owner, game::Sekai.MultiLive.MultiLiveRoomSyncData Guest, RoomSyncPlayer Seen)> Open(DiarkisUdpClient member)
         {
             roomId = (await Reserve(owner)).roomId;
             numbered = await Number(roomId);
             await Request(11, HttpMethod.Patch, $"/api/user/11/diarkis-room/{roomId}", PatchBody(1), 200);
             await owner.SendReliableAsync(2, 3070, MultiLiveRoom.CreateRequest(roomId, numbered.roomNo, "房主", info), cancel);
-            await Response(owner, 2, 3001);
+            var own = DumpSerializer.Deserialize<game::Sekai.MultiLive.MultiLiveRoomSyncData>((await Response(owner, 2, 3001)).Payload);
             await member.SendReliableAsync(2, 3080, MultiLiveRoom.JoinRequest(roomId, "成员", info), cancel);
-            await Response(member, 2, 3001);
-            await Response(owner, 2, 3001, 255);
+            var joined = DumpSerializer.Deserialize<game::Sekai.MultiLive.MultiLiveRoomSyncData>((await Response(member, 2, 3001)).Payload);
+            var seen = MultiLiveRoom.ReadMemberJoins(await Response(owner, 2, 3001, 255)).Single();
+            return (own, joined, seen);
+        }
+
+        async Task StartLive()
+        {
+            foreach (var id in new[] { 11, 12 })
+            {
+                var state = store.Read(id)!;
+                state.Data.userGamedata.deck = 1;
+                state.Data.userCards = Enumerable.Range(1, 5).Select(cardId => new UserCard { cardId = cardId, level = 1 }).ToArray();
+                state.Data.userDecks = [new() { deckId = 1, leader = 1, member1 = 1, member2 = 2, member3 = 3, member4 = 4, member5 = 5 }];
+                store.Save(id, state);
+            }
+            using var member = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true);
+            await Connect(member);
+            var room = await Open(member);
+            var song = new MultiLiveSong(7, 71, 1, "easy");
+            var request = MultiLiveFlow.PrepareRequest(store.Read(11)!.Data, roomId, 1, song, [11, 12]);
+            await Request(11, HttpMethod.Post, "/api/multi-live", DumpSerializer.Serialize(request), 409);
+            var wrongOwner = DumpSerializer.Deserialize<MultiLiveRequest>(DumpSerializer.Serialize(request));
+            wrongOwner.userId = 12;
+            await Request(12, HttpMethod.Post, "/api/multi-live", DumpSerializer.Serialize(wrongOwner), 403);
+            check(store.Read(11)!.Private.MultiLiveSessions.Count == 0, "提前申请和非房主申请不创建演出存档");
+
+            // 独立检查编码失败回滚；随后完整协议流程仍需成功申请同一房间。
+            var rooms = app.Services.GetRequiredService<MultiLiveRooms>();
+            rooms.Process(11, 2, 1013, [1]);
+            rooms.Process(11, 2, 10010, DumpSerializer.Serialize(MultiLiveFlow.Property(
+                (2, SyncPropertyEncoding.Int32(5)), (4, SyncPropertyEncoding.Int32(7)))));
+            foreach (var id in new long[] { 11, 12 })
+                rooms.Process(id, 2, 10030, DumpSerializer.Serialize(MultiLiveFlow.Property(
+                    (4, SyncPropertyEncoding.Int32(8)), (8, SyncPropertyEncoding.Int32(7)), (7, SyncPropertyEncoding.String("easy")))));
+            using (var scope = app.Services.CreateScope())
+            {
+                var operations = scope.ServiceProvider.GetRequiredService<UserOperation>();
+                var live = scope.ServiceProvider.GetRequiredService<MultiLiveService>();
+                var failed = false;
+                try
+                {
+                    rooms.PrepareOwner(11, request, liveId => operations.Execute(11, () =>
+                    {
+                        live.Prepare(liveId, request, MultiLiveFlow.MemberRequest(store.Read(11)!.Data, roomId, 1, song));
+                        return new BrokenResponse();
+                    }));
+                }
+                catch (MessagePack.MessagePackSerializationException) { failed = true; }
+                check(failed && store.Read(11)!.Private.MultiLiveSessions.Count == 0,
+                    "准备响应编码失败同时回滚用户会话与全场演出标识");
+            }
+
+            var output = Path.Combine(masterPath, "flow");
+            Directory.CreateDirectory(output);
+            var report = new JsonObject();
+            using var ownerHttp = Client(11);
+            using var guestHttp = Client(12);
+            var before = await ownerHttp.Suite();
+            var guestBefore = await guestHttp.Suite();
+            check(await MultiLiveFlow.Run(owner, member, ownerHttp, guestHttp, store.Read(11)!.Data, store.Read(12)!.Data,
+                room.Owner, room.Guest, room.Seen, 1, song, output, report, cancel)
+                && report["complete"]!.GetValue<bool>() && report["phase"]!.GetValue<string>() == "started"
+                && report["masterPrepared"]!.GetValue<bool>() && report["memberPrepared"]!.GetValue<bool>()
+                && report["serverClocksSynchronized"]!.GetValue<bool>(),
+                "现有Client完整状态链贯通真实Server双方选曲、HTTP准备、时钟及开始推送");
+            var ownerSession = store.Read(11)!.Private.MultiLiveSessions.Single();
+            var guestSession = store.Read(12)!.Private.MultiLiveSessions.Single();
+            check(ownerSession.Key == guestSession.Key && ownerSession.Value.Master.userId1 == 11
+                && guestSession.Value.Start.musicDifficultyId == 71 && ownerSession.Value.Start.boostCount == 0,
+                "双方私有演出存档保存同一全场ID、原始成员槽位及各自准备参数");
+            var database = Path.Combine(masterPath, "multi-live.db");
+            using (var persisted = new SqliteUserStore(database))
+            {
+                persisted.Save(11, store.Read(11)!);
+                persisted.Save(12, store.Read(12)!);
+            }
+            using (var reopened = new SqliteUserStore(database))
+            {
+                check(reopened.Read(11)!.Private.MultiLiveSessions.Single().Key == ownerSession.Key
+                    && reopened.Read(12)!.Private.MultiLiveSessions.Single().Value.Start.musicDifficultyId == 71,
+                    "SQLite重启后恢复双方相同演出ID及原始成员准备模型");
+            }
+            await Request(11, HttpMethod.Post, "/api/multi-live", DumpSerializer.Serialize(request), 409);
+            await Request(12, HttpMethod.Post, $"/api/user/12/multi-live/{ownerSession.Key}",
+                DumpSerializer.Serialize(MultiLiveFlow.MemberRequest(store.Read(12)!.Data, roomId, 1, song)), 409);
+            await Leave(member, "12");
+            await Response(owner, 1, 102, 255);
+            await Leave(owner, "11");
+            await Lookup(numbered.roomNo, 404);
+            using var independent = Client(11);
+            using var guestIndependent = Client(12);
+            var after = await independent.Suite();
+            var guestAfter = await guestIndependent.Suite();
+            check(JsonNode.DeepEquals(before["userCards"], after["userCards"])
+                && JsonNode.DeepEquals(before["userChargedCurrency"], after["userChargedCurrency"])
+                && JsonNode.DeepEquals(guestBefore["userCards"], guestAfter["userCards"])
+                && JsonNode.DeepEquals(guestBefore["userChargedCurrency"], guestAfter["userChargedCurrency"]),
+                "开始演出后双方退出及独立Suite回读卡牌和水晶不变");
+
+            ProtocolClient Client(int id)
+            {
+                var file = $"realtime-{id}.json";
+                JsonFiles.Write(Path.Combine(masterPath, file), new Dictionary<string, string> { ["X-Session-Token"] = JwtSignature.GenSessionToken(id) });
+                return new(new TargetConfiguration { BaseUrl = app.Urls.Single(), UserId = id, HeadersFile = file },
+                    masterPath, ServerConfig.AesKey, ServerConfig.AesIv);
+            }
         }
         async Task Connect(DiarkisUdpClient connection)
         {
@@ -298,5 +413,11 @@ internal static class RealtimeServerChecks
         private long ticks = new DateTimeOffset(2026, 10, 20, 0, 0, 0, TimeSpan.Zero).Ticks;
         public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
         public void Advance(TimeSpan duration) => Interlocked.Add(ref ticks, duration.Ticks);
+    }
+
+    [MessagePack.MessagePackObject(AllowPrivate = true)]
+    public sealed class BrokenResponse
+    {
+        [MessagePack.Key(0)] public int Value => throw new InvalidOperationException("fixture-response");
     }
 }

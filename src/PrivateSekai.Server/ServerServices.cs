@@ -74,6 +74,7 @@ public static class ServerServices
         services.AddScoped<LoginBonusService>();
         services.AddScoped<LoginBonusStatusFilter>();
         services.AddScoped<LiveService>();
+        services.AddScoped<MultiLiveService>();
         services.AddScoped<BoostService>();
         services.AddScoped<DeckService>();
         services.AddScoped<MusicMyListService>();

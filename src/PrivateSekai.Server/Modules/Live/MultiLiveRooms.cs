@@ -84,13 +84,49 @@ public sealed class MultiLiveRooms(TimeProvider clock, MasterData master)
             }
             if (version != 2) throw new NotSupportedException("未支持的房间命令版本。");
             var current = Current(userId);
+            if (command == 1013)
+            {
+                if (current.Owner != userId || !payload.AsSpan().SequenceEqual(new byte[] { 1 }))
+                    throw new InvalidDataException("关闭匹配请求无效。");
+                current.Closed = true;
+                return [new(userId, 2, 1013, 1, [])];
+            }
+            if (command == 10000)
+            {
+                if (!payload.AsSpan().SequenceEqual(new byte[] { 1 })) throw new InvalidDataException("时钟请求无效。");
+                return [new(userId, 2, 10000, 1, DumpSerializer.Serialize(new TimestampPayload
+                    { timestamp = clock.GetUtcNow().ToUnixTimeMilliseconds() }))];
+            }
+            if (command == 10030)
+            {
+                var delta = DumpSerializer.Deserialize<DynamicPropertyPayload>(payload);
+                Validate(delta);
+                if (delta.values.Keys.Any(k => k is < 1 or > 11)) throw new NotSupportedException("未支持的玩家属性。");
+                if (delta.values.TryGetValue(4, out var status) && !Enum.IsDefined((PlayerStatus)SyncPropertyEncoding.ReadInt32(status)))
+                    throw new InvalidDataException("玩家状态无效。");
+                if (delta.values.TryGetValue(4, out status) && SyncPropertyEncoding.ReadInt32(status) >= 9 && !current.Prepared.Contains(userId))
+                    throw new RoomConflictException("玩家尚未完成HTTP演出准备。");
+                var player = current.Players[userId];
+                var push = Frame(DumpSerializer.Serialize(new RoomSyncPlayer
+                    { userId = player.userId, index = player.index, playerProperty = delta }));
+                player.playerProperty = Merge(player.playerProperty, delta);
+                current.Players[userId] = player;
+                return current.Players.Keys.Select(id => new RoomDelivery(id, 2, 10030, 255, push)).ToArray();
+            }
             if (command == 10010)
             {
                 var delta = DumpSerializer.Deserialize<DynamicPropertyPayload>(payload);
                 Validate(delta);
-                if (delta.values.Keys.Any(k => k != 10)
-                    || !delta.values.TryGetValue(10, out var number) || SyncPropertyEncoding.ReadInt64(number) != current.Number)
-                    throw new NotSupportedException("当前房间仅开放房号同步。");
+                if (delta.values.Keys.Any(k => k is < 1 or > 18)
+                    || userId != current.Owner && delta.values.Keys.Any(k => k != 10))
+                    throw new UnauthorizedAccessException("仅房主可推进房间状态。");
+                if (delta.values.TryGetValue(10, out var number) && SyncPropertyEncoding.ReadInt64(number) != current.Number)
+                    throw new InvalidDataException("同步房号与已分配房号不符。");
+                if (delta.values.TryGetValue(12, out var live) && SyncPropertyEncoding.ReadString(live) != (current.LiveId ?? ""))
+                    throw new InvalidDataException("同步演出标识未完成HTTP准备。");
+                if (delta.values.TryGetValue(2, out var step) && SyncPropertyEncoding.ReadInt32(step) >= 6
+                    && (current.LiveId == null || current.Prepared.Count != current.Players.Count))
+                    throw new RoomConflictException("演出成员尚未全部准备。");
                 var merged = Merge(current.Property, delta);
                 var push = Frame(DumpSerializer.Serialize(delta));
                 current.Property = merged;
@@ -116,6 +152,71 @@ public sealed class MultiLiveRooms(TimeProvider clock, MasterData master)
     {
         lock (gate) return rooms.Values.Any(r => r.Players.ContainsKey(userId));
     }
+
+    // 用户事务及响应编码完成后，才登记全场ID和成员准备状态。
+    public byte[] PrepareOwner(long userId, MultiLiveRequest request, Func<string, byte[]> encode)
+    {
+        lock (gate)
+        {
+            var room = Current(userId);
+            if (room.Owner != userId) throw new UnauthorizedAccessException("仅房主可申请全场演出。");
+            if (room.LiveId != null || !room.Closed || room.Players.Count < 2)
+                throw new RoomConflictException("房间尚未准备或已申请演出。");
+            RequireRoom(room, request.photonRoomName, request.multiLiveLobbyId, request.privateFlg);
+            if (!room.Property.values.TryGetValue(2, out var step) || SyncPropertyEncoding.ReadInt32(step) != 5
+                || !room.Property.values.TryGetValue(4, out var music) || SyncPropertyEncoding.ReadInt32(music) != request.musicId
+                || room.Players.Values.Any(p => Status(p) != PlayerStatus.LoadComplete))
+                throw new RoomConflictException("双方尚未完成选曲加载。");
+            var players = room.Players.Values.OrderBy(p => p.playerProperty.values.TryGetValue(3, out var order)
+                && SyncPropertyEncoding.ReadInt32(order) > 0 ? SyncPropertyEncoding.ReadInt32(order) : p.index).ToArray();
+            var ids = new[] { request.userId1, request.userId2, request.userId3, request.userId4, request.userId5 };
+            var selected = new[] { request.selectedMusicId1, request.selectedMusicId2, request.selectedMusicId3, request.selectedMusicId4, request.selectedMusicId5 };
+            for (var i = 0; i < ids.Length; i++)
+            {
+                var id = i < players.Length ? long.Parse(players[i].userId, CultureInfo.InvariantCulture) : 0;
+                var selection = i < players.Length ? SyncPropertyEncoding.ReadInt32(players[i].playerProperty.values[8]) : 0;
+                if (ids[i] != id || selected[i] != selection) throw new InvalidDataException("全场成员或选曲槽位不符。");
+            }
+            RequireDifficulty(room.Players[userId], request.musicDifficultyId);
+            var liveId = Guid.NewGuid().ToString();
+            var response = encode(liveId);
+            room.LiveId = liveId;
+            room.Master = request;
+            room.Prepared.Add(userId);
+            return response;
+        }
+    }
+
+    public byte[] PrepareMember(long userId, string liveId, UserMultiLiveRequest request, Func<MultiLiveRequest, byte[]> encode)
+    {
+        lock (gate)
+        {
+            var room = Current(userId);
+            if (room.Owner == userId || room.LiveId != liveId || room.Master == null || room.Prepared.Contains(userId))
+                throw new RoomConflictException("本场演出不存在或成员已准备。");
+            RequireRoom(room, request.photonRoomName, request.multiLiveLobbyId, request.privateFlg);
+            if (room.Master.musicId != request.musicId) throw new InvalidDataException("成员歌曲与全场不符。");
+            RequireDifficulty(room.Players[userId], request.musicDifficultyId);
+            var response = encode(room.Master);
+            room.Prepared.Add(userId);
+            return response;
+        }
+    }
+
+    private static void RequireRoom(Room room, string roomId, int lobbyId, bool privateRoom)
+    {
+        if (room.Id != roomId || room.Lobby != lobbyId || !privateRoom) throw new InvalidDataException("私人演出房间不符。");
+    }
+
+    private void RequireDifficulty(RoomSyncPlayer player, int difficultyId)
+    {
+        var difficulty = master.GetTable<MasterMusicDifficulty>("musicDifficulties", d => d.id).FindById(difficultyId);
+        if (difficulty == null || SyncPropertyEncoding.ReadString(player.playerProperty.values[7]) != difficulty.musicDifficulty)
+            throw new InvalidDataException("准备难度与玩家选择不符。");
+    }
+
+    private static PlayerStatus Status(RoomSyncPlayer player) => player.playerProperty.values.TryGetValue(4, out var value)
+        ? (PlayerStatus)SyncPropertyEncoding.ReadInt32(value) : PlayerStatus.None;
 
     public void Prune()
     {
@@ -175,7 +276,7 @@ public sealed class MultiLiveRooms(TimeProvider clock, MasterData master)
             throw new RoomConflictException("房间尚未准备完成或玩家已入房。");
         if (command == 3070 && (room.Owner != userId || room.Players.Count != 0 || number != room.Number))
             throw new InvalidDataException("创建账号或房号不匹配。");
-        if (command == 3080 && (room.Players.Count == 0 || room.Players.Count >= 5))
+        if (command == 3080 && (room.Players.Count == 0 || room.Players.Count >= 5 || room.Closed))
             throw new RoomConflictException("房间未开放或已满员。");
         Validate(property);
         if (!new[] { 1, 2, 5, 7 }.All(property.values.ContainsKey)
@@ -271,6 +372,10 @@ public sealed class MultiLiveRooms(TimeProvider clock, MasterData master)
         public int Number;
         public int? Lobby;
         public int NextIndex = 1;
+        public bool Closed;
+        public string? LiveId;
+        public MultiLiveRequest? Master;
+        public HashSet<long> Prepared = [];
         public DynamicPropertyPayload Property;
         public Dictionary<long, RoomSyncPlayer> Players = [];
     }

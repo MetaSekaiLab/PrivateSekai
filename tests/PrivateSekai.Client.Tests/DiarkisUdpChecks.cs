@@ -28,7 +28,9 @@ internal static class DiarkisUdpChecks
         var peer = RunPeer();
         using var client = new DiarkisUdpClient(authentication, false);
         await client.ConnectAsync(cancellation);
-        await client.FlushAsync(cancellation);
+        var flushing = client.FlushAsync(cancellation);
+        if (await Task.WhenAny(flushing, peer) == peer) await peer;
+        await flushing;
         var notification = await client.ReceiveAsync(cancellation);
         var first = await client.ReceiveAsync(cancellation);
         var second = await client.ReceiveAsync(cancellation);
