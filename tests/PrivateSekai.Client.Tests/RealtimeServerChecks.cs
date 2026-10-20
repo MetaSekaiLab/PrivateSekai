@@ -42,7 +42,8 @@ internal static class RealtimeServerChecks
             ["playLevelScores"] = """[{"liveType":"solo","playLevel":21,"s":1000000,"a":800000,"b":400000,"c":80000},{"liveType":"multi_open","playLevel":21,"s":1000000,"a":800000,"b":400000,"c":50000}]""",
             ["liveMissionPeriods"] = """[{"id":1,"startAt":0,"endAt":4102444800000}]""",
             ["liveMissions"] = """[{"id":11,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":11},{"id":12,"liveMissionPeriodId":1,"liveMissionType":"free","requirement":34}]""",
-            ["musicAchievements"] = "[]", ["beginnerMissionV2s"] = "[]", ["honorMissions"] = "[]", ["characterMissionV2s"] = "[]",
+            ["musicAchievements"] = """[{"id":9,"musicAchievementType":"combo","musicAchievementTypeValue":"0.25","musicDifficultyType":"normal","resourceBoxId":9},{"id":10,"musicAchievementType":"combo","musicAchievementTypeValue":"0.5","musicDifficultyType":"normal","resourceBoxId":10},{"id":11,"musicAchievementType":"combo","musicAchievementTypeValue":"0.75","musicDifficultyType":"normal","resourceBoxId":11}]""",
+            ["beginnerMissionV2s"] = "[]", ["honorMissions"] = "[]", ["characterMissionV2s"] = "[]",
             ["playerRankRewards"] = """[{"playerRank":2,"seq":1,"resourceBoxId":1}]""",
             ["releaseConditions"] = """[{"id":501,"releaseConditionType":"user_rank","releaseConditionTypeLevel":2}]"""
         };
@@ -56,13 +57,15 @@ internal static class RealtimeServerChecks
         };
         boxes.AddRange(Enumerable.Range(1, 5).Select(id => new MasterResourceBox
             { id = id, resourceBoxPurpose = "score_rank_reward_detail", resourceBoxType = "expand", details = [new() { resourceType = "material", resourceId = id, resourceQuantity = 2 }] }));
-        boxes.AddRange(new[] { 2, 5, 7, 8, 12 }.Select(id => new MasterResourceBox
+        boxes.AddRange(new[] { 2, 3, 4, 5, 7, 8, 9, 10, 12 }.Select(id => new MasterResourceBox
             { id = id + 10, resourceBoxPurpose = "score_rank_reward_detail", resourceBoxType = "expand", details = [new() { resourceType = "material", resourceId = id, resourceQuantity = 1 }] }));
+        boxes.AddRange(Enumerable.Range(9, 3).Select(id => new MasterResourceBox
+            { id = id, resourceBoxPurpose = "music_achievement", resourceBoxType = "expand", details = [new() { resourceType = "jewel", resourceQuantity = 5 }] }));
         File.WriteAllText(Path.Combine(masterPath, "resourceBoxes.json"), JsonSerializer.Serialize(boxes, DumpJson.Options));
         File.WriteAllText(Path.Combine(masterPath, "multiLiveLobbies.json"),
             """[{"id":1,"totalPower":0,"multiLiveLobbyType":"normal"}]""");
         File.WriteAllText(Path.Combine(masterPath, "musicDifficulties.json"),
-            """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":5,"totalNoteCount":220},{"id":74,"musicId":7,"musicDifficulty":"expert","playLevel":21,"totalNoteCount":900}]""");
+            """[{"id":71,"musicId":7,"musicDifficulty":"easy","playLevel":5,"totalNoteCount":220},{"id":72,"musicId":7,"musicDifficulty":"normal","playLevel":10,"totalNoteCount":492},{"id":74,"musicId":7,"musicDifficulty":"expert","playLevel":21,"totalNoteCount":900}]""");
         File.WriteAllText(Path.Combine(masterPath, "musicVocals.json"), """[{"id":1,"musicId":7}]""");
         File.WriteAllText(Path.Combine(masterPath, "musicCategories.json"), """[{"musicId":7,"musicCategoryName":"image"}]""");
         File.WriteAllText(Path.Combine(masterPath, "limitedTimeMusics.json"), "[]");
@@ -91,7 +94,7 @@ internal static class RealtimeServerChecks
         app.MapControllers();
         await app.StartAsync();
         using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var cancel = timeout.Token;
         var info = new RoomUserBasicInfo
         {
@@ -224,6 +227,7 @@ internal static class RealtimeServerChecks
         await StartLive();
         await PlayLive();
         await PlayRankC();
+        await PlayLifeZero();
         CheckDailyBoundary();
 
         // 原始UDP重传同一分片序列，预留只应用一次；错序也由接收序号恢复。
@@ -496,6 +500,7 @@ internal static class RealtimeServerChecks
                     check(suite.userMaterials.All(m => m.quantity - oldMaterials.GetValueOrDefault(m.materialId) == materialRewards.GetValueOrDefault(m.materialId))
                         && materialRewards.All(p => suite.userMaterials.Any(m => m.materialId == p.Key))
                         && suite.userMusicResults.Single(r => r.playType == "multi").mvpCount == (id == 11 ? 4 : 5 + round)
+                        && suite.userHonorMissions.Single(m => m.honorMissionType == "multi_live_mvp").progress == (id == 11 ? 4 : 5 + round)
                         && suite.userMusicResults.Single(r => r.playType == "multi").highScore == (id == 11 ? 100000 : 150000)
                         && suite.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress == 35 + round,
                         "双方回读材料增量逐项吻合、MVP和最高分分别累计，任务继续推进");
@@ -553,6 +558,144 @@ internal static class RealtimeServerChecks
                         && restored.Private.MultiLiveSessions.Count == 0 && restored.Private.DailyLivePoint.BonusCount == 3,
                         "SQLite重启恢复双账号C档完整状态、每日次数及已消费会话");
                 }
+        }
+
+        async Task PlayLifeZero()
+        {
+            var song = new MultiLiveSong(7, 72, 1, "normal");
+            foreach (var id in new[] { 11, 12 })
+            {
+                var state = store.Read(id)!;
+                state.Private.DailyLivePoint.BonusCount = 0;
+                var card = state.Data.userCards.Single(c => c.cardId == 1);
+                card.totalExp = 240;
+                card.level = 2;
+                card.exp = 140;
+                store.Save(id, state);
+            }
+            for (var round = 0; round < 6; round++)
+            {
+                rewardRandom.Choice = round + 3;
+                var guestMvp = round % 3 == 1;
+                if (round == 3)
+                    foreach (var id in new[] { 11, 12 })
+                    {
+                        var state = store.Read(id)!;
+                        state.Data.userMusicResults = state.Data.userMusicResults.Where(r => r.musicDifficultyType != "normal").ToArray();
+                        store.Save(id, state);
+                    }
+                var ownerScore = new UserMultiLiveClearScoreRequest { score = guestMvp ? 100000 : 150000,
+                    perfectCount = 472, missCount = 20, maxCombo = 472, tapCount = 472, life = 0 };
+                var guestScore = new UserMultiLiveClearScoreRequest { score = guestMvp ? 150000 : 100000,
+                    perfectCount = round < 3 ? 482 : 472, goodCount = round < 3 ? 10 : 0, missCount = round < 3 ? 0 : 20,
+                    maxCombo = round < 3 ? 482 : 472, tapCount = round < 3 ? 492 : 472, life = round < 3 ? 1000 : 0 };
+                var request = MultiLivePerformance.Result([11, 12], new Dictionary<long, UserMultiLiveClearScoreRequest>
+                    { [11] = MultiLivePerformance.Score(ownerScore, 11, 72), [12] = MultiLivePerformance.Score(guestScore, 12, 72) });
+                using var member = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true);
+                await Connect(member);
+                var room = await Open(member);
+                using var ownerHttp = Client(11);
+                using var guestHttp = Client(12);
+                var before = new[] { store.Read(11)!, store.Read(12)! };
+                var output = Path.Combine(masterPath, "life-zero-" + round);
+                Directory.CreateDirectory(output);
+                var report = new JsonObject();
+                check(await MultiLiveFlow.Run(owner, member, ownerHttp, guestHttp, before[0].Data, before[1].Data,
+                    room.Owner, room.Guest, room.Seen, 1, song, output, report, cancel,
+                    new MultiLivePerformance { DurationMilliseconds = 1, OwnerScore = ownerScore, GuestScore = guestScore })
+                    && report["phase"]!.GetValue<string>() == "cleared", "生命归零和正常成员从Normal开局贯通双边结算");
+                var liveId = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "live-state.local.json")))!["liveId"]!.GetValue<string>();
+                await Leave(member, "12");
+                await Response(owner, 1, 102, 255);
+                await Leave(owner, "11");
+                await Lookup(numbered.roomNo, 404);
+                foreach (var (id, prior, response) in new[] { (11, before[0], ownerHttp.LastResponse!), (12, before[1], guestHttp.LastResponse!) })
+                {
+                    var point = JsonSerializer.Deserialize<UserLivePoint>(response["userLivePoint"]!.ToJsonString(), DumpJson.Options)!;
+                    var rewards = JsonSerializer.Deserialize<UserResource[]>(response["scoreRankRewards"]!.ToJsonString(), DumpJson.Options)!;
+                    check(point.addNormalProgress == 1 && point.addDailyBonusProgress == (round < 3 ? 10 : 0)
+                        && point.livePointBonusRemaining == Math.Max(0, 2 - round)
+                        && response["user1"]!["mvpFlg"]?.GetValue<bool>() == !guestMvp
+                        && response["user2"]!["mvpFlg"]?.GetValue<bool>() == guestMvp,
+                        "生命归零不取消每日加成或最高分MVP，三次名额逐场扣除");
+                    using var independent = Client(id);
+                    var suite = JsonSerializer.Deserialize<SuiteUser>((await independent.Suite()).ToJsonString(), DumpJson.Options)!;
+                    var record = suite.userMusicResults.Single(r => r.playType == "multi" && r.musicDifficultyType == "normal");
+                    var previousRecord = prior.Data.userMusicResults.SingleOrDefault(r => r.playType == "multi" && r.musicDifficultyType == "normal");
+                    var mvp = id == 11 ? !guestMvp : guestMvp;
+                    check(suite.userGamedata.totalExp - prior.Data.userGamedata.totalExp == 200
+                        && suite.userGamedata.coin - prior.Data.userGamedata.coin == 200
+                        && suite.userCards.Single(c => c.cardId == 1).totalExp == Math.Min(1000, 240 + (round + 1) * 600)
+                        && suite.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress
+                            - prior.Data.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress == (round < 3 ? 11 : 1)
+                        && suite.userPracticeTickets.Single(t => t.practiceTicketId == 1).quantity
+                            - prior.Data.userPracticeTickets.Single(t => t.practiceTicketId == 1).quantity == 2,
+                        "独立Suite确认生命归零仍有经验、卡牌、金币、练习券和免费任务进度");
+                    check(record.playResult == "clear" && record.highScore == Math.Max(previousRecord?.highScore ?? 0, id == 11 ? ownerScore.score : guestScore.score)
+                        && record.mvpCount == (previousRecord?.mvpCount ?? 0) + (mvp ? 1 : 0)
+                        && suite.userHonorMissions.Single(m => m.honorMissionType == "clear_live").progress
+                            - prior.Data.userHonorMissions.Single(m => m.honorMissionType == "clear_live").progress == 1
+                        && suite.userHonorMissions.All(m => m.honorMissionType != "finish_live_with_empty_life"),
+                        "首次多人Normal成绩记为通关并累计MVP及通关任务，不增加单人空生命任务");
+                    check(response["userMusicAchievements"]!.AsArray().Count == (round == 0 ? 3 : 0)
+                        && suite.userMusicAchievements.Select(a => a.musicAchievementId).Order().SequenceEqual([9, 10, 11])
+                        && suite.userChargedCurrency.free - prior.Data.userChargedCurrency.free == (round == 0 ? 15 : 0)
+                        && suite.userChargedCurrency.paid == prior.Data.userChargedCurrency.paid,
+                        "生命归零仍取得Normal连击成就与对应奖励，再次演出不重复发放");
+                    check(suite.userCharacterLiveUsageCounts.All(c => c.usageCount == prior.Data.userCharacterLiveUsageCounts
+                        .Single(p => p.characterId == c.characterId && p.characterLiveUsageType == c.characterLiveUsageType).usageCount + 1)
+                        && suite.userHonorMissions.Single(m => m.honorMissionType == "multi_live_mvp").progress
+                            - prior.Data.userHonorMissions.Single(m => m.honorMissionType == "multi_live_mvp").progress
+                            == (mvp ? 1 : 0)
+                        && suite.userHonorMissions.Single(m => m.honorMissionType == "collect_coin_total").progress
+                            - prior.Data.userHonorMissions.Single(m => m.honorMissionType == "collect_coin_total").progress == 200,
+                        "生命归零仍累计角色使用、金币任务和MVP任务，MVP只归最高分成员");
+                    var grants = rewards.Where(r => r.resourceType == "material").GroupBy(r => r.resourceId)
+                        .ToDictionary(g => g.Key, g => g.Sum(r => r.quantity));
+                    (int Id, int Quantity)[] expectedMaterials = round switch
+                    {
+                        0 => [(5, 2), (3, 1), (7, 1)],
+                        1 => [(4, 2), (4, 1), (10, 1)],
+                        2 => [(2, 2), (5, 1), (9, 1)],
+                        3 => [(1, 2), (5, 1), (10, 1)],
+                        4 => [(4, 2), (5, 1), (9, 1)],
+                        _ => [(1, 2), (3, 1), (10, 1)]
+                    };
+                    check(rewards.Where(r => r.resourceType == "material").Select(r => (r.resourceId, r.quantity)).SequenceEqual(expectedMaterials)
+                        && grants.All(p => suite.userMaterials.Single(m => m.materialId == p.Key).quantity
+                        - (prior.Data.userMaterials.SingleOrDefault(m => m.materialId == p.Key)?.quantity ?? 0) == p.Value)
+                        && (round != 1 || rewards.Count(r => r.resourceType == "material" && r.resourceId == 4) == 2 && grants[4] == 3),
+                        "C档额外样本逐项入账，同一材料分项2加1保持响应并合计为3");
+                    var settled = DumpSerializer.Serialize(store.Read(id)!.Data);
+                    await Request(id, HttpMethod.Put, $"/api/user/{id}/multi-live/{liveId}", DumpSerializer.Serialize(request), 404);
+                    check(DumpSerializer.Serialize(store.Read(id)!.Data).AsSpan().SequenceEqual(settled), "生命归零场次重复结算不改变任何用户状态");
+                }
+                if (round == 0)
+                {
+                    var state = store.Read(11)!;
+                    state.Private.MultiLiveSessions.Add(liveId, new() { Master = MultiLiveFlow.PrepareRequest(state.Data, roomId, 1, song, [11, 12]),
+                        Start = MultiLiveFlow.MemberRequest(state.Data, roomId, 1, song), CreatedAt = clock.GetUtcNow().ToUnixTimeMilliseconds() });
+                    store.Save(11, state);
+                    var snapshot = DumpSerializer.Serialize(state.Data);
+                    request.score1.life = -1;
+                    await Request(11, HttpMethod.Put, $"/api/user/11/multi-live/{liveId}", DumpSerializer.Serialize(request), 400);
+                    request.score1.life = 0;
+                    check(DumpSerializer.Serialize(store.Read(11)!.Data).AsSpan().SequenceEqual(snapshot)
+                        && store.Read(11)!.Private.MultiLiveSessions.ContainsKey(liveId)
+                        && store.Read(11)!.Private.DailyLivePoint.BonusCount == 1,
+                        "负生命值拒绝后保留完整状态、会话及每日次数");
+                    state.Private.MultiLiveSessions.Clear();
+                    store.Save(11, state);
+                }
+            }
+            var database = Path.Combine(masterPath, "life-zero.db");
+            using (var saved = new SqliteUserStore(database))
+                foreach (var id in new[] { 11, 12 }) saved.Save(id, store.Read(id)!);
+            using (var reopened = new SqliteUserStore(database))
+                foreach (var id in new[] { 11, 12 })
+                    check(reopened.Read(id)!.Data.userMusicResults.Single(r => r.playType == "multi" && r.musicDifficultyType == "normal").playResult == "clear"
+                        && reopened.Read(id)!.Private.DailyLivePoint.BonusCount == 3 && reopened.Read(id)!.Private.MultiLiveSessions.Count == 0,
+                        "SQLite重启保留生命归零的多人通关记录和已消费的每日次数及会话");
         }
 
         void CheckDailyBoundary()

@@ -191,6 +191,13 @@ public sealed class MissionService(
 
     public void RecordNormalFullCombo() => UpdateHonorProgress("normal_full_combo");
 
+    public void RecordMultiLiveMvp() => UpdateHonorProgress("multi_live_mvp");
+
+    public void RecordCoinGain(int quantity)
+    {
+        if (quantity > 0) UpdateHonorProgress("collect_coin_total", increment: quantity);
+    }
+
     public int RecordStampUse(UserStampUseHistoryRequest request)
     {
         var histories = request.userStampUseHistories;

@@ -284,7 +284,8 @@ public sealed class LiveService(
 
         var before = (result.playType, result.playResult, result.highScore, result.fullComboFlg, result.fullPerfectFlg, result.mvpCount);
         result.playType = playType;
-        var playResult = BuildPlayResult(fullCombo, fullPerfect, request.life);
+        // 多人完整结算仍计通关，生命归零不改变完成状态。
+        var playResult = BuildPlayResult(fullCombo, fullPerfect, request.life > 0 || playType == "multi");
         if (PlayResultRank(playResult) > PlayResultRank(result.playResult))
             result.playResult = playResult;
         result.highScore = Math.Max(result.highScore, request.score);
@@ -537,9 +538,9 @@ public sealed class LiveService(
         _ => 0
     };
 
-    private static string BuildPlayResult(bool fullCombo, bool fullPerfect, int life)
+    private static string BuildPlayResult(bool fullCombo, bool fullPerfect, bool cleared)
     {
-        if (life <= 0)
+        if (!cleared)
             return "not_clear";
         if (fullPerfect)
             return "full_perfect";

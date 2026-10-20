@@ -81,8 +81,12 @@ internal static class DiarkisUdpChecks
             var syn = await server.ReceiveAsync(cancellation);
             var endpoint = syn.RemoteEndPoint;
             Expect(syn.Buffer.SequenceEqual(new byte[] { 0, 0, 0, 2 }.Concat(sid)), "SYN 格式");
+            var repeated = await server.ReceiveAsync(cancellation);
+            Expect(repeated.Buffer.SequenceEqual(syn.Buffer), "握手等待时使用相同SID重传SYN");
             await Reply(DiarkisPacket.CreateUdp(2, 7, []));
             var ack = await server.ReceiveAsync(cancellation);
+            // 等待响应期间可能已有更多合法的SYN进入队列。
+            while (ack.Buffer.SequenceEqual(syn.Buffer)) ack = await server.ReceiveAsync(cancellation);
             Expect(ack.Buffer.SequenceEqual(new byte[] { 7, 0, 0, 4 }.Concat(sid)), "SYN ACK 携带 SID");
             var original = await server.ReceiveAsync(cancellation);
             Expect(original.Buffer[3] == 3 && DecodeRequest(original.Buffer).SequenceEqual(Encoding.UTF8.GetBytes("synthetic-client-key")),

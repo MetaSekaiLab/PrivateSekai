@@ -61,7 +61,7 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
                 if (score != null) throw new MultiLiveRequestException(400);
                 continue;
             }
-            if (score == null || score.userId != ids[i] || score.score < 0 || score.life <= 0
+            if (score == null || score.userId != ids[i] || score.score < 0 || score.life < 0
                 || score.perfectCount < 0 || score.greatCount < 0 || score.goodCount < 0 || score.badCount < 0 || score.missCount < 0
                 || score.maxCombo < 0 || score.tapCount < 0
                 || master.GetMasterMusicDifficulty(score.musicDifficultyId)?.musicId != session.Start.musicId)
@@ -98,13 +98,17 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
             .Select((id, index) => new DeckCardUpdateExpResult { index = index + 1, expResult = cards.GainExperience(id, addedExp * 3) }).ToArray();
         live.UpdateUserMusicResult(context, clear, fullCombo, fullPerfect, "multi", mvp);
         var achievements = live.GrantUserMusicAchievements(context, clear, rank);
+        var achievementRewards = live.BuildMusicAchievementRewards(achievements);
         resources.Grant(rewards);
-        resources.Grant(live.BuildMusicAchievementRewards(achievements));
+        resources.Grant(achievementRewards);
+        missions.RecordCoinGain(rewards.Concat(achievementRewards).Concat(experience.Rewards)
+            .Where(r => r.resourceType == "coin").Sum(r => r.quantity));
         var points = livePoints.Build(master.BuildMasterBoost(0), true);
         missions.UpdateLiveMissionProgress(points);
         missions.RecordLiveRecords(own.maxCombo, master.ResolveMusicPlayLevel(own.musicDifficultyId));
         missions.RecordLiveFinish(true);
         missions.RecordManualLiveClear();
+        if (mvp) missions.RecordMultiLiveMvp();
         live.RecordDeckLiveClear(session.Start.deckId);
         var users = played.Select(s => new UserMultiLiveClearScoreResponse
         {
@@ -140,7 +144,13 @@ public sealed class MultiLiveService(UserSession user, LiveMasterQueries master,
         [
             [(1, 2), (2, 1), (7, 1), (12, 1)],
             [(3, 2), (2, 1), (7, 1)],
-            [(3, 2), (5, 1), (8, 1)]
+            [(3, 2), (5, 1), (8, 1)],
+            [(5, 2), (3, 1), (7, 1)],
+            [(4, 2), (4, 1), (10, 1)],
+            [(2, 2), (5, 1), (9, 1)],
+            [(1, 2), (5, 1), (10, 1)],
+            [(4, 2), (5, 1), (9, 1)],
+            [(1, 2), (3, 1), (10, 1)]
         ];
         var boxes = new[] { master.GetMultiRewardBox("coin", 0, 200), master.GetMultiRewardBox("practice_ticket", 1, 2) }
             .Concat(materialsByResult[random.Next(materialsByResult.Length)].Select(m => master.GetMultiRewardBox("material", m.Id, m.Quantity)));
