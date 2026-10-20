@@ -1940,7 +1940,19 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 验证使用本地合成用户与真实master：95种行为全部执行成功，核对11,041项材料、服装、avatar搭配及名片收藏；同时验证默认和示例配置、实际请求缓存作用域。该请求表集的缓存估算峰值为554,000,272字节，旧128MiB预算连当前gachas表都无法载入；默认与示例上限改为1GiB，按需加载并保留既有回收规则。已有部署若显式配置旧上限，需要相应调整。
 
-隔离加密HTTP验证连续抽取、指定两次单抽、十连、资源刷新、服装任务提示、独立Suite及配置失败回滚；业务检查另覆盖部分奖励后失败、编码回滚、数量溢出和SQLite重启全部持久字段。本用例依据客户端及master实现，未消费官方付费抽卡取得新样本，未验证Unity展示；随机附赠和gift池另行核验。
+隔离加密HTTP验证连续抽取、指定两次单抽、十连、资源刷新、服装任务提示、独立Suite及配置失败回滚；业务检查另覆盖部分奖励后失败、编码回滚、数量溢出和SQLite重启全部持久字段。本用例依据客户端及master实现，未消费官方付费抽卡取得新样本，未验证Unity展示。随机附赠见下一节，gift池另行核验。
+
+### 抽卡的随机附赠
+
+卡池配置 `gachaFreebieGroupId` 时，每一抽独立从对应 `gachaFreebieGroups.groupId` 抽选一项，概率为该项 `weight` 除以本组正权重之和。按 `seq` 排序，零权重不参与；权重总和使用长整数。不会按奖品库存无放回抽取，同种附赠可以连续出现。无配置时返回空数组。
+
+单抽返回一份、十连返回十份、单抽行为指定 `executeCount=2` 返回两份 `obtainGachaFreebies`。每项保留选中项的 `rarity`，以及 `resourceBoxPurpose=gacha_freebie_group`、`resourceBoxId` 对应箱的完整 `obtainedResources`，数量为本份奖励量。响应保留抽选次序和箱内顺序，不合并重复奖品；实际库存通过 `updatedResources` 返回累计余额。固定行为附赠仍按行为执行次数发放，不受随机箱个数影响。
+
+当前master的随机附赠箱全部为 `expand`，包含抽卡券、材料、体力道具、练习券、技能券、金币和虚拟货币，统一通过现有资源服务入库。费用、卡牌、天井、固定及随机附赠、行为计数和任务属于同一次用户操作。缺组、无有效权重、负权重、缺箱、空箱、非法箱内容、未支持资源、库存溢出或响应编码失败均不提交部分结果；票券和虚拟货币累计同样检查整数溢出。整池抽数限制先于附赠执行。
+
+依据为master文案 `MSG_PRIZE_GIFT_DESCRIPTION_*` 的逐抽独立规则，`GachaRateContent.CreateCells`（RVA `0x63a4cb8`）及其投影（`0x63a563c`）的组、箱和权重映射，`GachaRateTopCell.Setup` 与 `CollectionGachaUtility.CalcGachaPickRate`（`0x4e85a20`）的权重归一化。结果页 `CreatePrizeItem` 的状态机（`0x65660f4`）将完整响应数组交给 `GachaPrizeRewardSubWindowDialog.Setup`（`0x4c5b6a4`）；后者逐项读取等级及资源，空资源箱不能驱动正常展示。
+
+真实master覆盖使用历史开放时段和本地合成用户：14个卡池、49种行为、119个箱的415种行为与附赠结果组合全部通过，核对2,368份附赠的完整字段和七类库存，默认及示例配置均通过。隔离业务和加密HTTP另验证权重边界、十连、指定剩余抽数、固定附赠共存、跨purpose同编号箱、名额耗尽、独立认证Suite、部分发奖与编码失败回滚、溢出及SQLite重启。未消费官方付费抽卡取得新样本，未验证官方服务的随机分布或Unity动画。
 
 ### 抽卡限次、指定剩余抽数与日周刷新
 

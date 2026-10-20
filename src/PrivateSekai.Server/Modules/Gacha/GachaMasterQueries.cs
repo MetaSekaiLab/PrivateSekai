@@ -31,6 +31,27 @@ public sealed class GachaMasterQueries(MasterData master)
         master.GetTable<MasterGachaBonus>("gachaBonuses", b => b.id).FindById(id)
         ?? throw new InvalidOperationException("Missing gacha bonus definition.");
 
+    public MasterGachaFreebieGroup[] GetFreebieGroups(int groupId)
+    {
+        var groups = master.GetTable<MasterGachaFreebieGroup>("gachaFreebieGroups", g => g.id).Rows
+            .Where(g => g.groupId == groupId).OrderBy(g => g.seq).ToArray();
+        if (groups.Any(g => g.weight < 0 || g.rarity <= 0) || !groups.Any(g => g.weight > 0))
+            throw new InvalidOperationException("Invalid gacha freebie group.");
+        return groups.Where(g => g.weight > 0).ToArray();
+    }
+
+    public MasterResourceBox GetFreebieResourceBox(int id)
+    {
+        var box = master.GetTable<MasterResourceBox>("resourceBoxes", b => b.id).Rows
+            .SingleOrDefault(b => b.resourceBoxPurpose == "gacha_freebie_group" && b.id == id)
+            ?? throw new InvalidOperationException("Missing gacha freebie resource box.");
+        if (box.resourceBoxType != "expand" || box.details == null || box.details.Length == 0
+            || box.details.Any(d => d.resourceQuantity <= 0 || string.IsNullOrEmpty(d.resourceType)
+                || d.resourceId <= 0 && d.resourceType is not ("coin" or "virtual_coin" or "jewel")))
+            throw new InvalidOperationException("Invalid gacha freebie resource box.");
+        return box;
+    }
+
     public MasterResourceBox GetExtraResourceBox(int extraId)
     {
         var extra = master.GetTable<MasterGachaExtra>("gachaExtras", e => e.id).FindById(extraId)

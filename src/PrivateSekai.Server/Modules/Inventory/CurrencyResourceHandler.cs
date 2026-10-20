@@ -31,7 +31,7 @@ public sealed class CurrencyResourceHandler : IResourceHandler
             case "virtual_coin":
                 if (data.userGamedata == null)
                     return;
-                data.userGamedata.virtualCoin += resource.quantity;
+                data.userGamedata.virtualCoin = checked(data.userGamedata.virtualCoin + resource.quantity);
                 user.MarkChanged(nameof(SuiteUser.userGamedata));
                 break;
             default:

@@ -34,7 +34,7 @@ public sealed class GachaResourceHandler : IResourceHandler
                     ticket = new UserGachaTicket { userId = user.UserId, gachaTicketId = id };
                     tickets.Add(ticket);
                 }
-                ticket.quantity = quantity < 0 ? Math.Max(0, ticket.quantity + quantity) : ticket.quantity + quantity;
+                ticket.quantity = quantity < 0 ? Math.Max(0, ticket.quantity + quantity) : checked(ticket.quantity + quantity);
                 user.Data.userGachaTickets = tickets.OrderBy(t => t.gachaTicketId).ToArray();
                 user.MarkChanged(nameof(SuiteUser.userGachaTickets));
                 return ticket.quantity;

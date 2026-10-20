@@ -89,6 +89,7 @@ public sealed class GachaService(
         var obtainGachaCeilItems = behavior.resourceCategory == "free_resource" && behavior.gachaSpinnableType == "colorful_pass"
             ? [] : GrantGachaCeilItem(gacha, gachaId, spinCount);
         GrantExtra(behavior.gachaExtraId, executions);
+        var obtainGachaFreebies = GrantFreebies(gacha.gachaFreebieGroupId, spinCount);
         missions.RefreshGachaPanels();
 
         return new UserGachaResponse
@@ -98,7 +99,7 @@ public sealed class GachaService(
             obtainGachaCeilItems = obtainGachaCeilItems,
             obtainGachaBonusItems = [],
             obtainGachaExtras = [],
-            obtainGachaFreebies = [],
+            obtainGachaFreebies = obtainGachaFreebies,
             userGacha = userGacha,
             obtainCharacterAllBonuses = [],
             obtainCharacterRepeatedBonuses = []
@@ -115,6 +116,32 @@ public sealed class GachaService(
             if (resource.resourceType == "costume_3d") costumes.Obtain(resource.resourceId);
             else resources.Grant(resource);
         }
+    }
+
+    private UserGachaFreebie[] GrantFreebies(int groupId, int spinCount)
+    {
+        if (groupId == 0) return [];
+        var candidates = master.GetFreebieGroups(groupId);
+        var totalWeight = candidates.Sum(g => (long)g.weight);
+        var freebies = new UserGachaFreebie[spinCount];
+        for (var i = 0; i < freebies.Length; i++)
+        {
+            var selected = (random ?? Random.Shared).NextInt64(totalWeight);
+            long running = 0;
+            var candidate = candidates[0];
+            foreach (var entry in candidates)
+            {
+                running += entry.weight;
+                if (selected >= running) continue;
+                candidate = entry;
+                break;
+            }
+            var box = master.GetFreebieResourceBox(candidate.resourceBoxId);
+            var obtained = resourceMaster.BuildResourcesFromBox("gacha_freebie_group", box.id);
+            resources.Grant(obtained);
+            freebies[i] = new UserGachaFreebie { rarity = candidate.rarity, obtainedResources = obtained };
+        }
+        return freebies;
     }
 
     public void SaveRateChoiceGachaWish(UserRateChoiceGachaWishRequest request)
