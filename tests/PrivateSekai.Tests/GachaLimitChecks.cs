@@ -42,7 +42,7 @@ internal static class GachaLimitChecks
                 {"id":10,"spinCount":10,"costResourceType":"jewel","costResourceQuantity":3000}]}]
             """);
         Table("cards", """[{"id":2,"characterId":1,"cardRarityType":"rarity_2"}]""");
-        foreach (var name in new[] { "cardEpisodes", "cardCostume3ds", "characterMissionV2s", "characterMissionV2ParameterGroups", "honorMissions", "beginnerMissionV2s" }) Table(name, "[]");
+        foreach (var name in new[] { "cardEpisodes", "cardExtras", "cardCostume3ds", "characterMissionV2s", "characterMissionV2ParameterGroups", "honorMissions", "beginnerMissionV2s" }) Table(name, "[]");
         Table("configs", """[{"configKey":"date_change_hour","value":"4"}]""");
         Table("colorfulPassV2s", """[{"id":1,"dailyPaidGachaSpinLimit":2,"dailyFreeGachaSpinLimit":0,"weeklyColorfulPassGachaSpinLimit":1},{"id":3,"dailyPaidGachaSpinLimit":2,"dailyFreeGachaSpinLimit":1,"weeklyColorfulPassGachaSpinLimit":1}]""");
         var clock = new Clock();

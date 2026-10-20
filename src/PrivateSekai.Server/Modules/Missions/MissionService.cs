@@ -267,7 +267,7 @@ public sealed class MissionService(
 
     public void RecordCostumeChange() => RecordBeginnerMissionProgress(master.GetCostumeChangeMissions());
 
-    public UserCharacterMissionV2Status[] RecordStampPurchase(int characterId)
+    public UserCharacterMissionV2Status[] RecordStampAcquisition(int characterId)
     {
         UpdateHonorProgress("collect_stamp");
         return RecordCharacterMissionProgress(master.GetStampCollectionMissions(characterId));

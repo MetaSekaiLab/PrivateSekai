@@ -13,7 +13,7 @@ namespace PrivateSekai.Modules.Mysekai;
 
 public sealed class MysekaiResourceHandler(ResourceMasterQueries master) : IResourceHandler
 {
-    public IReadOnlyCollection<string> ResourceTypes { get; } = ["mysekai_item", "mysekai_tool", "mysekai_material"];
+    public IReadOnlyCollection<string> ResourceTypes { get; } = ["mysekai_item", "mysekai_tool", "mysekai_material", "mysekai_fixture"];
 
     public void Grant(UserSession user, UserResource resource)
     {
@@ -22,6 +22,21 @@ public sealed class MysekaiResourceHandler(ResourceMasterQueries master) : IReso
 
         switch (resource.resourceType)
         {
+            case "mysekai_fixture":
+                _ = master.GetMysekaiFixture(resource.resourceId);
+                var fixtures = (user.Data.userMysekaiFixtures ?? []).ToList();
+                var fixture = fixtures.SingleOrDefault(f => f.mysekaiFixtureId == resource.resourceId
+                    && f.textureId == MasterMysekaiFixture.DEFAULT_TEXTURE_COLOR_ID);
+                if (fixture == null)
+                {
+                    fixture = new UserMysekaiFixture { mysekaiFixtureId = resource.resourceId, textureId = MasterMysekaiFixture.DEFAULT_TEXTURE_COLOR_ID };
+                    fixtures.Add(fixture);
+                }
+                fixture.quantity = checked(fixture.quantity + resource.quantity);
+                fixture.lastObtainedAt = user.Now;
+                user.Data.userMysekaiFixtures = fixtures.OrderBy(f => f.mysekaiFixtureId).ThenBy(f => f.textureId).ToArray();
+                user.MarkChanged(nameof(SuiteUser.userMysekaiFixtures));
+                break;
             case "mysekai_material":
                 var counted = master.IsMysekaiMaterialCounted(resource.resourceId);
                 var materials = (user.Data.userMysekaiMaterials ?? []).ToList();

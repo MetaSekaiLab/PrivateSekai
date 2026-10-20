@@ -793,6 +793,7 @@ internal static class FeatureChecks
                                           {"cardId":2,"cost":{"resourceType":"material","resourceId":14,"quantity":50}}]}]
                 """,
             ["cardEpisodes"] = "[]",
+            ["cardExtras"] = "[]",
             ["characterMissionV2s"] = """[{"id":12,"characterId":1,"characterMissionType":"collect_member","parameterGroupId":14},{"id":13,"characterId":1,"characterMissionType":"play_live","parameterGroupId":15}]""",
             ["characterMissionV2ParameterGroups"] = """[{"id":14,"seq":1,"requirement":1},{"id":15,"seq":1,"requirement":10}]""",
             ["cardCostume3ds"] = """[{"cardId":10,"costume3dId":20}]""",

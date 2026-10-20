@@ -26,6 +26,10 @@ public sealed class ResourceMasterQueries(MasterData master)
         master.GetTable<MasterMysekaiTool>("mysekaiTools", t => t.id)
             .FindById(mysekaiToolId)?.maxDurability ?? 0;
 
+    public MasterMysekaiFixture GetMysekaiFixture(int id) =>
+        master.GetTable<MasterMysekaiFixture>("mysekaiFixtures", f => f.id).FindById(id)
+        ?? throw new InvalidOperationException("Missing Mysekai fixture definition.");
+
     public bool IsMysekaiMaterialCounted(int id)
     {
         var material = master.GetTable<MasterMysekaiMaterial>("mysekaiMaterials", m => m.id).FindById(id)

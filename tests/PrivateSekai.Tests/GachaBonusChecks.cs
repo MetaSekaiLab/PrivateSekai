@@ -47,6 +47,7 @@ internal static class GachaBonusChecks
         Table("colorfulPassV2s", """[{"id":3,"dailyFreeGachaSpinLimit":1,"dailyPaidGachaSpinLimit":2,"weeklyColorfulPassGachaSpinLimit":1}]""");
         Table("cards", """[{"id":2,"characterId":1,"cardRarityType":"rarity_2"},{"id":3,"characterId":1,"cardRarityType":"rarity_3"},{"id":4,"characterId":1,"cardRarityType":"rarity_4"},{"id":5,"characterId":1,"cardRarityType":"rarity_4"}]""");
         Table("cardEpisodes", """[{"id":50,"cardId":5},{"id":51,"cardId":5}]""");
+        Table("cardExtras", "[]");
         Table("cardCostume3ds", """[{"cardId":5,"costume3dId":10},{"cardId":5,"costume3dId":11},{"cardId":5,"costume3dId":12},{"cardId":5,"costume3dId":13},{"cardId":5,"costume3dId":14,"isInitialObtainHair":true}]""");
         Table("costume3ds", """[{"id":10,"characterId":1,"partType":"head"},{"id":11,"characterId":1,"partType":"body"},{"id":12,"characterId":1,"partType":"head"},{"id":13,"characterId":1,"partType":"hair"},{"id":14,"characterId":1,"partType":"hair"}]""");
         Table("costume3dShopItems", """[{"id":21,"headCostume3dId":20,"bodyCostume3dId":21,"releaseConditionId":10},{"id":22,"bodyCostume3dId":22,"releaseConditionId":11}]""");

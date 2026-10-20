@@ -147,7 +147,7 @@ public sealed class ShopService(
                 foreach (var cost in costs) resourceService.Consume(cost.resourceType, cost.resourceId, cost.quantity);
                 resourceService.Grant(areaRewards);
                 MarkShopItemSoldOut(shopId, shopItemId);
-                return (200, missions.RecordStampPurchase(stamp.characterId1), true, "");
+                return (200, missions.RecordStampAcquisition(stamp.characterId1), true, "");
             }
             if (areaRewards.Any(r => r.resourceType == "area_item"))
             {

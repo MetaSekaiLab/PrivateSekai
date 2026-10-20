@@ -66,7 +66,7 @@ internal static class GiftGachaChecks
              {"resourceBoxPurpose":"gift_gacha_extra","id":4,"resourceBoxType":"list","details":[{"resourceType":"material","resourceId":7,"resourceQuantity":0}]}]
             """);
         Table("mysekaiMaterials", """[{"id":1,"mysekaiMaterialType":"wood"},{"id":2,"mysekaiMaterialType":"game_character"},{"id":3,"mysekaiMaterialType":"birthday_party"}]""");
-        foreach (var table in new[] { "cardEpisodes", "cardCostume3ds", "costume3dShopItems", "releaseConditions",
+        foreach (var table in new[] { "cardEpisodes", "cardExtras", "cardCostume3ds", "costume3dShopItems", "releaseConditions",
             "characterArchiveVoices", "characterMissionV2s", "characterMissionV2ParameterGroups", "beginnerMissionV2s", "honorMissions" }) Table(table, "[]");
         var store = new MemoryUserStore();
         var clock = new Clock();

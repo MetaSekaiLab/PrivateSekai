@@ -34,6 +34,7 @@ internal static class GachaChecks
         File.WriteAllText(Path.Combine(directory, "cards.json"), """[{"id":2,"characterId":2,"cardRarityType":"rarity_2"}]""");
         File.WriteAllText(Path.Combine(directory, "cardEpisodes.json"), """[{"id":20,"cardId":2},{"id":21,"cardId":2}]""");
         File.WriteAllText(Path.Combine(directory, "cardCostume3ds.json"), "[]");
+        File.WriteAllText(Path.Combine(directory, "cardExtras.json"), "[]");
         File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"), """
             [{"id":2,"characterId":2,"characterMissionType":"collect_member","parameterGroupId":1},
              {"id":3,"characterId":2,"characterMissionType":"waiting_room","parameterGroupId":1},

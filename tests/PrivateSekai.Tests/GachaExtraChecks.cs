@@ -50,7 +50,7 @@ internal static class GachaExtraChecks
         Table("characterMissionV2s", """[{"id":1,"characterId":1,"characterMissionType":"collect_costume_3d","parameterGroupId":1}]""");
         Table("characterMissionV2ParameterGroups", """[{"id":1,"seq":1,"requirement":1}]""");
         Table("honorMissions", """[{"id":1,"honorMissionType":"collect_costume_3d","requirement":1}]""");
-        foreach (var table in new[] { "cardEpisodes", "cardCostume3ds", "costume3dShopItems", "releaseConditions", "characterArchiveVoices", "beginnerMissionV2s" }) Table(table, "[]");
+        foreach (var table in new[] { "cardEpisodes", "cardExtras", "cardCostume3ds", "costume3dShopItems", "releaseConditions", "characterArchiveVoices", "beginnerMissionV2s" }) Table(table, "[]");
         var store = new MemoryUserStore();
         using var provider = new ServiceCollection().AddPrivateSekai()
             .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory))

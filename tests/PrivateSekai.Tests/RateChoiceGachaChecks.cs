@@ -74,7 +74,7 @@ internal static class RateChoiceGachaChecks
         Table("rateChoiceGachaWishes", """[{"id":1,"groupId":1,"seq":1,"lotteryType":"rate_choice_first","selectCount":2},{"id":2,"groupId":1,"seq":2,"lotteryType":"rate_choice_second","selectCount":2}]""");
         Table("characterMissionV2s", """[{"id":1,"characterId":1,"characterMissionType":"collect_member","parameterGroupId":1},{"id":2,"characterId":1,"characterMissionType":"waiting_room","parameterGroupId":1}]""");
         Table("characterMissionV2ParameterGroups", """[{"id":1,"seq":1,"requirement":1}]""");
-        foreach (var table in new[] { "cardEpisodes", "cardCostume3ds", "costume3dShopItems", "releaseConditions", "characterArchiveVoices", "beginnerMissionV2s", "honorMissions" }) Table(table, "[]");
+        foreach (var table in new[] { "cardEpisodes", "cardExtras", "cardCostume3ds", "costume3dShopItems", "releaseConditions", "characterArchiveVoices", "beginnerMissionV2s", "honorMissions" }) Table(table, "[]");
         var store = new MemoryUserStore();
         store.Save(2, TestUsers.Create(2));
         var peer = DumpSerializer.Serialize(store.Read(2)!.Data);

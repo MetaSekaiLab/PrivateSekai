@@ -74,7 +74,7 @@ public sealed class GachaService(
                 newFlg = isNew,
                 gachaLotteryType = lotteryType,
                 costume3d = costume3ds,
-                cardExtra = []
+                cardExtra = GrantCardExtras(cardId)
             });
         }
 
@@ -414,8 +414,16 @@ public sealed class GachaService(
                 resourceType = resource.resourceType, resourceId = resource.resourceId, resourceLevel = resource.resourceLevel,
                 quantity = checked(resource.quantity * exchangeCount)
             };
-            resources.Grant(reward);
             AddObtainedResource(obtained, reward);
+            if (reward.resourceType == "card")
+            {
+                if (reward.quantity <= 0) throw new InvalidOperationException("Invalid exchanged card quantity.");
+                for (var i = 0; i < reward.quantity; i++)
+                    if (GrantGachaCard(reward.resourceId))
+                        foreach (var costume in costumes.ObtainForCard(reward.resourceId)) AddObtainedResource(obtained, costume);
+                foreach (var extra in GrantCardExtras(reward.resourceId, reward.quantity)) AddObtainedResource(obtained, extra);
+            }
+            else resources.Grant(reward);
         }
 
         return new UserGachaCeilExchangeResponse
@@ -999,6 +1007,29 @@ public sealed class GachaService(
         }
         else missions.RecordDuplicateCard(card.characterId);
         return isNew;
+    }
+
+    private UserResource[] GrantCardExtras(int cardId, int acquisitions = 1)
+    {
+        var box = master.GetCardExtraBox(cardId);
+        if (box == null) return [];
+        var obtained = new List<UserResource>();
+        foreach (var reward in resourceMaster.BuildResourcesFromBox("card_extra", box.id))
+        {
+            var owned = reward.resourceType switch
+            {
+                "avatar_accessory" => user.Data.userAvatarAccessories?.Any(a => a.avatarAccessoryId == reward.resourceId) == true,
+                "stamp" => user.Data.userStamps?.Any(s => s.stampId == reward.resourceId) == true,
+                "mysekai_fixture" => user.Data.userMysekaiFixtures?.Any(f => f.mysekaiFixtureId == reward.resourceId && f.quantity > 0) == true,
+                _ => false
+            };
+            if (owned) continue;
+            if (reward.resourceType == "custom_profile_collection_resource") reward.quantity = checked(reward.quantity * acquisitions);
+            resources.Grant(reward);
+            if (reward.resourceType == "stamp") missions.RecordStampAcquisition(master.GetStampCharacterId(reward.resourceId));
+            obtained.Add(reward);
+        }
+        return obtained.ToArray();
     }
 
     private UserResource[] GrantGachaCeilItem(MasterGacha? gacha, int gachaId, int quantity)

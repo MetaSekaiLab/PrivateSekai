@@ -18,7 +18,7 @@ public sealed class CardResourceHandler(CardMasterQueries master) : IResourceHan
         var card = cards.FirstOrDefault(c => c.cardId == resource.resourceId);
         if (card != null)
         {
-            card.duplicateCount += resource.quantity;
+            card.duplicateCount = checked(card.duplicateCount + resource.quantity);
         }
         else
         {

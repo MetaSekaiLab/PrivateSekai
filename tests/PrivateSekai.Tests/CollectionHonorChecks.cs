@@ -52,7 +52,7 @@ internal static class CollectionHonorChecks
                 {
                     switch (type)
                     {
-                        case "collect_stamp": missions.RecordStampPurchase(1); break;
+                        case "collect_stamp": missions.RecordStampAcquisition(1); break;
                         case "collect_costume_3d": missions.RecordCostumeCraft(1); break;
                         default: missions.RecordAnotherVocalPurchase([1, 3]); break;
                     }

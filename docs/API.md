@@ -1947,6 +1947,18 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 两份历史官方记录覆盖带服装单抽、十连中的首次与重复卡；服装奖励、制作入口、解锁记录、角色与称号任务的完整响应及相关状态增量均对拍通过。本地独立会话回读核对原记录后快照，未把历史后快照称为新发起的官方认证回读。
 
+### 卡牌附赠饰品、贴图、名片素材与家具
+
+`cardExtras.cardId` 关联卡牌，`resourceBoxId` 只查询 `resourceBoxPurpose="card_extra"` 的完整资源箱。此规则独立于卡池固定赠品、随机附赠、Wish 及积分奖励，也不能用来代替 `gachaCharacterBonusGroupId` 的角色奖励映射。
+
+每次抽取或天井换卡获得目标卡均检查附赠资源：头像饰品、贴图和联动家具按库存去重；`custom_profile_collection_resource` 按获得卡牌的张数累计，同次十连、指定次数和后续重复卡均可继续获得。不能以 `newFlg` 统一屏蔽重复卡附赠。首次贴图推进所属角色的 `collect_stamp` 及对应称号，已持有贴图不重复计数。名片素材记录在 `userCustomProfileResources` 的 `collection` 项，家具记录在 `userMysekaiFixtures`，包含默认纹理、数量和实际获得时间。
+
+抽取响应逐张在 `obtainPrizes[].cardExtra` 返回实际发出的资源，已持有的唯一资源不重复返回；初始服装继续使用 `costume3d`。天井换卡也处理相同附赠和首次服装，`obtainUserResources` 保留卡资源在前，并按资源类型、编号及等级合并获得数量。所有附赠、任务、卡牌、费用和换卡计次同属一次用户操作，映射异常或任一发奖／编码失败时整体回滚。
+
+证据：原 `MasterCardExtra`、`UserGachaSpinObtainPrize.cardExtra` 及两种资源箱用途；`GachaBonusDetailContent.CreateCardExtraResourcesMap`（RVA `0x6375c80`）和成员概率页按卡读取附赠箱。`ScreenLayerGachaResult.GetCardExtraReward`（`0x6563884`）从逐张奖品读取附赠，天井结果页也从响应筛选同一附赠箱资源。相关联动池说明明确名片素材可重复、贴图与联动家具不可重复。家具纹理使用原 `MasterMysekaiFixture.DEFAULT_TEXTURE_COLOR_ID`，客户端按家具编号与纹理查库存（`0x633897c`），总量由库存数量求和（`0x4ac294c`）。
+
+本地业务及加密 HTTP 检查包含首次／同批重复／跨次重复、资源已持有、保底卡、指定票券多抽、多次换卡、贴图任务、并发、独立认证 Suite 回读、SQLite 重启继续获得及整体回滚。使用完整官方当前 master 的合成用户和历史开放时段，默认／示例配置均覆盖全部14条附赠映射、5个关联卡池，304次抽取用例／1,672张结果及24个换卡用例；未消费官方资源，没有官方附赠成功响应或 Unity 界面验收。此处家具验证限于附赠库存，不表示完整 MySekai 玩法已经实现。
+
 ### 抽卡行为的固定附赠
 
 成功抽取后，按本次行为的 `gachaExtraId` 查询 `gachaExtras.resourceBoxId`，再取purpose为 `gacha_extra` 的资源箱。`expand` 和 `costume_3d` 箱均发放全部details；数量按行为执行次数计算，十连配置的数量不再乘十，单抽指定 `executeCount=2` 则发两份资源箱。没有附赠配置时不额外发奖；缺失或非法配置整体失败，费用、卡牌、附赠及任务在同一用户事务中回滚。

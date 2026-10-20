@@ -33,6 +33,7 @@ internal static class GachaTenChecks
             """);
         File.WriteAllText(Path.Combine(directory, "cardEpisodes.json"), """[{"id":20,"cardId":2},{"id":21,"cardId":2},{"id":30,"cardId":3},{"id":31,"cardId":3}]""");
         File.WriteAllText(Path.Combine(directory, "cardCostume3ds.json"), "[]");
+        File.WriteAllText(Path.Combine(directory, "cardExtras.json"), "[]");
         File.WriteAllText(Path.Combine(directory, "characterMissionV2s.json"), """
             [{"id":1,"characterId":1,"characterMissionType":"collect_member","parameterGroupId":1},
              {"id":2,"characterId":1,"characterMissionType":"waiting_room","parameterGroupId":2},

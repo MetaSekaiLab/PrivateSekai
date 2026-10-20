@@ -8,6 +8,7 @@ internal static class GachaHttpChecks
 {
     public static void WriteMaster(string directory)
     {
+        File.WriteAllText(Path.Combine(directory, "cardExtras.json"), "[]");
         // 单卡池保证测试确定性，数值只用于隔离测试。
         File.WriteAllText(Path.Combine(directory, "gachas.json"), """
             [{"id":1,"startAt":1,"gachaCeilItemId":9,"gachaDetails":[{"cardId":1,"weight":1}],
