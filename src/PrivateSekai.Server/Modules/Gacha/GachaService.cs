@@ -24,8 +24,11 @@ public sealed class GachaService(
     CostumeService costumes,
     Random? random = null) : IUserRefreshHandler
 {
-    public UserGachaResponse ExecuteGacha(int gachaId, int gachaBehaviorId, bool isPriorityUsePaidJewel, int? executeCount = null)
+    public UserGachaResponse ExecuteGacha(int gachaId, int gachaBehaviorId, bool isPriorityUsePaidJewel, int? executeCount = null,
+        int? selectedCardId = null, int? selectedItemId = null)
     {
+        if (selectedCardId is <= 0 || selectedItemId is <= 0 || selectedCardId.HasValue && selectedItemId.HasValue)
+            throw new GachaRequestRejectedException(400);
         var now = user.Now;
         var gacha = master.GetMasterGacha(gachaId) ?? throw new GachaRequestRejectedException(404);
         var behavior = master.GetMasterGachaBehavior(gacha, gachaBehaviorId) ?? throw new GachaRequestRejectedException(404);
@@ -49,7 +52,8 @@ public sealed class GachaService(
         var paidBefore = user.Data.userChargedCurrency?.paid ?? 0;
         var consumedCosts = ConsumeGachaCost(behavior, isPriorityUsePaidJewel, executions);
 
-        var bonusCardIds = ApplyGachaBonus(gacha, behavior, spinCount, paidBefore - (user.Data.userChargedCurrency?.paid ?? 0), executions);
+        var (bonusCardIds, bonusItems) = ApplyGachaBonus(gacha, behavior, spinCount,
+            paidBefore - (user.Data.userChargedCurrency?.paid ?? 0), executions, selectedCardId, selectedItemId);
         if (bonusCardIds.Length > spinCount) throw new InvalidOperationException("Gacha bonus exceeds the requested spin count.");
         var drawnCardIds = DrawGachaCards(gacha, behaviorType, spinCount - bonusCardIds.Length, choices);
         var obtainPrizes = new List<UserGachaSpinObtainPrize>();
@@ -104,7 +108,7 @@ public sealed class GachaService(
             consumedCosts = consumedCosts,
             obtainPrizes = obtainPrizes.ToArray(),
             obtainGachaCeilItems = obtainGachaCeilItems,
-            obtainGachaBonusItems = [],
+            obtainGachaBonusItems = bonusItems,
             obtainGachaExtras = gifts,
             obtainGachaFreebies = obtainGachaFreebies,
             userGacha = userGacha,
@@ -496,10 +500,74 @@ public sealed class GachaService(
             .Sum(g => checked((long)behaviors[g.gachaBehaviorId].spinCount * g.count));
     }
 
-    private int[] ApplyGachaBonus(MasterGacha gacha, MasterGachaBehavior behavior, int spinCount, int paidConsumed, int executions)
+    private (int[] Cards, UserResource[] Items) ApplyGachaBonus(MasterGacha gacha, MasterGachaBehavior behavior,
+        int spinCount, int paidConsumed, int executions, int? selectedCardId, int? selectedItemId)
     {
-        if (gacha.gachaBonusId <= 0 || behavior.resourceCategory == "free_resource") return [];
-        var bonus = master.GetGachaBonus(gacha.gachaBonusId);
+        var itemReceivable = gacha.gachaBonusItemReceivableRewardGroupId > 0;
+        if (gacha.gachaBonusId <= 0 && !itemReceivable || behavior.resourceCategory == "free_resource")
+        {
+            if (selectedCardId.HasValue || selectedItemId.HasValue) throw new GachaRequestRejectedException(400);
+            return ([], []);
+        }
+        if (itemReceivable && gacha.gachaBonusId > 0) throw new InvalidOperationException("Conflicting gacha bonus definitions.");
+        var rewards = itemReceivable ? master.GetItemReceivableRewards(gacha.gachaBonusItemReceivableRewardGroupId) : [];
+        var pointMax = itemReceivable ? rewards[^1].gachaBonusBorderPoint : 100;
+        var increment = GetGachaBonusIncrement(behavior, spinCount, paidConsumed, executions);
+        var points = (user.Data.userGachaBonusPoints ?? []).ToList();
+        var point = points.SingleOrDefault(p => p.gachaId == gacha.id);
+        if (point == null)
+        {
+            point = new UserGachaBonusPoint { userId = user.UserId, gachaId = gacha.id };
+            points.Add(point);
+        }
+        if (!float.IsFinite(point.gachaBonusPoint) || point.gachaBonusPoint < 0 || point.gachaBonusPoint >= pointMax
+            || !float.IsFinite(point.totalGachaBonusPoint) || point.totalGachaBonusPoint < 0)
+            throw new InvalidOperationException("Invalid saved gacha bonus points.");
+        var after = point.gachaBonusPoint + increment;
+        var totalAfter = point.totalGachaBonusPoint + increment;
+        if (!float.IsFinite(after) || !float.IsFinite(totalAfter) || totalAfter <= point.totalGachaBonusPoint)
+            throw new OverflowException("Gacha bonus points cannot advance.");
+        var obtained = new List<int>();
+        UserResource[] items = [];
+        if (itemReceivable)
+        {
+            var crossed = new List<MasterGachaBonusItemReceivableRewardGroup>();
+            var cycles = checked((int)(after / pointMax) + 1);
+            for (var cycle = 0; cycle < cycles; cycle++)
+                foreach (var reward in rewards)
+                {
+                    var border = (double)cycle * pointMax + reward.gachaBonusBorderPoint;
+                    if (point.gachaBonusPoint < border && border <= after) crossed.Add(reward);
+                }
+            (var cardsObtained, items) = GrantItemReceivableRewards(gacha, crossed, selectedCardId, selectedItemId);
+            obtained.AddRange(cardsObtained);
+        }
+        else
+        {
+            if (selectedCardId.HasValue || selectedItemId.HasValue) throw new GachaRequestRejectedException(400);
+            var bonus = master.GetGachaBonus(gacha.gachaBonusId);
+            for (var border = (int)(point.gachaBonusPoint / 50) + 1; border <= (int)(after / 50); border++)
+            {
+                if (border % 2 != 0)
+                    obtained.Add(DrawGachaCardByRarity(gacha, "rarity_4", null, bonus.switchFixedBonusWeight));
+                else
+                {
+                    var pickups = (gacha.gachaPickups ?? []).Where(p => p.gachaPickupType == "normal").Select(p => p.cardId).Distinct().ToArray();
+                    if (pickups.Length == 0 || pickups.Any(id => cards.GetCardRarityType(id) != "rarity_4" || !gacha.gachaDetails.Any(d => d.cardId == id)))
+                        throw new InvalidOperationException("Missing gacha bonus pickup pool.");
+                    obtained.Add(pickups[(int)(random ?? Random.Shared).NextInt64(pickups.Length)]);
+                }
+            }
+        }
+        point.gachaBonusPoint = after % pointMax;
+        point.totalGachaBonusPoint = totalAfter;
+        user.Data.userGachaBonusPoints = points.OrderBy(p => p.gachaId).ToArray();
+        user.MarkChanged(nameof(SuiteUser.userGachaBonusPoints));
+        return (obtained.ToArray(), items);
+    }
+
+    private float GetGachaBonusIncrement(MasterGachaBehavior behavior, int spinCount, int paidConsumed, int executions)
+    {
         var defaultRate = master.GetGachaBonusPointRate(false);
         var paidSpins = behavior.costResourceType == "paid_jewel" ? spinCount : 0;
         if (behavior.costResourceType == "jewel")
@@ -510,35 +578,72 @@ public sealed class GachaService(
             paidSpins = Math.Min(spinCount, paidConsumed / (quantity / spinCount));
         }
         var increment = defaultRate * (spinCount - paidSpins) + master.GetGachaBonusPointRate(true) * paidSpins;
-        var points = (user.Data.userGachaBonusPoints ?? []).ToList();
-        var point = points.SingleOrDefault(p => p.gachaId == gacha.id);
-        if (point == null)
+        return float.IsFinite(increment) && increment > 0 ? increment : throw new InvalidOperationException("Invalid gacha bonus increment.");
+    }
+
+    private (int[] Cards, UserResource[] Items) GrantItemReceivableRewards(MasterGacha gacha,
+        List<MasterGachaBonusItemReceivableRewardGroup> rewards, int? selectedCardId, int? selectedItemId)
+    {
+        var selectCard = rewards.Any(r => r.gachaBonusRewardType == "selectable_rarity4_fixed");
+        var selectItem = rewards.Any(r => r.gachaBonusRewardType == "selectable_item");
+        if (selectedCardId.HasValue && !selectCard || selectedItemId.HasValue && !selectItem) throw new GachaRequestRejectedException(400);
+        if (selectCard && !selectedCardId.HasValue || selectItem && !selectedItemId.HasValue) throw new GachaRequestRejectedException(409);
+        var obtainedCards = new List<int>();
+        var obtainedItems = new List<UserResource>();
+        var owned = (user.Data.userCards ?? []).Select(c => c.cardId).ToHashSet();
+        foreach (var reward in rewards)
         {
-            point = new UserGachaBonusPoint { userId = user.UserId, gachaId = gacha.id };
-            points.Add(point);
-        }
-        if (!float.IsFinite(point.gachaBonusPoint) || point.gachaBonusPoint < 0 || point.gachaBonusPoint >= 100 ||
-            !float.IsFinite(point.totalGachaBonusPoint) || point.totalGachaBonusPoint < 0)
-            throw new InvalidOperationException("Invalid saved gacha bonus points.");
-        var after = point.gachaBonusPoint + increment;
-        var obtained = new List<int>();
-        for (var border = (int)(point.gachaBonusPoint / 50) + 1; border <= (int)(after / 50); border++)
-        {
-            if (border % 2 != 0)
-                obtained.Add(DrawGachaCardByRarity(gacha, "rarity_4", null, bonus.switchFixedBonusWeight));
-            else
+            if (reward.gachaBonusRewardType is "not_owned_random_rarity4_fixed" or "selectable_rarity4_fixed")
             {
-                var pickups = (gacha.gachaPickups ?? []).Where(p => p.gachaPickupType == "normal").Select(p => p.cardId).Distinct().ToArray();
-                if (pickups.Length == 0 || pickups.Any(id => cards.GetCardRarityType(id) != "rarity_4" || !gacha.gachaDetails.Any(d => d.cardId == id)))
-                    throw new InvalidOperationException("Missing gacha bonus pickup pool.");
-                obtained.Add(pickups[(int)(random ?? Random.Shared).NextInt64(pickups.Length)]);
+                var supplies = master.GetBonusCardSupplyIds(reward.cardSupplyGroupId);
+                var candidates = gacha.gachaDetails.Select(d => cards.GetMasterCard(d.cardId)
+                        ?? throw new InvalidOperationException("Missing bonus card definition."))
+                    .Where(c => c.cardRarityType == "rarity_4" && supplies.Contains(c.cardSupplyId)).Select(c => c.id).Distinct().ToArray();
+                if (candidates.Length == 0) throw new InvalidOperationException("Empty gacha bonus card pool.");
+                int cardId;
+                if (reward.gachaBonusRewardType == "selectable_rarity4_fixed")
+                {
+                    cardId = selectedCardId!.Value;
+                    if (!candidates.Contains(cardId)) throw new GachaRequestRejectedException(400);
+                }
+                else
+                {
+                    var unowned = candidates.Where(id => !owned.Contains(id)).ToArray();
+                    if (unowned.Length > 0) candidates = unowned;
+                    cardId = candidates[(int)(random ?? Random.Shared).NextInt64(candidates.Length)];
+                }
+                owned.Add(cardId);
+                obtainedCards.Add(cardId);
+                continue;
             }
+            var boxId = reward.resourceBoxId;
+            if (reward.gachaBonusRewardType is "random_item" or "selectable_item")
+            {
+                var options = master.GetBonusRewardItems(reward.gachaBonusRewardItemGroupId);
+                if (reward.gachaBonusRewardType == "selectable_item")
+                    boxId = options.SingleOrDefault(i => i.id == selectedItemId)?.resourceBoxId ?? throw new GachaRequestRejectedException(400);
+                else
+                {
+                    var total = options.Sum(i => (long)i.weight);
+                    if (total <= 0) throw new InvalidOperationException("Empty random bonus item pool.");
+                    var pick = (random ?? Random.Shared).NextInt64(total);
+                    foreach (var option in options)
+                    {
+                        pick -= option.weight;
+                        if (pick >= 0) continue;
+                        boxId = option.resourceBoxId;
+                        break;
+                    }
+                }
+            }
+            var box = master.GetBonusResourceBox(boxId);
+            var resourcesObtained = resourceMaster.BuildResourcesFromBox("gacha_bonus_item_receivable_reward", box.id);
+            foreach (var resource in resourcesObtained)
+                if (resource.resourceType == "costume_3d") costumes.Obtain(resource.resourceId);
+                else resources.Grant(resource);
+            obtainedItems.AddRange(resourcesObtained);
         }
-        point.gachaBonusPoint = after % 100;
-        point.totalGachaBonusPoint += increment;
-        user.Data.userGachaBonusPoints = points.OrderBy(p => p.gachaId).ToArray();
-        user.MarkChanged(nameof(SuiteUser.userGachaBonusPoints));
-        return obtained.ToArray();
+        return (obtainedCards.ToArray(), obtainedItems.ToArray());
     }
 
     private static int GetGachaSpinCount(MasterGachaBehavior? behavior)

@@ -32,6 +32,44 @@ public sealed class GachaMasterQueries(MasterData master)
         master.GetTable<MasterGachaBonus>("gachaBonuses", b => b.id).FindById(id)
         ?? throw new InvalidOperationException("Missing gacha bonus definition.");
 
+    public MasterGachaBonusItemReceivableRewardGroup[] GetItemReceivableRewards(int groupId)
+    {
+        var rewards = master.GetTable<MasterGachaBonusItemReceivableRewardGroup>("gachaBonusItemReceivableRewards", r => r.id).Rows
+            .Where(r => r.groupId == groupId).OrderBy(r => r.gachaBonusBorderPoint).ToArray();
+        if (rewards.Length == 0 || rewards.Any(r => r.gachaBonusBorderPoint <= 0
+                || r.gachaBonusRewardType is not ("item" or "not_owned_random_rarity4_fixed" or "selectable_rarity4_fixed" or "random_item" or "selectable_item"))
+            || rewards.Select(r => r.gachaBonusBorderPoint).Distinct().Count() != rewards.Length)
+            throw new InvalidOperationException("Invalid item receivable gacha rewards.");
+        return rewards;
+    }
+
+    public int[] GetBonusCardSupplyIds(int groupId)
+    {
+        var ids = master.GetTable<MasterCardSupplyGroup>("cardSupplyGroups", s => s.id).Rows
+            .Where(s => s.groupId == groupId).Select(s => s.cardSupplyId).Distinct().ToArray();
+        return ids.Length > 0 && ids.All(id => id > 0) ? ids : throw new InvalidOperationException("Missing bonus card supplies.");
+    }
+
+    public MasterGachaBonusRewardItemGroup[] GetBonusRewardItems(int groupId)
+    {
+        var items = master.GetTable<MasterGachaBonusRewardItemGroup>("gachaBonusRewardItemGroups", i => i.id).Rows
+            .Where(i => i.groupId == groupId).OrderBy(i => i.seq).ToArray();
+        return items.Length > 0 && items.All(i => i.weight >= 0 && i.resourceBoxId > 0)
+            ? items : throw new InvalidOperationException("Invalid bonus reward items.");
+    }
+
+    public MasterResourceBox GetBonusResourceBox(int id)
+    {
+        var box = master.GetTable<MasterResourceBox>("resourceBoxes", b => b.id).Rows
+            .SingleOrDefault(b => b.resourceBoxPurpose == "gacha_bonus_item_receivable_reward" && b.id == id)
+            ?? throw new InvalidOperationException("Missing gacha bonus resource box.");
+        if (box.resourceBoxType is not ("expand" or "list") || box.details == null || box.details.Length == 0
+            || box.details.Any(d => d.resourceQuantity <= 0 || string.IsNullOrEmpty(d.resourceType)
+                || d.resourceId <= 0 && d.resourceType is not ("coin" or "virtual_coin" or "jewel")))
+            throw new InvalidOperationException("Invalid gacha bonus resource box.");
+        return box;
+    }
+
     public MasterRateChoiceGachaWish[] GetRateChoiceWishes(int groupId)
     {
         var wishes = master.GetTable<MasterRateChoiceGachaWish>("rateChoiceGachaWishes", w => w.id).Rows

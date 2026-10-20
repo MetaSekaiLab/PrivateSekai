@@ -112,6 +112,7 @@ VirtualShopHttpChecks.WriteMaster(directory);
 StampUseHttpChecks.WriteMaster(directory);
 GachaTenHttpChecks.WriteMaster(directory);
 GachaBonusHttpChecks.WriteMaster(directory);
+ItemReceivableGachaHttpChecks.WriteMaster(directory);
 GachaLimitHttpChecks.WriteMaster(directory);
 GachaExtraHttpChecks.WriteMaster(directory);
 GachaFreebieHttpChecks.WriteMaster(directory);
@@ -824,6 +825,7 @@ try
     await GachaHttpChecks.RunExchange(client, config, store, directory, Check);
     await GachaTenHttpChecks.Run(client, config, store, directory, Check);
     await GachaBonusHttpChecks.Run(client, config, store, directory, Check);
+    await ItemReceivableGachaHttpChecks.Run(client, config, store, directory, Check);
     await GachaExtraHttpChecks.Run(client, config, store, directory, Check);
     await GachaFreebieHttpChecks.Run(client, config, store, directory, Check);
     await GiftGachaHttpChecks.Run(client, config, store, directory, Check);

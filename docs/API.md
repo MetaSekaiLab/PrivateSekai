@@ -1922,6 +1922,23 @@ Client 已提供 `character-mission-receive`、`character-mission-receive-all` �
 
 两份官方免费单抽分别确认积分 0→0.5、0.5→1，另有余额不足拒绝；完整响应、相关状态增量和独立认证回读均无差异。本地业务及加密 HTTP 检查覆盖免费／付费／混合付款、票券、50／100 门槛、超额结转、重复卡、错误配置、编码失败回滚、跨账号隔离和数据库重启。保底名额依据原始截图和客户端，权重分支依据客户端二进制；尚无本项目测试账号触发 50／100 点的官方 HTTP 记录，不宣称验证随机概率分布或游戏动画。
 
+### 道具型 Bonus 门槛与奖励选择
+
+`gachaBonusItemReceivableRewardGroupId` 指向 `gachaBonusItemReceivableRewards.groupId`，按 `gachaBonusBorderPoint` 依次结算本次跨过的门槛。计点沿用实际消耗及 `clientConfigs` 倍率；免费通行证行为不计点。循环上限取本组最后一个门槛，当前 master 同时存在 100 点、200 点组，不能统一按 100 点归零。`gachaBonusPoint` 保存循环内余量，`totalGachaBonusPoint` 保留累计值，超出循环的部分结转，多次执行按顺序发出每个跨过的奖励。
+
+- `item`：按 `resourceBoxId` 发放整箱，资源箱用途必须为 `gacha_bonus_item_receivable_reward`；同编号其他用途的箱不参与。
+- `not_owned_random_rarity4_fixed`：从当前池详情中，按 `cardSupplyGroups` 指定供给筛选四星，优先在未持有候选间等权抽取；目标全持有时回退全部候选。与普通详情权重、Wish 名单分别处理。
+- `selectable_rarity4_fixed`：`selectedCardId` 为卡牌 ID，须在该门槛的四星供给候选中，允许选择已持有卡。选择随本次抽取提交，不是另一个保存接口。
+- `random_item`／`selectable_item`：通过 `gachaBonusRewardItemGroupId` 查 `gachaBonusRewardItemGroups`，分别按选项权重抽箱或由 `selectedItemId` 选择。该参数为选项行 ID，不能传箱 ID 或资源 ID；零随机权重项仍可主动选择。
+
+客户端仅在预测本次抽取到达相应选择门槛时发送选择 query；指定次数变体同时追加 `executeCount`。Client 的 `gacha-draw` 支持这三个正整数 query。Server 对缺少必须选择返回 409，对候选错误、无关选择、非正 ID 或同时传两种选择返回 400；这些拒绝规则已有本地检查，未取得官方对应错误响应。拒绝或任一奖励、状态、响应编码失败时，整次扣款、计点、卡牌、道具、次数及任务均不提交。
+
+道具实际进入库存并逐项返回 `obtainGachaBonusItems`，结果页据此显示奖励弹窗；卡牌继续进入 `obtainPrizes`，使用 `fixed_gacha_bonus`，走新卡／重复卡、服装和任务的共同结算。保底卡沿用上述名额和顺序处理，其余名额单独执行十连保障。一次指定抽数跨过多个未持有保底时，当前实现会排除本次此前获得的保底卡；这一多门槛顺序尚无官方批量响应样本。
+
+证据：`GachaUtility.ExecuteSpinAPI`（RVA `0x4da7848`）、`EnableGachaBonusReward`（`0x4da9d80`）及 `GetNextGachaBonusRewardSelectCard`（`0x4daa39c`）确认选择时机；两个选择型 `SpecifySpinCountAPI.GetRequestURL`（`0x617bb1c`／`0x617c4fc`）确认选择参数与执行次数共用原路径。`ScreenLayerRecollectionWishListModel` 的筛选（`0x4b13f48`）、`GachaFixedBonusMemberRecollectionContent.GetTargetContentData`（`0x638124c`）及未持有概率显示（`0x639a468`）确认候选、供给及等权回退。选择道具回调（`0x4daaa40`）保存选项行 ID；道具 ViewData（`0x4c557a4`）按专用 purpose 查箱。双计量条动画按组上限取模，实际池说明也明确循环与余量结转；`ScreenLayerGachaResult.ShowGachaBonusRewardDialog`（`0x6563720`）读取上述响应道具。
+
+本地业务、加密 HTTP、独立会话回读和 SQLite 重启检查覆盖计点、循环、未持有回退、选卡／选道具、整箱发放、独立十连保障、并发及整体回滚。真实 master 在默认与示例配置下均覆盖 11 池、70 行为、1,004 个行为与门槛组合、全部 5,334 个保底卡候选，共 6,413 次抽取、18,502 张结果。当前 `gachaBonusRewardItemGroups` 为空，随机／自选道具仅有客户端结构与合成 fixture 验证；其余实际目录验证也使用合成用户及历史开放时段，未消费官方资源，无官方道具型保底成功响应或 Unity 界面验证。
+
 ### 抽卡首次服装与解锁联动
 
 首次获得卡牌时，按 `cardCostume3ds` 发放初始服装，只有 `status="available"` 才视为已经拥有。普通发型保留后续 Master Rank 解锁，当前 master 中 `isInitialObtainHair=true` 的映射允许初始获得；该字段仅补入 dump 的构建副本。普通后续发型同时可在 `masterLessonRewards` 的奖励箱中核对，不能将所有卡牌服装映射直接视为初始奖励。

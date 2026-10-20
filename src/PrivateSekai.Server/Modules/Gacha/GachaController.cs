@@ -21,7 +21,9 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
         int gachaId,
         int gachaBehaviorId,
         [FromQuery] bool isPriorityUsePaidJewel = false,
-        [FromQuery] int? executeCount = null)
+        [FromQuery] int? executeCount = null,
+        [FromQuery] int? selectedCardId = null,
+        [FromQuery] int? selectedItemId = null)
     {
         try
         {
@@ -31,7 +33,7 @@ public sealed class GachaController(UserOperation operations, UserSession user, 
                 var released = (user.Data.userReleaseConditions ?? []).Select(c => c.releaseConditionId).ToHashSet();
                 var before = (user.Data.userCharacterMissionStatuses ?? [])
                     .Select(s => (s.characterId, s.missionId, s.parameterGroupId, s.seq)).ToHashSet();
-                var response = gacha.ExecuteGacha(gachaId, gachaBehaviorId, isPriorityUsePaidJewel, executeCount);
+                var response = gacha.ExecuteGacha(gachaId, gachaBehaviorId, isPriorityUsePaidJewel, executeCount, selectedCardId, selectedItemId);
                 response.updatedResources = user.BuildRefresh(prepareRefresh: false);
                 var newConditions = (user.Data.userReleaseConditions ?? []).Where(c => !released.Contains(c.releaseConditionId)).ToArray();
                 if (newConditions.Length > 0) response.updatedResources.newReleaseConditions = newConditions;
