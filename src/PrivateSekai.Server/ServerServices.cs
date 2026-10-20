@@ -64,6 +64,7 @@ public static class ServerServices
         services.AddSingleton<IResourceHandler, HonorResourceHandler>();
         services.AddSingleton<IResourceHandler, MysekaiResourceHandler>();
         services.AddSingleton<IResourceHandler, AreaItemResourceHandler>();
+        services.AddSingleton<IResourceHandler, LivePointResourceHandler>();
 
         services.AddScoped<InheritService>();
         services.AddScoped<CardService>();

@@ -409,6 +409,53 @@ public sealed class MissionService(
         return (200, obtained.ToArray());
     }
 
+    public (int Status, UserResource[] Rewards) ReceiveEventMissionRewards(UserMissionReceiveRequest request)
+    {
+        var ids = request.missionIds;
+        if (ids == null || ids.Length == 0 || ids.Any(id => id <= 0))
+            return (400, []);
+        if (ids.Distinct().Count() != ids.Length) return (409, []);
+        if (request.EventMissionSelectableRewardId != 0 || request.IsClosedEventMissionSelectableReward) return (501, []);
+        var definitions = ids.Select(master.GetEventMission).OfType<MasterEventMission>().ToArray();
+        if (definitions.Length != ids.Length) return (400, []);
+        if (definitions.Any(m => m.eventMissionCategory != "normal" || m.eventMissionSelectableRewardGroupId != 0)) return (501, []);
+        foreach (var mission in definitions)
+        {
+            var definition = master.GetEvent(mission.eventId) ?? throw new InvalidOperationException("Missing mission event.");
+            if (definition.closedAt <= definition.startAt) throw new InvalidOperationException("Invalid event mission period.");
+            if (user.Now < definition.startAt || user.Now >= definition.closedAt) return (409, []);
+        }
+        var statuses = definitions.Select(m => user.Data.userMissionStatuses?
+            .SingleOrDefault(s => s.missionType == "event_mission" && s.missionId == m.id)).ToArray();
+        if (statuses.Any(s => s?.missionStatus != "achieved")) return (409, []);
+        var obtained = new List<UserResource>();
+        foreach (var mission in definitions)
+        {
+            if (mission.rewards == null || mission.rewards.Length == 0) throw new InvalidOperationException("Missing event mission rewards.");
+            foreach (var reward in mission.rewards)
+            {
+                if (reward.missionType != "event_mission" || reward.missionId != mission.id)
+                    throw new InvalidOperationException("Invalid event mission reward mapping.");
+                var resources = resourceMaster.BuildResourcesFromBox("mission_reward", reward.resourceBoxId);
+                if (resources.Length == 0) throw new InvalidOperationException("Missing event mission reward box.");
+                if (resources.Any(r => r.quantity <= 0 || r.resourceType is not ("live_point" or "gacha_ticket" or "jewel" or "material"))) return (501, []);
+                if (resources.Any(r => r.resourceType is "gacha_ticket" or "material" && r.resourceId <= 0))
+                    throw new InvalidOperationException("Invalid event mission reward resource.");
+                obtained.AddRange(resources);
+            }
+        }
+        if (obtained.Any(r => r.resourceType == "live_point"))
+        {
+            var period = master.GetLiveMissionPeriodId(user.Now);
+            if (user.Data.userLiveMissions?.Any(m => m.liveMissionPeriodId == period && m.liveMissionStatus != "free") == true)
+                return (501, []);
+        }
+        resourceService.Grant(obtained);
+        foreach (var status in statuses) status!.missionStatus = "received";
+        user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
+        return (200, obtained.ToArray());
+    }
+
     public UserMissionReceiveResponse ReceiveBeginnerMissionV2Rewards(int[]? missionIds)
     {
         var obtainedRewards = new List<UserResource>();
@@ -544,37 +591,7 @@ public sealed class MissionService(
         var progress = checked(livePoint.addNormalProgress + livePoint.addDailyBonusProgress);
         if (progress <= 0) return;
 
-        user.Data.userLiveMissions ??= [];
-        var missions = user.Data.userLiveMissions.ToList();
-        var mission = missions.FirstOrDefault(m =>
-            m.liveMissionPeriodId == livePoint.liveMissionPeriodId &&
-            string.Equals(m.liveMissionStatus, "free", StringComparison.Ordinal));
-
-        if (mission == null)
-        {
-            mission = new UserLiveMission
-            {
-                userId = user.UserId,
-                liveMissionPeriodId = livePoint.liveMissionPeriodId,
-                liveMissionStatus = "free",
-                achievedMissionIds = []
-            };
-            missions.Add(mission);
-        }
-
-        mission.progress = checked(mission.progress + progress);
-        mission.achievedMissionIds ??= [];
-        user.Data.userLiveMissions = missions.ToArray();
-        user.MarkChanged(nameof(SuiteUser.userLiveMissions));
-        foreach (var definition in master.GetFreeLiveMissions(mission.liveMissionPeriodId))
-        {
-            if (mission.progress < definition.requirement ||
-                user.Data.userMissionStatuses?.Any(s => s.missionType == "live_mission" &&
-                    s.missionId == definition.id && s.missionStatus is "achieved" or "received") == true)
-                continue;
-            MarkMissionAchieved("live_mission", definition.id);
-            user.MarkChanged(nameof(SuiteUser.userMissionStatuses));
-        }
+        LiveMissionProgress.Grant(user, master, livePoint.liveMissionPeriodId, progress);
     }
 }
 

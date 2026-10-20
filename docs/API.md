@@ -3262,6 +3262,23 @@ Server 已补免费任务达成及结算提示，Client 支持领奖场景和 `-
 
 证据：`PutUserMissionReceiveAPI` 构造、Execute 和回调，任务请求与响应契约、`liveMissions` 与 `mission_reward` 资源盒，以及免费任务达成、领奖和回读样本。
 
+## PUT `/api/user/{userId}/mission/event_mission`
+
+- Path：当前 `userId`；无 query。Body 使用原 `UserMissionReceiveRequest.missionIds`，提交待领取的活动任务 ID 数组。
+- 普通固定奖励不选择奖品，`eventMissionSelectableRewardId=0`、`isClosedEventMissionSelectableReward=false`。自选奖励及全部任务完成奖励属于独立分支。
+- Response：原 `UserMissionReceiveResponse.obtainedRewards` 按请求顺序及资源箱顺序返回全部奖品；`updatedResources` 合并奖励库存、活动任务领取状态及 Live 任务进度。
+- 请求时机：任务页领取已达成的普通活动任务。`PutUserMissionReceiveAPI.Execute`（RVA `0x619be5c`）把 `MissionType.event_mission` 拼入通用任务路由并发送 PUT；成功回调（`0x619c040`）合并 `UpdatedResources`。
+
+Server 支持 `eventMissionCategory=normal` 且没有自选奖励组的固定奖励。任务必须具有 `event_mission` 的 `achieved` 状态；不凭进度数值临时补达成。按 `rewards` 的任务类型、任务 ID 和 `mission_reward` 用途取得完整资源箱，发放 Live P、免费宝石、抽卡券和材料，全部发奖成功后统一改为 `received`。不自动领取由 Live P 新达成的其他任务，也不修改原活动任务进度。
+
+任务页有效期来自活动 `startAt <= now < closedAt`，与活动兑换商店的截止时间分别处理。证据为 `EventMissionView.IsWithinCurrentTime`（`0x50d0da8`）读取原 `MasterEvent` 的 `0x50`／`0x70` 字段后调用 `TimeUtility.IsWithinCurrentTime`，字段分别为 `startAt`／`closedAt`。`MissionUtility.GetEventMissionViewData`（`0x4dbb554`）用活动任务 ID 读取 `event_mission` 状态，`UserMissionStatus.IsAchieved`／`IsReceived` 区分达成与已领取。
+
+Live P 通过资源 Handler 增加领取时当期免费 Live 任务进度，按 master 遍历全部跨过的门槛，保留已有 `received` 状态及旧周期进度。它与演出共用进度处理，不消耗或恢复每日演出奖励次数。本次新达成的 `achievedMissionIds` 仅映射到响应，Suite 回读为空。当前免费轨道沿用已有普通演出处理；当前期已有其他付费轨道时，含点数的活动领奖整单返回本地 501，避免新增同周期免费记录或部分发放其他奖品。新资源入账沿奖励类型及既有 Live 进度规则实现，尚无官方活动任务成功领奖样本。
+
+本地拒绝规则：空或非正数组、未知 ID 返回 400；重复 ID、未达成、已领取或期外返回 409；自选参数、其他类别或未支持奖励返回 501。错误使用加密的空 `errorCode`／`errorMessage` 响应。已取得一份未达成任务的官方 409 及空错误码／文案样本，独立认证回读确认活动任务、Live P、钱包、券和材料无变化；该样本完整错误响应、八类状态及独立回读的本地对拍通过，其余拒绝形态尚不能作为官方结论。批量中任一失败拒绝整单，保留库存、任务和待刷新字段；缺失配置、点数溢出及响应编码失败也回滚全部变化。
+
+Client 提供 `event-mission-receive` 和示例场景，使用前须按当前 master 及账号已达成状态替换任务 ID。检查项目提供 `--replay-event-mission <清单> <master目录> <输出目录>`，比较完整响应和独立回读。隔离业务及加密 HTTP 覆盖单领、批量、多类整箱奖励、Live 门槛和当次提示、独立认证回读、SQLite 重启、并发防重与中途失败回滚。新版真实 master 的140个活动共980项普通任务、10种奖励箱，在默认／示例配置下各验证4,200次合法领奖、6,160次拒绝、9,450项奖励，覆盖47个 Live 周期；均使用本地合成的已达成状态及历史有效时段，未运行 Unity。本节不证明活动消费任务达标后的计数或全任务自选奖励已实现。
+
 ## POST `/api/user/{userId}/stamp-use-history`
 
 - Path：当前 `userId`；无 query。Body：`UserStampUseHistoryRequest.userStampUseHistories`，每项为 `UserStampUseHistory.stampId` 和 `useCount`，均为整数，不包含用户编号。

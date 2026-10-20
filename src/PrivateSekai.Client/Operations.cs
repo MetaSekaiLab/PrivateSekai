@@ -125,6 +125,7 @@ public static class Operations
         ["friend-story-favorites"] = new("GET", "/api/user/{userId}/story-favorite/friend/status/{storyType}", null, "friendStoryFavoriteStatuses", false),
         ["live-mission-receive"] = new("PUT", "/api/user/{userId}/mission/live_mission", typeof(UserMissionReceiveRequest), "obtainedRewards"),
         ["honor-mission-receive"] = new("PUT", "/api/user/{userId}/mission/honor_mission", typeof(UserMissionReceiveRequest), "obtainedRewards"),
+        ["event-mission-receive"] = new("PUT", "/api/user/{userId}/mission/event_mission", typeof(UserMissionReceiveRequest), "obtainedRewards"),
         ["beginner-mission-receive"] = new("PUT", "/api/user/{userId}/mission/beginner_mission_v2", typeof(UserMissionReceiveRequest), "obtainedRewards")
     };
 

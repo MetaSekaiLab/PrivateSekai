@@ -28,6 +28,8 @@ internal static class UserCaseReplay
         "userHonorMissions", "userMissionStatuses", "userBeginnerMissionV2s", "userMaterials", "userGamedata", "userPanelMissions", "userReleaseConditions", "newReleaseConditions"];
     public static readonly string[] GachaExchangeFields = [.. GachaFields, "userGachaCeilExchanges", "userGachaCeilExchangeSubstituteCosts"];
     public static readonly string[] CardExchangeFields = [.. GachaFields, "userDecks", "userCharacters"];
+    public static readonly string[] EventMissionFields = ["userEventMissions", "userMissionStatuses", "userLiveMissions",
+        "userEventItems", "userGamedata", "userChargedCurrency", "userGachaTickets", "userMaterials"];
 
     public static TimeProvider Clock(string manifest) => new ReplayClock(Timestamp(Load(Load(manifest)["records"]![0]!["record"]!.GetValue<string>())));
 

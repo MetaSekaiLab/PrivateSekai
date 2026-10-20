@@ -1,6 +1,7 @@
 extern alias game;
 
 using System;
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using game::Sekai;
 using PrivateSekai.Shared.Users;
@@ -61,6 +62,39 @@ public sealed class MissionController(UserOperation operations, UserSession user
                 var result = missions.ReceiveHonorMissionRewards(request.missionIds);
                 if (result.Status != 200) throw new MissionRequestRejectedException(result.Status);
                 return new UserMissionReceiveResponse { ObtainedRewards = result.Rewards, UpdatedResources = user.BuildRefresh() };
+            }));
+        }
+        catch (MissionRequestRejectedException error)
+        {
+            Response.StatusCode = error.Status;
+            return Encoded(operations.Query(userId, () =>
+                new ClientErrorResponse { HttpStatus = (uint)error.Status, ErrorCode = "", ErrorMessage = "" }));
+        }
+    }
+
+    [HttpPut("api/user/{userId}/mission/event_mission")]
+    public IActionResult ReceiveEventMission(long userId, [FromBody] UserMissionReceiveRequest request)
+    {
+        try
+        {
+            return Encoded(operations.Execute(userId, () =>
+            {
+                var previous = (user.Data.userMissionStatuses ?? []).Where(s => s.missionType == "live_mission" &&
+                    s.missionStatus is "achieved" or "received").Select(s => s.missionId).ToHashSet();
+                var result = missions.ReceiveEventMissionRewards(request);
+                if (result.Status != 200) throw new MissionRequestRejectedException(result.Status);
+                var refresh = user.BuildRefresh();
+                var achieved = (refresh.userMissionStatuses ?? []).Where(s => s.missionType == "live_mission" &&
+                    s.missionStatus == "achieved" && !previous.Contains(s.missionId)).Select(s => master.GetLiveMission(s.missionId)
+                        ?? throw new InvalidOperationException("Missing achieved Live mission.")).ToArray();
+                if (refresh.userLiveMissions != null)
+                    refresh.userLiveMissions = refresh.userLiveMissions.Select(m => new UserLiveMission
+                    {
+                        userId = m.userId, liveMissionPeriodId = m.liveMissionPeriodId, liveMissionStatus = m.liveMissionStatus, progress = m.progress,
+                        achievedMissionIds = achieved.Where(d => d.liveMissionPeriodId == m.liveMissionPeriodId && d.liveMissionType == m.liveMissionStatus)
+                            .Select(d => d.id).ToArray()
+                    }).ToArray();
+                return new UserMissionReceiveResponse { ObtainedRewards = result.Rewards, UpdatedResources = refresh };
             }));
         }
         catch (MissionRequestRejectedException error)

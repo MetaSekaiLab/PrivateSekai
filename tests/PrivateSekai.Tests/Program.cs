@@ -53,6 +53,7 @@ internal static class Program
         MaterialExchangeLimitChecks.Run();
         MemoriaExchangeChecks.Run();
         CardShopChecks.Run();
+        EventMissionChecks.Run();
         LoginStatusChecks.Run();
         FriendChecks.Run();
         FriendFavoriteChecks.Run();

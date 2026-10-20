@@ -123,6 +123,7 @@ SelectListGachaHttpChecks.WriteMaster(directory);
 CategorizedGachaHttpChecks.WriteMaster(directory);
 MemoriaExchangeHttpChecks.WriteMaster(directory);
 CardShopHttpChecks.WriteMaster(directory);
+EventMissionHttpChecks.WriteMaster(directory);
 if (args is ["--replay-character-mission", _, var characterMissionMaster, _])
     CharacterMissionReplay.ImportMaster(characterMissionMaster, directory);
 if (args is ["--replay-costume" or "--replay-costume-craft", _, var costumeMaster, _])
@@ -182,6 +183,11 @@ store.Save(1, new UserState { Data = new SuiteUser
 builder.Services.AddPrivateSekai().AddSingleton<IUserStore>(store)
     .AddSingleton(_ => new PrivateSekai.Storage.CustomProfileThumbnailStore())
     .AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, directory));
+if (args is ["--replay-event-mission", var eventMissionManifest, var eventMissionMaster, _])
+{
+    builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, eventMissionMaster));
+    builder.Services.AddSingleton(UserCaseReplay.Clock(eventMissionManifest));
+}
 if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", _, var honorMaster, _])
     builder.Services.AddSingleton(new MasterData(new MasterCacheConfig { PinTables = [] }, honorMaster));
 if (args is ["--replay-honor-mission", var honorMissionCapture, var honorMissionMaster, _])
@@ -543,6 +549,12 @@ try
     {
         await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, cardExchangePath, cardExchangeOutput,
             "card-exchange", UserCaseReplay.CardExchangeFields);
+        return;
+    }
+    if (args is ["--replay-event-mission", var eventMissionPath, _, var eventMissionOutput])
+    {
+        await UserCaseReplay.Run(config, store, app.Services.GetRequiredService<TimeProvider>(), directory, eventMissionPath, eventMissionOutput,
+            "event-mission-receive", UserCaseReplay.EventMissionFields);
         return;
     }
     if (args is ["--replay-profile-honor" or "--replay-profile-honor-mission", var honorPath, _, var honorOutput])
@@ -964,6 +976,7 @@ try
     await MemoriaExchangeHttpChecks.Run(client, config, store, directory, Check);
     await CardShopHttpChecks.Run(client, config, store, directory, Check);
     await EventExchangeHttpChecks.Run(client, config, store, directory, Check);
+    await EventMissionHttpChecks.Run(client, config, store, directory, Check);
     await CharacterMissionHttpChecks.Run(client, store, app.Services, directory, Check);
     Fails(() => Operations.Path(Operations.All["custom-profile-card-delete"], new() { Args = new() { ["customProfileId"] = "1" } }, 1),
         "名片删除必须提供卡片 ID 列表");

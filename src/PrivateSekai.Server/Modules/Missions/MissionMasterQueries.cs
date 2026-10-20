@@ -28,6 +28,12 @@ public sealed class MissionMasterQueries(MasterData master)
         master.GetTable<MasterEventMission>("eventMissions").Rows
             .Where(m => m.eventId == eventId && m.eventMissionType == "consume_event_item").ToArray();
 
+    public MasterEventMission? GetEventMission(int id) =>
+        master.GetTable<MasterEventMission>("eventMissions").Rows.SingleOrDefault(m => m.id == id);
+
+    public MasterEvent? GetEvent(int id) =>
+        master.GetTable<MasterEvent>("events").Rows.SingleOrDefault(e => e.id == id);
+
     public MasterCharacterMissionV2[] GetCardCollectionMissions(int characterId) =>
         master.GetTable<MasterCharacterMissionV2>("characterMissionV2s", m => m.id).Rows
             .Where(m => m.characterId == characterId && m.characterMissionType == "collect_member").ToArray();

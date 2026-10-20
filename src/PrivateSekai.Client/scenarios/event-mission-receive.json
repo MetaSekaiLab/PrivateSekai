@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "operation": "auth" },
+    { "operation": "event-mission-receive", "body": { "missionIds": [1114] } },
+    { "operation": "suite" }
+  ]
+}
