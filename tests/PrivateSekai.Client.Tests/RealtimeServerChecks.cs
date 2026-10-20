@@ -211,12 +211,49 @@ internal static class RealtimeServerChecks
         using (var replacement = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true))
         {
             await Connect(replacement);
-            await Open(replacement);
+            var original = await Open(replacement);
+            using var observer = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(13), DumpJson.Options)!.AsObject(), true);
+            await Connect(observer);
+            await observer.SendReliableAsync(2, 3080, MultiLiveRoom.JoinRequest(roomId, "第三成员", info), cancel);
+            var third = DumpSerializer.Deserialize<game::Sekai.MultiLive.MultiLiveRoomSyncData>((await Response(observer, 2, 3001)).Payload);
+            await Response(owner, 2, 3001, 255);
+            await Response(replacement, 2, 3001, 255);
+            var observerBefore = DumpSerializer.Serialize(store.Read(13)!.Data);
+            var beforeTransfer = new[] { DumpSerializer.Serialize(store.Read(11)!.Data), DumpSerializer.Serialize(store.Read(12)!.Data) };
             await Leave(owner, "11");
-            var stopped = false;
-            try { while (true) await replacement.ReceiveAsync(cancel); }
-            catch (IOException) { stopped = true; }
-            check(stopped, "当前本地房主退出策略关闭房间及成员连接，不保留僵尸成员");
+            check(MultiLiveRoom.ReadMemberLeaves(await Response(replacement, 1, 102, 255), roomId).SequenceEqual(["11"])
+                && MultiLiveRoom.ReadMasterChanges(await Response(replacement, 2, 998, 255)).SequenceEqual(["12"]),
+                "房主主动退出发送成员退出及998通知，最早加入的剩余成员接任且连接保留");
+            check(MultiLiveRoom.ReadMemberLeaves(await Response(observer, 1, 102, 255), roomId).SequenceEqual(["11"])
+                && MultiLiveRoom.ReadMasterChanges(await Response(observer, 2, 998, 255)).SequenceEqual(["12"]),
+                "其余成员同样实际收到退出及新房主身份通知");
+            await Lookup(numbered.roomNo, 200);
+            var matching = MultiLiveFlow.Property((2, SyncPropertyEncoding.Int32(1)), (3, SyncPropertyEncoding.Int32(1)));
+            await replacement.SendReliableAsync(2, 10010, DumpSerializer.Serialize(matching), cancel);
+            check(MultiLiveFlow.ReadRoom(await Response(replacement, 2, 10010, 255)).Any(p => MultiLiveFlow.Matches(p, matching)),
+                "迁移后新房主可实际推进房间属性");
+            await Response(observer, 2, 10010, 255);
+            await owner.SendReliableAsync(2, 3080, MultiLiveRoom.JoinRequest(roomId, "房主", info), cancel);
+            var rejoined = DumpSerializer.Deserialize<game::Sekai.MultiLive.MultiLiveRoomSyncData>((await Response(owner, 2, 3001)).Payload);
+            var entered = MultiLiveRoom.ReadMemberJoins(await Response(replacement, 2, 3001, 255)).Single();
+            check(rejoined.roomId == original.Owner.roomId && rejoined.privateRoomNumber == original.Owner.privateRoomNumber
+                && rejoined.ownerId == "12" && rejoined.index > original.Guest.index
+                && rejoined.players.Single(p => p.userId == "12").index == original.Guest.index
+                && rejoined.players.Single(p => p.userId == "13").index == third.index && entered.userId == "11",
+                "旧房主按原房号重新加入为普通成员，剩余玩家索引保留且新加入索引不复用");
+            check(DumpSerializer.Serialize(store.Read(11)!.Data).AsSpan().SequenceEqual(beforeTransfer[0])
+                && DumpSerializer.Serialize(store.Read(12)!.Data).AsSpan().SequenceEqual(beforeTransfer[1])
+                && DumpSerializer.Serialize(store.Read(13)!.Data).AsSpan().SequenceEqual(observerBefore),
+                "退出迁移及重新加入不改变双方用户存档");
+            await Leave(owner, "11");
+            await Response(replacement, 1, 102, 255);
+            await Response(observer, 1, 102, 255);
+            await Leave(replacement, "12");
+            await Response(observer, 1, 102, 255);
+            check(MultiLiveRoom.ReadMasterChanges(await Response(observer, 2, 998, 255)).Single() == "13",
+                "新房主再次退出继续迁移到剩余成员，不重置房间或成员索引");
+            await Lookup(numbered.roomNo, 200);
+            await Leave(observer, "13");
             await Lookup(numbered.roomNo, 404);
         }
 
@@ -234,6 +271,7 @@ internal static class RealtimeServerChecks
         await PlayLifeZero();
         await PlayMixedDifficulty();
         await PlayReplay();
+        await PlayTransfer();
         await PlayBoost();
         CheckDailyBoundary();
 
@@ -1024,6 +1062,95 @@ internal static class RealtimeServerChecks
             await Response(owner, 1, 102, 255);
             await Leave(owner, "11");
             await Lookup(firstNumber, 404);
+        }
+
+        async Task PlayTransfer()
+        {
+            foreach (var id in new[] { 11, 12 })
+            {
+                var state = store.Read(id)!;
+                state.Data.userGamedata.rank = 1;
+                state.Data.userGamedata.exp = state.Data.userGamedata.totalExp = 0;
+                state.Data.userBoost = new() { current = 10, recoveryAt = (ulong)clock.GetUtcNow().ToUnixTimeMilliseconds() };
+                state.Private.DailyLivePoint.BonusCount = 0;
+                var card = state.Data.userCards.Single(c => c.cardId == 1);
+                card.level = 1;
+                card.exp = card.totalExp = 0;
+                store.Save(id, state);
+            }
+            using var member = new DiarkisUdpClient(JsonSerializer.SerializeToNode(await Auth(12), DumpJson.Options)!.AsObject(), true);
+            await Connect(member);
+            var original = await Open(member);
+            await Leave(owner, "11");
+            await Response(member, 1, 102, 255);
+            check(MultiLiveRoom.ReadMasterChanges(await Response(member, 2, 998, 255)).Single() == "12",
+                "完整迁移演出先确认剩余成员成为房主");
+            var promoted = original.Guest;
+            promoted.ownerId = "12";
+            promoted.players = promoted.players.Where(player => player.userId == "12").ToArray();
+            await owner.SendReliableAsync(2, 3080, MultiLiveRoom.JoinRequest(roomId, "房主", info), cancel);
+            var rejoined = DumpSerializer.Deserialize<game::Sekai.MultiLive.MultiLiveRoomSyncData>((await Response(owner, 2, 3001)).Payload);
+            var seen = MultiLiveRoom.ReadMemberJoins(await Response(member, 2, 3001, 255)).Single();
+            var song = new MultiLiveSong(7, 71, 1, "easy");
+            var before = new[] { store.Read(11)!, store.Read(12)! };
+            await Request(11, HttpMethod.Post, "/api/multi-live", DumpSerializer.Serialize(
+                MultiLiveFlow.PrepareRequest(before[0].Data, roomId, 1, song, [12, 11])), 403);
+            check(DumpSerializer.Serialize(store.Read(11)!.Data).AsSpan().SequenceEqual(DumpSerializer.Serialize(before[0].Data))
+                && store.Read(11)!.Private.MultiLiveSessions.Count == 0,
+                "旧房主重新加入后不能使用原房主权限申请全场，拒绝不改用户或创建会话");
+            var rooms = app.Services.GetRequiredService<MultiLiveRooms>();
+            var denied = false;
+            try { rooms.Process(11, 2, 10010, DumpSerializer.Serialize(MultiLiveFlow.Property((2, SyncPropertyEncoding.Int32(1))))); }
+            catch (UnauthorizedAccessException) { denied = true; }
+            check(denied, "旧房主作为普通成员也不能越权推进UDP房间步骤");
+            using var newOwnerHttp = Client(12);
+            using var returningHttp = Client(11);
+            var output = Path.Combine(masterPath, "transfer");
+            Directory.CreateDirectory(output);
+            var score = new UserMultiLiveClearScoreRequest { score = 100000, perfectCount = 210,
+                goodCount = 10, maxCombo = 210, tapCount = 220, life = 1000 };
+            var report = new JsonObject();
+            check(await MultiLiveFlow.Run(member, owner, newOwnerHttp, returningHttp, before[1].Data, before[0].Data,
+                promoted, rejoined, seen, 1, song, output, report, cancel,
+                new MultiLivePerformance { DurationMilliseconds = 1, OwnerScore = score, GuestScore = score })
+                && report["phase"]!.GetValue<string>() == "cleared",
+                "新房主与回归成员交换角色后贯通原房真实HTTP准备、UDP演出及双方结算");
+            var journal = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "live-state.local.json")))!;
+            var liveId = journal["liveId"]!.GetValue<string>();
+            check(journal["ownerUserId"]!.GetValue<long>() == 12 && journal["guestUserId"]!.GetValue<long>() == 11
+                && rejoined.roomId == original.Owner.roomId && rejoined.privateRoomNumber == original.Owner.privateRoomNumber,
+                "迁移后的恢复记录使用新角色，演出仍在原房间及原房号");
+            await Leave(owner, "11");
+            await Response(member, 1, 102, 255);
+            await Leave(member, "12");
+            await Lookup(numbered.roomNo, 404);
+            foreach (var (id, response) in new[] { (11, returningHttp.LastResponse!), (12, newOwnerHttp.LastResponse!) })
+            {
+                using var independent = Client(id);
+                var suite = JsonSerializer.Deserialize<SuiteUser>((await independent.Suite()).ToJsonString(), DumpJson.Options)!;
+                var prior = before[id - 11].Data;
+                check(suite.userGamedata.totalExp == 20 && suite.userGamedata.coin - prior.userGamedata.coin == 20
+                    && suite.userCards.Single(c => c.cardId == 1).totalExp == 60 && suite.userBoost.current == 10
+                    && suite.userChargedCurrency.free == prior.userChargedCurrency.free && suite.userChargedCurrency.paid == prior.userChargedCurrency.paid,
+                    "迁移后双边独立回读确认经验、卡牌和金币各结算一次，不改体力和水晶");
+                var point = response["userLivePoint"]!;
+                check(point["addNormalProgress"]!.GetValue<int>() == 1 && point["addDailyBonusProgress"]!.GetValue<int>() == 10
+                    && point["livePointBonusRemaining"]!.GetValue<int>() == 2 && store.Read(id)!.Private.DailyLivePoint.BonusCount == 1
+                    && suite.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress
+                        - prior.userLiveMissions.Single(m => m.liveMissionPeriodId == 1).progress == 11,
+                    "房主迁移不改变个人Live P归属，两人各消费一次自己的每日名额");
+                foreach (var resource in JsonSerializer.Deserialize<UserResource[]>(response["scoreRankRewards"]!.ToJsonString(), DumpJson.Options)!
+                    .Where(r => r.resourceType == "material"))
+                    check(suite.userMaterials.Single(m => m.materialId == resource.resourceId).quantity
+                        - (prior.userMaterials.SingleOrDefault(m => m.materialId == resource.resourceId)?.quantity ?? 0) == resource.quantity,
+                        "迁移后材料奖励与本人实际库存增量一致");
+                var snapshot = DumpSerializer.Serialize(store.Read(id)!.Data);
+                await Request(id, HttpMethod.Put, $"/api/user/{id}/multi-live/{liveId}", DumpSerializer.Serialize(
+                    MultiLivePerformance.Result([12, 11], new Dictionary<long, UserMultiLiveClearScoreRequest>
+                        { [12] = MultiLivePerformance.Score(score, 12, 71), [11] = MultiLivePerformance.Score(score, 11, 71) })), 404);
+                check(DumpSerializer.Serialize(store.Read(id)!.Data).AsSpan().SequenceEqual(snapshot),
+                    "迁移演出的重复结算拒绝且不重复发奖");
+            }
         }
 
         async Task PlayBoost()

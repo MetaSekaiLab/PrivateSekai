@@ -319,11 +319,12 @@ public sealed class MultiLiveRooms(TimeProvider clock, MasterData master)
         var result = room.Players.Keys.Where(id => id != userId)
             .Select(id => new RoomDelivery(id, 1, 102, 255, push)).ToList();
         room.Players.Remove(userId);
-        // 尚未接入原服的房主转移协议；房主离开时关闭当前房间。
-        if (room.Owner == userId)
+        if (room.Players.Count == 0) rooms.Remove(room.Id);
+        else if (room.Owner == userId)
         {
-            result.AddRange(room.Players.Keys.Select(id => new RoomDelivery(id, 0, 0, 0, [], true)));
-            rooms.Remove(room.Id);
+            room.Owner = room.Players.MinBy(pair => pair.Value.index).Key;
+            var changed = Frame(Encoding.UTF8.GetBytes(Id(room.Owner)));
+            result.AddRange(room.Players.Keys.Select(id => new RoomDelivery(id, 2, 998, 255, changed)));
         }
         return result;
     }

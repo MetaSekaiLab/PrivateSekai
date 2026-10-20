@@ -18,6 +18,7 @@ public static class MultiLiveRoom
     public const ushort PropertyCommand = 10010;
     public const ushort LeaveCommand = 102;
     public const ushort UserIndexCommand = 1021;
+    public const ushort MasterChangedCommand = 998;
 
     public static byte[] UserIndexRequest(string userId) => DumpSerializer.Serialize(new UserIdPayload { userId = userId });
 
@@ -85,6 +86,14 @@ public static class MultiLiveRoom
                 throw new InvalidDataException("成员退出推送的房间或玩家标识无效。");
             return Encoding.UTF8.GetString(frame.Span[52..]);
         }).ToArray();
+    }
+
+    public static string[] ReadMasterChanges(DiarkisResponse response)
+    {
+        if (response.Command != MasterChangedCommand || !response.IsPush)
+            throw new InvalidDataException("未收到房主变更推送。");
+        return ReadFrames(response.Payload).Select(frame => Encoding.UTF8.GetString(frame.Span))
+            .Where(id => !string.IsNullOrWhiteSpace(id)).ToArray();
     }
 
     internal static List<ReadOnlyMemory<byte>> ReadFrames(ReadOnlyMemory<byte> payload)

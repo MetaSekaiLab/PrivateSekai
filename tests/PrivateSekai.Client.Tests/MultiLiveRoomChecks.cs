@@ -128,6 +128,13 @@ internal static class MultiLiveRoomChecks
         Reject(() => MultiLiveRoom.ReadMemberLeaves(left with { Status = 1 }, id));
         Reject(() => MultiLiveRoom.ReadMemberLeaves(left, new string('x', 52)));
         Reject(() => MultiLiveRoom.ReadMemberLeaves(left with { Payload = Frame(Encoding.UTF8.GetBytes(id)) }, id));
+        var masterChanged = new DiarkisResponse(2, 998, 255,
+            [.. Frame(Encoding.UTF8.GetBytes("fixture-owner")), .. Frame(Encoding.UTF8.GetBytes(userId))], 0);
+        check(MultiLiveRoom.ReadMasterChanges(masterChanged).SequenceEqual(new[] { "fixture-owner", userId }),
+            "房主变更按长度帧直接读取UTF8玩家ID，不误剥离房间前缀");
+        Reject(() => MultiLiveRoom.ReadMasterChanges(masterChanged with { Status = 1 }));
+        Reject(() => MultiLiveRoom.ReadMasterChanges(masterChanged with { Command = 102 }));
+        Reject(() => MultiLiveRoom.ReadMasterChanges(masterChanged with { Payload = [.. masterChanged.Payload, 0] }));
         var indexRequest = JsonNode.Parse(MessagePackSerializer.ConvertToJson(MultiLiveRoom.UserIndexRequest(userId)))!.AsObject();
         check(indexRequest.Count == 1 && indexRequest["UserID"]!.GetValue<string>() == userId, "缺索引时1021以单字段UserIdPayload查询，不补造槽位编号");
         var indexResponse = new DiarkisResponse(2, 1021, 1, DumpSerializer.Serialize(new UserIndexPayload { userId = userId, index = 7 }), 0);

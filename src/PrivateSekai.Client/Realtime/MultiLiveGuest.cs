@@ -16,12 +16,14 @@ public static class MultiLiveGuest
     public static async Task<bool> Run(string configurationPath, string targetName, string masterDirectory, string output,
         DiarkisUdpClient owner, MultiLiveRoomSyncData room, int lobbyId, JsonObject report, CancellationToken cancellationToken,
         ProtocolClient? ownerHttp = null, SuiteUser? ownerUser = null, MultiLiveSong? song = null, MultiLivePerformance? performance = null,
-        MultiLiveSong? guestSong = null, bool replay = false)
+        MultiLiveSong? guestSong = null, bool replay = false, string? ownerConfigurationPath = null)
     {
         if (song != null && (ownerHttp == null || ownerUser == null))
             throw new InvalidOperationException("开始演出需要房主的当前HTTP会话及用户快照。");
         if (replay && (performance == null || song == null))
             throw new InvalidOperationException("再演需要完整成绩用例。");
+        if (ownerConfigurationPath != null && (performance == null || song == null || replay))
+            throw new InvalidOperationException("房主迁移需要完整演出用例，不能同时选择再演。");
         var target = JsonFiles.Read<ClientConfiguration>(configurationPath).Targets[targetName];
         var configDirectory = Path.GetDirectoryName(Path.GetFullPath(configurationPath))!;
         using var http = new ProtocolClient(target, configDirectory);
@@ -206,6 +208,56 @@ public static class MultiLiveGuest
             report["suiteReadbackSucceeded"] = true;
             return true;
         }
+        async Task Transfer(MultiLiveRoomSyncData joined)
+        {
+            var transfer = new JsonObject();
+            report["transfer"] = transfer;
+            transfer["ownerLeaveAttempted"] = true;
+            report["phase"] = "owner-leave-and-transfer";
+            await owner.SendReliableAsync(1, MultiLiveRoom.LeaveCommand,
+                MultiLiveRoom.LeaveRequest(room.roomId, room.userId), cancellationToken);
+            async Task<bool> ConfirmOwnerLeave()
+            {
+                while (true)
+                {
+                    var response = await owner.ReceiveAsync(cancellationToken);
+                    if (response.Version != 1 || response.Command != MultiLiveRoom.LeaveCommand || response.IsPush) continue;
+                    if (response.Status != 1) throw new InvalidDataException("原房主退出未成功。");
+                    transfer["ownerLeaveSucceeded"] = true;
+                    return true;
+                }
+            }
+            await guest!.MaintainConnectionAsync(ConfirmOwnerLeave(), cancellationToken);
+            var sawLeave = false;
+            var sawTransfer = false;
+            while (!sawLeave || !sawTransfer)
+            {
+                var response = await Receive(cancellationToken);
+                if (response.Version == 1 && response.Command == MultiLiveRoom.LeaveCommand && response.IsPush)
+                    sawLeave |= MultiLiveRoom.ReadMemberLeaves(response, room.roomId).Contains(room.userId);
+                if (response.Command != MultiLiveRoom.MasterChangedCommand || !response.IsPush) continue;
+                var owners = MultiLiveRoom.ReadMasterChanges(response);
+                JsonFiles.Write(Path.Combine(output, "owner-transfer.local.json"), new JsonObject
+                {
+                    ["version"] = response.Version, ["oldOwner"] = room.userId,
+                    ["owners"] = JsonSerializer.SerializeToNode(owners), ["payload"] = Convert.ToBase64String(response.Payload)
+                });
+                if (owners.LastOrDefault() != guestId) throw new InvalidDataException("新房主与剩余成员不一致。");
+                sawTransfer = true;
+                transfer["notificationVersion"] = response.Version;
+            }
+            transfer["memberLeaveConfirmed"] = sawLeave;
+            transfer["masterChangeConfirmed"] = sawTransfer;
+            joined.ownerId = guestId;
+            joined.players = joined.players.Where(player => player.userId != room.userId).ToArray();
+            ownerHttp!.Dispose();
+            report["phase"] = "original-owner-rejoin";
+            var rejoin = new JsonObject();
+            transfer["rejoin"] = rejoin;
+            await Run(ownerConfigurationPath!, targetName, masterDirectory, Path.Combine(output, "transfer"),
+                guest, joined, lobbyId, rejoin, cancellationToken, http, guestUser, song, performance, guestSong);
+            transfer["complete"] = true;
+        }
         try
         {
             await owner.MaintainConnectionAsync(Prepare(), cancellationToken);
@@ -230,7 +282,8 @@ public static class MultiLiveGuest
             report["phase"] = "owner-member-join";
             await guest!.MaintainConnectionAsync(OwnerSeesJoin(), cancellationToken);
             report["ownerSeesGuest"] = true;
-            if (song != null)
+            if (ownerConfigurationPath != null) await Transfer(joined);
+            else if (song != null)
             {
                 var flow = new JsonObject();
                 report["live"] = flow;
@@ -262,11 +315,16 @@ public static class MultiLiveGuest
                 }
             }
             report["phase"] = "guest-leave";
-            await owner.MaintainConnectionAsync(Leave(cancellationToken), cancellationToken);
-            await guest.MaintainConnectionAsync(OwnerSeesLeave(), cancellationToken);
-            report["ownerSeesGuestLeave"] = true;
+            if (ownerConfigurationPath == null) await owner.MaintainConnectionAsync(Leave(cancellationToken), cancellationToken);
+            else await Leave(cancellationToken);
+            if (ownerConfigurationPath == null)
+            {
+                await guest.MaintainConnectionAsync(OwnerSeesLeave(), cancellationToken);
+                report["ownerSeesGuestLeave"] = true;
+            }
             report["phase"] = "guest-independent-readback";
-            await owner.MaintainConnectionAsync(Readback(), cancellationToken);
+            if (ownerConfigurationPath == null) await owner.MaintainConnectionAsync(Readback(), cancellationToken);
+            else await Readback();
             report["complete"] = true;
             report["phase"] = "finished";
             return true;
@@ -279,7 +337,8 @@ public static class MultiLiveGuest
                 try
                 {
                     using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                    await owner.MaintainConnectionAsync(Leave(cleanup.Token), cleanup.Token);
+                    if (ownerConfigurationPath == null) await owner.MaintainConnectionAsync(Leave(cleanup.Token), cleanup.Token);
+                    else await Leave(cleanup.Token);
                 }
                 catch (Exception cleanupError) when (cleanupError is not OutOfMemoryException)
                 {

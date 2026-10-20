@@ -8,6 +8,14 @@ internal static class Program
     {
         try
         {
+            if (args is ["realtime-transfer", var transferOwner, var transferGuest, var transferTarget, var transferMaster, var transferLobby,
+                var transferMusic, var transferDifficulty, var transferVocal, var transferPerformance, "--official-write",
+                "auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room"])
+                return await Realtime.RealtimeProbe.Run(transferOwner, transferTarget, Path.Combine(transferMaster, "clientConfigs.json"),
+                    int.Parse(transferLobby, System.Globalization.CultureInfo.InvariantCulture), transferMaster, transferGuest,
+                    Realtime.MultiLiveSong.Read(transferMaster, int.Parse(transferMusic, System.Globalization.CultureInfo.InvariantCulture),
+                        transferDifficulty, int.Parse(transferVocal, System.Globalization.CultureInfo.InvariantCulture)),
+                    Realtime.MultiLivePerformance.Read(transferPerformance), transferOwnership: true) ? 0 : 2;
             if (args is ["realtime-replay", var observerOwner, var observerGuest, var observerTarget, var observerMaster, var observerLobby,
                 var observerMusic, var observerDifficulty, var observerVocal, var observerPerformance, "--observer", var observerConfig, "--official-write",
                 "auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,recreate-room,leave-room"])
@@ -76,6 +84,7 @@ internal static class Program
             }
             if (args.Length < 4 || args[0] is not ("plan" or "run"))
             {
+                Console.WriteLine("realtime-transfer <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room");
                 Console.WriteLine("realtime-replay <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> [--observer <config>] --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,recreate-room,leave-room");
                 Console.WriteLine("realtime-play <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> <performance.json> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,clear-live,leave-room");
                 Console.WriteLine("realtime-start <ownerConfig> <guestConfig> <target> <master> <lobbyId> <musicId> <difficulty> <vocalId> --official-write auth,reserve-room,private-room-number,private-room-update,create-room,join-room,start-live,leave-room");

@@ -14,7 +14,8 @@ public static class RealtimeProbe
 {
     public static async Task<bool> Run(string configurationPath, string targetName, string? clientConfigsPath = null,
         int? lobbyId = null, string? masterDirectory = null, string? guestConfigurationPath = null, MultiLiveSong? song = null,
-        MultiLivePerformance? performance = null, bool replay = false, string? observerConfigurationPath = null)
+        MultiLivePerformance? performance = null, bool replay = false, string? observerConfigurationPath = null,
+        bool transferOwnership = false)
     {
         if (lobbyId.HasValue && (lobbyId <= 0 || clientConfigsPath == null))
             throw new InvalidOperationException("房间设置需要客户端配置和有效大厅 ID。");
@@ -28,6 +29,8 @@ public static class RealtimeProbe
             throw new InvalidOperationException("演出结算需要歌曲及双账号私房。");
         if (replay && performance == null) throw new InvalidOperationException("再演需要完整演出成绩用例。");
         if (observerConfigurationPath != null && !replay) throw new InvalidOperationException("再演后入房验证需要双场演出。");
+        if (transferOwnership && (performance == null || replay))
+            throw new InvalidOperationException("房主迁移验证需要一场完整演出，不能同时选择再演。");
         var guestSong = song != null && performance?.GuestDifficulty is { } guestDifficulty
             ? MultiLiveSong.Read(masterDirectory!, song.MusicId, guestDifficulty, song.VocalId) : song;
         var roomTtl = clientConfigsPath == null ? (int?)null : MultiLiveReservation.ReadRoomTtl(
@@ -234,7 +237,7 @@ public static class RealtimeProbe
                             report["guest"] = guestReport;
                             await MultiLiveGuest.Run(guestConfigurationPath, targetName, masterDirectory!, Path.Combine(output, "guest"),
                                 realtime, room, lobbyId.Value, guestReport, timeout.Token, http, ownerUser, song, performance, guestSong,
-                                replay);
+                                replay, transferOwnership ? configurationPath : null);
                             if (observerConfigurationPath != null)
                             {
                                 report["phase"] = "reopen-for-new-member";
@@ -249,12 +252,18 @@ public static class RealtimeProbe
                             }
                         }
                         report["phase"] = "leave-private-room";
-                        await Leave(timeout.Token);
+                        if (transferOwnership)
+                        {
+                            leaveAttempted = true;
+                            report["leaveSucceeded"] = report["guest"]?["transfer"]?["ownerLeaveSucceeded"]?.GetValue<bool>() == true;
+                        }
+                        else await Leave(timeout.Token);
                     }
                 }
             }
             report["phase"] = "suite-readback";
-            if (masterDirectory != null) await realtime.MaintainConnectionAsync(Readback(), timeout.Token);
+            if (transferOwnership) await Readback();
+            else if (masterDirectory != null) await realtime.MaintainConnectionAsync(Readback(), timeout.Token);
             else await realtime.MaintainConnectionAsync(http.Suite(), timeout.Token);
             report["suiteReadbackSucceeded"] = true;
             report["complete"] = realtime.ClientKeyAcknowledged && matches && !realtime.LastEcho.IsOffline
@@ -267,7 +276,8 @@ public static class RealtimeProbe
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             report["errorType"] = ex.GetType().Name;
-            if (createdRoomId != null && !leaveAttempted && realtime != null)
+            if (createdRoomId != null && !leaveAttempted && realtime != null
+                && report["guest"]?["transfer"]?["ownerLeaveAttempted"]?.GetValue<bool>() != true)
             {
                 try
                 {
